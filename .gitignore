@@ -20,6 +20,10 @@ pnpm-debug.log*
 .eslintcache
 coverage/
 .vite/
+.tanstack/
+
+# Temporary files
+Screenshot *.png
 
 # OS / editor
 .DS_Store
@@ -27,3 +31,4 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+

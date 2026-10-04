@@ -26,6 +26,7 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | 14 | Emoji | `M` | Opens a picker; click to place an emoji | `emoji` | Picker = a hard-coded array of a few hundred emoji in a grid with category tabs; render as large SVG `<text>` | Easy |
 | 15 | Image | `I` | Upload, paste or drag-drop an image | `image` | `<input type="file">`, `paste` and `drop` events; upload to the Node server (`/uploads`), render with SVG `<image href>`; keep aspect ratio on resize | Easy |
 | 16 | Chart | `C` | Insert a bar, line, pie or donut chart, then edit its data in a side panel | `chart` | Scale data to the box yourself: bars = `<rect>`, line = `<polyline>`, pie/donut = `<path>` arcs (`A` command) from cumulative angles; data editor = a plain editable HTML table | Medium |
+| 17 | SVG | `S` | Upload, paste or drag-drop an `.svg` file; it stays sharp at any zoom | `svg` | Read the file as text, parse it with `DOMParser` and sanitize it: drop `<script>`, `<foreignObject>`, `on*` attributes and external `href`s. Upload the cleaned file to the Node server (`/uploads`, which sanitizes again and serves it with `Content-Security-Policy: script-src 'none'`), then render with SVG `<image href>` so nothing inside it can run; size it from its `viewBox` and keep aspect ratio on resize. Later: "Convert to shapes" turns its `rect`/`ellipse`/`line`/`path` nodes into editable elements | Medium |
 
 ---
 
@@ -119,7 +120,7 @@ Shortcuts are suggestions based on common whiteboard conventions.
 ```ts
 type ElementType =
   | "text" | "sticky" | "list" | "rect" | "ellipse" | "diamond"
-  | "line" | "arrow" | "freehand" | "emoji" | "image" | "chart" | "frame";
+  | "line" | "arrow" | "freehand" | "emoji" | "image" | "svg" | "chart" | "frame";
 
 interface BaseElement {
   id: string;          // crypto.randomUUID()
