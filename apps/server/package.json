@@ -16,9 +16,10 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",
+    "@better-auth/infra": "^0.4.14",
+    "@prism/shared": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
-    "@prism/shared": "workspace:*",
     "better-auth": "^1.7.7",
     "cors": "^2.8.6",
     "express": "^5.2.1",

@@ -1,6 +1,9 @@
+import { useNavigate } from "@tanstack/react-router";
+import { LogOut } from "lucide-react";
 import { type RefObject, useEffect, useRef } from "react";
 import { PrismLogo } from "@/components/prism-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { authClient, runAuthAction } from "@/lib/auth-client";
 
 /** Ctrl K (⌘K on macOS) jumps to search from anywhere on the dashboard. */
 function useSearchShortcut(input: RefObject<HTMLInputElement | null>) {
@@ -25,6 +28,15 @@ export function DashboardHeader({
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
   useSearchShortcut(searchRef);
+  const navigate = useNavigate();
+  // The route guard already loaded the session, so this is normally filled on first render.
+  const user = authClient.useSession().data?.user;
+
+  const logOut = async () => {
+    // Don't leave the user stuck here if the server is unreachable
+    await runAuthAction(() => authClient.signOut());
+    await navigate({ to: "/login" });
+  };
 
   return (
     <header className="sticky top-0 z-30 border-b border-divider bg-card">
@@ -46,20 +58,38 @@ export function DashboardHeader({
           </kbd>
         </label>
 
-        {/* Placeholder account until auth is wired to the dashboard. */}
         <div className="flex items-center gap-2.5 justify-self-end">
           <ThemeToggle className="mr-2 size-9 border border-divider md:mr-4" />
-          <span
-            aria-hidden="true"
-            className="flex size-8 items-center justify-center rounded-full bg-brand font-mono text-[13px] font-bold text-slate"
+          {/* Avatar only; name and email stay available to hover and screen readers. */}
+          {user && (
+            <span title={`${user.name} · ${user.email}`} className="shrink-0">
+              {user.image ? (
+                <img
+                  src={user.image}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="size-8 rounded-full object-cover"
+                />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="flex size-8 items-center justify-center rounded-full bg-brand font-mono text-[13px] font-bold text-slate uppercase"
+                >
+                  {(user.name || user.email).charAt(0)}
+                </span>
+              )}
+              <span className="sr-only">Signed in as {user.name}</span>
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => void logOut()}
+            aria-label="Log out"
+            title="Log out"
+            className="ml-2 flex size-9 items-center justify-center border border-divider text-foreground transition-colors hover:text-ink md:ml-4"
           >
-            A
-          </span>
-          <span className="hidden min-w-0 flex-col md:flex">
-            <span className="text-sm leading-5 font-bold text-foreground">Alex</span>
-            <span className="text-xs leading-[17px] text-muted-foreground">alex@prism.dev</span>
-          </span>
-          <span className="sr-only md:hidden">Signed in as Alex</span>
+            <LogOut aria-hidden="true" className="size-4" />
+          </button>
         </div>
       </div>
     </header>

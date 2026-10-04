@@ -21,9 +21,10 @@ export function ErrorScreen({
 
   return (
     <StatusScreen
-      eyebrow="Something broke"
-      title="This view didn't render."
-      description="An unexpected error stopped this page from loading. Try again, or head back home."
+      eyebrow="Application error"
+      title="Unable to display this view."
+      description="An unexpected error prevented this page from loading. Try again, or head back home."
+      animateMark
       actions={
         <>
           <button type="button" onClick={onRetry} className={ctaVariants({ size: "lg" })}>

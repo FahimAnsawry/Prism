@@ -1,15 +1,22 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, type LoginInput } from "@prism/shared";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { ctaVariants } from "@/components/cta";
 import { Button } from "@/components/ui/button";
+import { authClient, authErrorMessage, runAuthAction } from "@/lib/auth-client";
 import { rememberLastSignIn } from "@/lib/last-sign-in";
-import { FormField } from "./form-field";
+import { FormError, FormField } from "./form-field";
 import { OrDivider, SocialSignIn } from "./social-sign-in";
 
-export function LoginForm() {
+/** `oauthError` is the `?error=` code Better Auth adds when a Google/GitHub sign-in fails. */
+export function LoginForm({ oauthError }: { oauthError?: string }) {
+  const navigate = useNavigate();
+  const [formError, setFormError] = useState(() =>
+    oauthError ? authErrorMessage(oauthError) : undefined,
+  );
   const {
     register,
     handleSubmit,
@@ -19,9 +26,15 @@ export function LoginForm() {
     defaultValues: { email: "", password: "" },
   });
 
-  const onSubmit = async (_values: LoginInput) => {
+  const onSubmit = async ({ email, password }: LoginInput) => {
+    setFormError(undefined);
+    const message = await runAuthAction(() => authClient.signIn.email({ email, password }));
+    if (message) {
+      setFormError(message);
+      return;
+    }
     rememberLastSignIn("email");
-    // TODO(better-auth): await authClient.signIn.email({ ..._values, callbackURL: "/" })
+    await navigate({ to: "/dashboard" });
   };
 
   return (
@@ -44,6 +57,7 @@ export function LoginForm() {
       </div>
       <OrDivider className="mt-6" />
 
+      <FormError message={formError} className="mt-5" />
       <form noValidate onSubmit={handleSubmit(onSubmit)} className="mt-5">
         <FormField
           id="login-email"

@@ -733,6 +733,17 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [role="button"]:disabled {
+    cursor: not-allowed;
+  }
 }
 
 /* ==========================================================================

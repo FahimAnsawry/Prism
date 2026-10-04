@@ -17,6 +17,21 @@ export function FieldError({ id, message }: { id: string; message?: string }) {
   );
 }
 
+/** A whole-form error (e.g. wrong password), announced to screen readers when it appears. */
+export function FormError({ message, className }: { message?: string; className?: string }) {
+  return (
+    // The live region stays mounted so the message is announced; spacing only applies when shown.
+    <div role="alert" className={message ? className : undefined}>
+      {message && (
+        <p className="flex items-start gap-2 border border-destructive bg-card px-4 py-3 text-[13px] leading-snug text-foreground">
+          <span aria-hidden="true" className="mt-[5px] size-2 shrink-0 bg-destructive" />
+          {message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 type FormFieldProps = ComponentProps<"input"> & {
   id: string;
   label: string;

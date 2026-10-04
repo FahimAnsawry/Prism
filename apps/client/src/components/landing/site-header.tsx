@@ -65,20 +65,6 @@ export function SiteHeader() {
 
           <div className="flex items-center gap-3">
             <ThemeToggle className="size-[38px] border border-input hover:bg-card" />
-            {/* TEMP: quick links to the in-progress app screens; remove once auth routes there. */}
-            <Link
-              to="/dashboard"
-              className={cn(ctaVariants({ variant: "secondary", size: "sm" }), "max-xs:hidden")}
-            >
-              Dashboard
-            </Link>
-            <Link
-              to="/board"
-              className={cn(ctaVariants({ variant: "secondary", size: "sm" }), "max-xs:hidden")}
-            >
-              Board
-            </Link>
-            {/* END TEMP */}
             <Link to="/login" className={ctaVariants({ variant: "secondary", size: "sm" })}>
               Log in
             </Link>

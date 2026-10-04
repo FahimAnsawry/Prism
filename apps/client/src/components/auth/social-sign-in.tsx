@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { appUrl, authClient, runAuthAction } from "@/lib/auth-client";
 import { readLastSignIn, rememberLastSignIn, type SignInMethod } from "@/lib/last-sign-in";
 import { cn } from "@/lib/utils";
+import { FormError } from "./form-field";
 
 type Provider = Extract<SignInMethod, "google" | "github">;
 
@@ -41,9 +43,20 @@ const PROVIDERS: Record<Provider, { name: string; icon: () => ReactNode }> = {
   github: { name: "GitHub", icon: GitHubIcon },
 };
 
-function signInWith(provider: Provider) {
-  rememberLastSignIn(provider);
-  // TODO(better-auth): authClient.signIn.social({ provider, callbackURL: "/" })
+/**
+ * Sends the browser to Google/GitHub. The same email always lands on the same Prism user
+ * (account linking on the server). Failures in the OAuth round trip come back to /login?error=….
+ */
+async function signInWith(provider: Provider) {
+  const message = await runAuthAction(() =>
+    authClient.signIn.social({
+      provider,
+      callbackURL: appUrl("/dashboard"),
+      errorCallbackURL: appUrl("/login"),
+    }),
+  );
+  if (!message) rememberLastSignIn(provider);
+  return message;
 }
 
 /**
@@ -53,31 +66,49 @@ function signInWith(provider: Provider) {
 export function SocialSignIn({ layout }: { layout: "stacked" | "split" }) {
   // Only meaningful on login; read once so the tag reflects the previous visit.
   const [lastUsed] = useState(() => (layout === "stacked" ? readLastSignIn() : null));
+  const [pending, setPending] = useState<Provider | null>(null);
+  const [error, setError] = useState<string>();
+
+  const onClick = async (provider: Provider) => {
+    setPending(provider);
+    setError(undefined);
+    const message = await signInWith(provider);
+    // On success the page is already navigating away, so the button stays disabled.
+    if (message) {
+      setError(message);
+      setPending(null);
+    }
+  };
 
   return (
-    <div className={cn(layout === "split" ? "grid grid-cols-2 gap-4" : "grid gap-3")}>
-      {(Object.keys(PROVIDERS) as Provider[]).map((provider) => {
-        const { name, icon: Icon } = PROVIDERS[provider];
-        return (
-          <div key={provider} className="relative">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => signInWith(provider)}
-              className="h-[38px] w-full gap-2.5 rounded-none border-input bg-card text-xs font-semibold text-foreground hover:border-foreground hover:bg-card active:bg-background dark:bg-card dark:hover:bg-card dark:active:bg-background"
-            >
-              <Icon />
-              {layout === "stacked" ? `Continue with ${name}` : name}
-            </Button>
-            {lastUsed === provider && (
-              <span className="pointer-events-none absolute -top-[11px] right-1 flex h-[22px] items-center bg-neon px-2.5 font-mono text-[10px] font-bold tracking-[0.08em] text-slate">
-                LAST USED
-              </span>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <div className={cn(layout === "split" ? "grid grid-cols-2 gap-4" : "grid gap-3")}>
+        {(Object.keys(PROVIDERS) as Provider[]).map((provider) => {
+          const { name, icon: Icon } = PROVIDERS[provider];
+          return (
+            <div key={provider} className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending !== null}
+                aria-busy={pending === provider}
+                onClick={() => void onClick(provider)}
+                className="h-[38px] w-full gap-2.5 rounded-none border-input bg-card text-xs font-semibold text-foreground hover:border-foreground hover:bg-card active:bg-background dark:bg-card dark:hover:bg-card dark:active:bg-background"
+              >
+                <Icon />
+                {layout === "stacked" ? `Continue with ${name}` : name}
+              </Button>
+              {lastUsed === provider && (
+                <span className="pointer-events-none absolute -top-[11px] right-1 flex h-[22px] items-center bg-neon px-2.5 font-mono text-[10px] font-bold tracking-[0.08em] text-slate">
+                  LAST USED
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <FormError message={error} className="mt-3" />
+    </>
   );
 }
 

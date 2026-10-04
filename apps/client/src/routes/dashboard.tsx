@@ -5,10 +5,12 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { NewMenu } from "@/components/dashboard/new-menu";
 import { WorkspaceCard } from "@/components/dashboard/workspace-card";
 import { WORKSPACE, type WorkspaceItem } from "@/components/dashboard/workspace-data";
+import { requireSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard · Prism" }] }),
+  beforeLoad: requireSession,
   component: DashboardPage,
 });
 

@@ -19,8 +19,7 @@ export function Hero() {
         </h1>
 
         <p className="mt-10 max-w-[38rem] text-lg leading-[1.45] tracking-body text-foreground md:text-[22px] lg:mt-[124px]">
-          Sketch, wireframe and plan together on one live canvas. Every stroke syncs as you draw,
-          and Claude can draw right alongside you.
+          Every stroke syncs as you draw, and Claude can draw right alongside you.
         </p>
 
         <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-6">

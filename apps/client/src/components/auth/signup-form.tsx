@@ -1,17 +1,20 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signupSchema, type SignupInput } from "@prism/shared";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ctaVariants } from "@/components/cta";
 import { Button } from "@/components/ui/button";
+import { authClient, runAuthAction } from "@/lib/auth-client";
 import { rememberLastSignIn } from "@/lib/last-sign-in";
-import { FormField } from "./form-field";
+import { FormError, FormField } from "./form-field";
 import { PasswordStrength } from "./password-strength";
 import { OrDivider, SocialSignIn } from "./social-sign-in";
 
 export function SignupForm() {
+  const navigate = useNavigate();
+  const [formError, setFormError] = useState<string>();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const {
@@ -25,9 +28,16 @@ export function SignupForm() {
   });
   const password = useWatch({ control, name: "password" });
 
-  const onSubmit = async (_values: SignupInput) => {
+  const onSubmit = async ({ name, email, password }: SignupInput) => {
+    setFormError(undefined);
+    // Better Auth signs the new user in straight away (autoSignIn), so this also starts a session.
+    const message = await runAuthAction(() => authClient.signUp.email({ name, email, password }));
+    if (message) {
+      setFormError(message);
+      return;
+    }
     rememberLastSignIn("email");
-    // TODO(better-auth): await authClient.signUp.email({ ..._values, callbackURL: "/" })
+    await navigate({ to: "/dashboard" });
   };
 
   return (
@@ -50,6 +60,7 @@ export function SignupForm() {
       </div>
       <OrDivider className="mt-4" />
 
+      <FormError message={formError} className="mt-4" />
       <form noValidate onSubmit={handleSubmit(onSubmit)} className="mt-3">
         <FormField
           id="signup-name"
