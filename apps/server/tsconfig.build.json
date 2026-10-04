@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true,
+    // Use the shared package's compiled output (dist), not its TypeScript source
+    "customConditions": []
+  },
+  "include": ["src"]
+}

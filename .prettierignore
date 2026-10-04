@@ -1,0 +1,9 @@
+node_modules/
+dist/
+pnpm-lock.yaml
+apps/server/src/generated/
+apps/server/prisma/migrations/
+apps/client/src/routeTree.gen.ts
+# Planning docs (kept as written)
+tools.md
+Act as a senior*.md

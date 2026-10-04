@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Dependencies allowed to run install scripts (everything else is blocked)
+allowBuilds:
+  "@prisma/engines": true
+  esbuild: true
+  prisma: true

@@ -1,0 +1,15 @@
+// Prisma schema for Prism. Docs: https://pris.ly/d/prisma-schema
+// Connection URLs live in prisma.config.ts (CLI, DIRECT_URL) and in the
+// PrismaClient adapter (runtime, pooled DATABASE_URL), not in this file.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

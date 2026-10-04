@@ -1,0 +1,39 @@
+{
+  "name": "@prism/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env --conditions=source src/index.ts",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "@prism/shared": "workspace:*",
+    "better-auth": "^1.7.7",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "pg": "^8.23.1",
+    "socket.io": "^4.8.4",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.1",
+    "@types/pg": "^8.23.1",
+    "dotenv": "^18.0.5",
+    "prisma": "7.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3"
+  }
+}
