@@ -11,7 +11,7 @@ dist/
 !.env.example
 
 # Generated Prisma Client
-apps/server/src/generated/
+apps/server/src/db/generated/
 
 # Logs and tooling
 *.log

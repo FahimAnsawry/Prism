@@ -12,7 +12,7 @@ export default defineConfig([
     "**/node_modules/",
     "**/dist/",
     "**/*.tsbuildinfo",
-    "apps/server/src/generated/",
+    "apps/server/src/db/generated/",
     "apps/server/prisma/migrations/",
     "apps/client/src/routeTree.gen.ts",
   ]),
