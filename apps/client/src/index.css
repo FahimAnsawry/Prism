@@ -1,0 +1,635 @@
+/*
+ * Prism theme: the single source of truth for the client's visual system.
+ *
+ * Values were measured from https://www.greptile.com/ (homepage + its two stylesheets,
+ * October 2026). Comments marked "inferred" are not on the site and were filled in.
+ * Raw tokens come first (@theme); the shadcn semantic variables further down point at them.
+ */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* ==========================================================================
+   Fonts
+   Greptile uses four Google Fonts, all OFL-licensed, so Prism self-hosts the same ones.
+   ========================================================================== */
+
+@import "@fontsource-variable/dm-sans"; /* body / UI */
+@import "@fontsource-variable/anybody"; /* display headings (h1, h2) */
+@import "@fontsource/space-mono/400.css"; /* labels, eyebrows, code */
+@import "@fontsource/space-mono/700.css";
+@import "@fontsource/nanum-pen-script"; /* handwritten annotations */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: "DM Sans Variable", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Anybody Variable", "Anybody", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-hand: "Nanum Pen Script", "Comic Sans MS", cursive;
+
+  /* ========================================================================
+     Colors
+     Greptile's palette is flat: one value per name, no 50–950 shades.
+     Tailwind's default palette stays available alongside it.
+     ======================================================================== */
+
+  /* Neutrals (text, surfaces, lines) */
+  --color-onyx: #2a2a2a; /* primary text (Greptile `primary`) */
+  --color-slate: #3d3b4f; /* secondary text, labels (Greptile `secondary`) */
+  --color-graphite: #6a6a6a; /* tertiary text (Greptile `tertiary`, renamed) */
+  --color-silver: #d6d6d6; /* solid dividers */
+  --color-canvas: #e9e9e9; /* page background (Greptile `background`, renamed) */
+  --color-fog: #eeeeee; /* raised surfaces, light text on dark */
+  --color-rule: rgb(85 83 104 / 0.3); /* dashed hairlines (Greptile `border`, renamed) */
+
+  /* Brand */
+  --color-brand: #28e99f; /* primary CTA fill, hover tint at /20 (Greptile `greptile-green`) */
+  --color-neon: #daff01;
+  --color-lime: #ecffa3; /* highlight markers */
+
+  /* Pastel accents */
+  --color-seafoam: #c5ffd6;
+  --color-sage: #c8ead0;
+  --color-ice: #d1e5ff;
+  --color-steel: #a1c1da;
+  --color-lavender: #ffcffe;
+  --color-magenta: #ffacfe;
+  --color-peach: #ffbcb3;
+
+  /* Saturated accents */
+  --color-sky: #71adff;
+  --color-blue: #5882ff;
+  --color-violet: #756cf5;
+  --color-pink: #f783a3;
+  --color-coral: #ff7f59;
+  --color-bloom: #ff6d6d;
+
+  /* ========================================================================
+     Typography
+     Tailwind's default size scale (xs–9xl) matches Greptile's; only the extras are added.
+     ======================================================================== */
+
+  --text-3xs: 0.625rem; /* 10px: dense metadata */
+  --text-3xs--line-height: 0.875rem;
+  --text-2xs: 0.6875rem; /* 11px: the most-used size on the page (mono labels) */
+  --text-2xs--line-height: 1rem;
+  --text-10xl: 9rem; /* hero headline at 3xl */
+  --text-10xl--line-height: 1;
+
+  --leading-display: 0.9; /* hero headline */
+  --leading-tight-display: 0.95;
+
+  --tracking-display: -0.04em; /* h1–h4 */
+  --tracking-heading: -0.03em; /* h5–h6 */
+  --tracking-body: -0.01em; /* paragraphs */
+  --tracking-label: 0.1em; /* mono labels */
+  --tracking-eyebrow: 0.15em; /* uppercase mono eyebrows */
+  --tracking-spread: 0.3em;
+
+  /* ========================================================================
+     Spacing
+     Greptile uses Tailwind's 4px base scale unchanged (p-4, gap-2, ...).
+     ======================================================================== */
+
+  --spacing: 0.25rem;
+  --container-page: 80rem; /* max content width (max-w-7xl) */
+
+  /* ========================================================================
+     Radius
+     Greptile squares every corner (rounded-* are all reset to 0, see --radius in index.css).
+     ======================================================================== */
+
+  --radius-hairline: 2px; /* the only non-zero radius on the site (tiny chips) */
+
+  /* ========================================================================
+     Shadows
+     Default Tailwind shadow scale, plus two upward shadows for bottom sheets.
+     ======================================================================== */
+
+  --shadow-top-lift: 0 -8px 24px rgb(0 0 0 / 0.3), 0 -2px 6px rgb(0 0 0 / 0.15);
+  --shadow-top-lift-lg: 0 -20px 40px rgb(0 0 0 / 0.15);
+
+  /* ========================================================================
+     Animations
+     Transitions use Tailwind's defaults: 150ms, ease cubic-bezier(0.4, 0, 0.2, 1).
+     ======================================================================== */
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+
+  --animate-fade-in: fade-in 0.3s ease-in;
+  --animate-fade-in-slow: fade-in 0.6s ease-in-out;
+  --animate-scale-in: scale-in 0.3s ease-out; /* duration and easing inferred */
+  --animate-grow-up: grow-up 0.8s cubic-bezier(0.4, 0, 0.2, 1) both;
+  --animate-highlight-box: highlight-box 1.5s ease-out 0.5s forwards;
+  --animate-stamp: stamp 2s ease-out forwards;
+  --animate-shimmer: shimmer 1.5s infinite;
+  --animate-marching-ants: marching-ants 0.4s linear infinite;
+  --animate-bounce-right: bounce-right 1s infinite;
+  --animate-float-medium: float-medium 6s ease-in-out infinite;
+  --animate-float-slow: float-slow 8s ease-in-out infinite;
+  --animate-float-slower: float-slower 12s ease-in-out infinite;
+  --animate-marquee: marquee 30s linear infinite;
+  --animate-scroll-vertical: scroll-vertical 30s linear infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes grow-up {
+    from {
+      transform: scaleY(0);
+    }
+    to {
+      transform: scaleY(1);
+    }
+  }
+  @keyframes highlight-box {
+    0% {
+      transform-origin: 0;
+      transform: scaleX(0);
+    }
+    50%,
+    100% {
+      transform-origin: 0;
+      transform: scaleX(1);
+    }
+  }
+  @keyframes stamp {
+    0% {
+      opacity: 0;
+      transform: scale(2) rotate(-15deg);
+    }
+    20% {
+      opacity: 0.9;
+      transform: scale(1) rotate(-5deg);
+    }
+    30% {
+      transform: scale(1.05) rotate(-5deg);
+    }
+    40% {
+      transform: scale(1) rotate(-5deg);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1) rotate(-5deg);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+  @keyframes marching-ants {
+    to {
+      stroke-dashoffset: -10px;
+    }
+  }
+  @keyframes bounce-right {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    50% {
+      transform: translateX(4px);
+    }
+  }
+  @keyframes float-medium {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0);
+    }
+    50% {
+      transform: translateY(-10px) rotate(-1deg);
+    }
+  }
+  @keyframes float-slow {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0);
+    }
+    50% {
+      transform: translateY(-15px) rotate(1deg);
+    }
+  }
+  @keyframes float-slower {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0);
+    }
+    50% {
+      transform: translateY(-20px) rotate(2deg);
+    }
+  }
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes scroll-vertical {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-50%);
+    }
+  }
+
+  /* ========================================================================
+     Breakpoints (mobile-first, min-width)
+     sm–2xl match Tailwind's defaults; Greptile adds xs (480px) and 3xl (1920px).
+     ======================================================================== */
+
+  --breakpoint-xs: 30rem; /* 480px */
+  --breakpoint-sm: 40rem; /* 640px */
+  --breakpoint-md: 48rem; /* 768px: the most-used breakpoint on the site */
+  --breakpoint-lg: 64rem; /* 1024px */
+  --breakpoint-xl: 80rem; /* 1280px */
+  --breakpoint-2xl: 96rem; /* 1536px */
+  --breakpoint-3xl: 120rem; /* 1920px: large displays get bigger type */
+}
+
+/* ==========================================================================
+   Layout (responsive, so plain custom properties rather than theme tokens)
+   ========================================================================== */
+
+:root {
+  --announcement-height: 2.5rem;
+  --navigation-height: 4rem;
+  --page-gutter: 1rem; /* px-4 */
+
+  @variant sm {
+    --page-gutter: 1.5rem; /* sm:px-6 */
+  }
+  @variant md {
+    --announcement-height: 2.75rem;
+    --navigation-height: 5rem;
+    --page-gutter: 3rem; /* md:px-12 */
+  }
+  @variant lg {
+    --page-gutter: 4rem; /* lg:px-16 */
+  }
+}
+
+/* ==========================================================================
+   Type styles (Greptile's heading and text roles, with their responsive steps)
+   ========================================================================== */
+
+@utility type-hero {
+  font-family: var(--font-display);
+  font-size: var(--text-6xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+  @variant md {
+    font-size: var(--text-7xl);
+    line-height: 1;
+  }
+  @variant xl {
+    font-size: var(--text-8xl);
+  }
+  @variant 2xl {
+    font-size: var(--text-9xl);
+  }
+  @variant 3xl {
+    font-size: var(--text-10xl);
+  }
+}
+
+@utility type-h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-5xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+  letter-spacing: var(--tracking-display);
+  @variant md {
+    font-size: var(--text-6xl);
+  }
+  @variant lg {
+    font-size: var(--text-7xl);
+  }
+  @variant xl {
+    font-size: var(--text-8xl);
+  }
+}
+
+@utility type-h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-3xl--line-height);
+  letter-spacing: var(--tracking-display);
+  @variant md {
+    font-size: var(--text-4xl);
+    line-height: var(--text-4xl--line-height);
+  }
+  @variant lg {
+    font-size: var(--text-5xl);
+    line-height: 1;
+  }
+}
+
+@utility type-h3 {
+  font-family: var(--font-sans);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-2xl--line-height);
+  letter-spacing: var(--tracking-display);
+  @variant md {
+    font-size: var(--text-3xl);
+    line-height: var(--text-3xl--line-height);
+  }
+  @variant lg {
+    font-size: var(--text-4xl);
+    line-height: var(--text-4xl--line-height);
+  }
+}
+
+@utility type-h4 {
+  font-family: var(--font-sans);
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-xl--line-height);
+  letter-spacing: var(--tracking-display);
+  @variant md {
+    font-size: var(--text-2xl);
+    line-height: var(--text-2xl--line-height);
+  }
+  @variant lg {
+    font-size: var(--text-3xl);
+    line-height: var(--text-3xl--line-height);
+  }
+}
+
+@utility type-h5 {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-lg--line-height);
+  letter-spacing: var(--tracking-heading);
+  @variant md {
+    font-size: var(--text-xl);
+    line-height: var(--text-xl--line-height);
+  }
+  @variant lg {
+    font-size: var(--text-2xl);
+    line-height: var(--text-2xl--line-height);
+  }
+}
+
+@utility type-h6 {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-base--line-height);
+  letter-spacing: var(--tracking-heading);
+  @variant md {
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+  }
+  @variant lg {
+    font-size: var(--text-xl);
+    line-height: var(--text-xl--line-height);
+  }
+}
+
+@utility type-body {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  letter-spacing: var(--tracking-body);
+  @variant md {
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+  }
+}
+
+@utility type-body-lg {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+  letter-spacing: var(--tracking-body);
+  @variant md {
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+  }
+  @variant lg {
+    font-size: var(--text-xl);
+    line-height: var(--text-xl--line-height);
+  }
+  @variant 3xl {
+    font-size: var(--text-2xl);
+    line-height: var(--text-2xl--line-height);
+  }
+}
+
+@utility type-body-sm {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  letter-spacing: var(--tracking-body);
+  @variant md {
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+  }
+}
+
+/* Mono labels: Greptile's `.label-*` classes (pair with `uppercase` for eyebrows) */
+@utility type-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+  letter-spacing: var(--tracking-label);
+  color: var(--color-slate);
+}
+
+@utility type-label-sm {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  letter-spacing: var(--tracking-wider);
+  color: var(--color-slate);
+}
+
+@utility type-label-xs {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-slate);
+}
+
+/* ==========================================================================
+   Motion preferences
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   shadcn theme
+   ========================================================================== */
+
+/* shadcn semantic colors, mapped onto the tokens above */
+:root {
+  --radius: 0rem; /* Greptile squares every corner */
+
+  --background: var(--color-canvas);
+  --foreground: var(--color-onyx);
+  --card: var(--color-fog);
+  --card-foreground: var(--color-onyx);
+  --popover: var(--color-fog);
+  --popover-foreground: var(--color-onyx);
+  --primary: var(--color-brand);
+  --primary-foreground: #000; /* CTA text is black on brand green */
+  --secondary: var(--color-onyx);
+  --secondary-foreground: var(--color-fog);
+  --muted: var(--color-fog);
+  --muted-foreground: var(--color-graphite);
+  --accent: color-mix(in oklab, var(--color-brand) 20%, transparent); /* row hover tint */
+  --accent-foreground: var(--color-onyx);
+  --destructive: var(--color-bloom); /* inferred: the site has no error state */
+  --border: var(--color-rule);
+  --input: var(--color-rule);
+  --ring: var(--color-slate); /* inferred: the site's ring color is undefined */
+
+  --chart-1: var(--color-brand);
+  --chart-2: var(--color-blue);
+  --chart-3: var(--color-violet);
+  --chart-4: var(--color-coral);
+  --chart-5: var(--color-pink);
+
+  --sidebar: var(--color-fog);
+  --sidebar-foreground: var(--color-onyx);
+  --sidebar-primary: var(--color-brand);
+  --sidebar-primary-foreground: #000;
+  --sidebar-accent: color-mix(in oklab, var(--color-brand) 20%, transparent);
+  --sidebar-accent-foreground: var(--color-onyx);
+  --sidebar-border: var(--color-rule);
+  --sidebar-ring: var(--color-slate);
+}
+
+/* Dark mode, inferred: Greptile only has scattered dark: variants (slate surface, fog text, peach accent) */
+.dark {
+  --background: var(--color-onyx);
+  --foreground: var(--color-fog);
+  --card: var(--color-slate);
+  --card-foreground: var(--color-fog);
+  --popover: var(--color-slate);
+  --popover-foreground: var(--color-fog);
+  --primary: var(--color-brand);
+  --primary-foreground: #000;
+  --secondary: var(--color-fog);
+  --secondary-foreground: var(--color-onyx);
+  --muted: var(--color-slate);
+  --muted-foreground: rgb(238 238 238 / 0.6);
+  --accent: rgb(255 188 179 / 0.1);
+  --accent-foreground: var(--color-peach);
+  --destructive: var(--color-bloom);
+  --border: rgb(238 238 238 / 0.2);
+  --input: rgb(238 238 238 / 0.3);
+  --ring: rgb(238 238 238 / 0.4);
+
+  --chart-1: var(--color-brand);
+  --chart-2: var(--color-sky);
+  --chart-3: var(--color-lavender);
+  --chart-4: var(--color-peach);
+  --chart-5: var(--color-lime);
+
+  --sidebar: var(--color-slate);
+  --sidebar-foreground: var(--color-fog);
+  --sidebar-primary: var(--color-brand);
+  --sidebar-primary-foreground: #000;
+  --sidebar-accent: rgb(255 188 179 / 0.1);
+  --sidebar-accent-foreground: var(--color-peach);
+  --sidebar-border: rgb(238 238 238 / 0.2);
+  --sidebar-ring: rgb(238 238 238 / 0.4);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* All derive from --radius, so they are 0 too; rounded-full stays a circle for avatars and handles */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
