@@ -28,9 +28,13 @@ export function Hero() {
             Start a board
             <ArrowRight aria-hidden="true" />
           </Link>
-          <a href="#how-it-works" className={ctaVariants({ variant: "secondary", size: "lg" })}>
+          <Link
+            to="/"
+            hash="how-it-works"
+            className={ctaVariants({ variant: "secondary", size: "lg" })}
+          >
             See how it works
-          </a>
+          </Link>
           <p className="-rotate-3 font-hand text-[26px] md:text-[32px] leading-none text-foreground md:ml-6">
             <span aria-hidden="true">← </span>no install, just share a link
           </p>

@@ -2,7 +2,7 @@ import { PrismLogo } from "@/components/prism-logo";
 import { cn } from "@/lib/utils";
 import { pageContainer } from "./page-container";
 
-// TODO: link these to real pages as they ship.
+// TODO: plain text until these pages ship; then make each one a router <Link>.
 const COLUMNS = [
   { title: "Product", links: ["Canvas", "Templates", "Pricing"] },
   { title: "Developers", links: ["MCP bridge", "Docs", "GitHub"] },
@@ -20,7 +20,7 @@ export function SiteFooter() {
           </p>
         </div>
 
-        <nav aria-label="Footer" className="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3">
           {COLUMNS.map((column) => (
             <div key={column.title} className="w-[12.5rem] max-sm:w-auto">
               <h2 className="font-mono text-xs tracking-[0.08em] text-muted-foreground uppercase">
@@ -28,19 +28,14 @@ export function SiteFooter() {
               </h2>
               <ul className="mt-3 space-y-1">
                 {column.links.map((link) => (
-                  <li key={link}>
-                    <a
-                      href="#"
-                      className="text-base text-foreground underline-offset-4 transition-colors hover:text-ink hover:underline"
-                    >
-                      {link}
-                    </a>
+                  <li key={link} className="text-base text-foreground">
+                    {link}
                   </li>
                 ))}
               </ul>
             </div>
           ))}
-        </nav>
+        </div>
       </div>
 
       <p className="mt-10 font-mono text-xs tracking-[0.08em] text-muted-foreground uppercase">
