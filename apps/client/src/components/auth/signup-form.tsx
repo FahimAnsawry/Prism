@@ -32,14 +32,14 @@ export function SignupForm() {
 
   return (
     <>
-      <h1 className="font-display text-[2.25rem] leading-[1.1] sm:text-[2.875rem] lg:whitespace-nowrap font-bold tracking-display text-slate">
+      <h1 className="font-display text-[2.25rem] leading-[1.1] sm:text-[2.875rem] lg:whitespace-nowrap font-bold tracking-display text-foreground">
         Create an account
       </h1>
-      <p className="mt-2 text-base text-graphite">
+      <p className="mt-2 text-base text-muted-foreground">
         Already have an account?{" "}
         <Link
           to="/login"
-          className="text-slate underline underline-offset-[3px] transition-colors hover:text-onyx"
+          className="text-foreground underline underline-offset-[3px] transition-colors hover:text-ink"
         >
           Log in
         </Link>
@@ -83,7 +83,7 @@ export function SignupForm() {
               aria-pressed={showPassword}
               aria-label={showPassword ? "Hide password" : "Show password"}
               onClick={() => setShowPassword((shown) => !shown)}
-              className="absolute inset-y-0 right-0 px-4 font-mono text-xs tracking-[0.08em] text-slate uppercase transition-colors hover:text-onyx"
+              className="absolute inset-y-0 right-0 px-4 font-mono text-xs tracking-[0.08em] text-foreground uppercase transition-colors hover:text-ink"
             >
               {showPassword ? "Hide" : "Show"}
             </button>
@@ -105,7 +105,7 @@ export function SignupForm() {
               aria-pressed={showConfirmPassword}
               aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
               onClick={() => setShowConfirmPassword((shown) => !shown)}
-              className="absolute inset-y-0 right-0 px-4 font-mono text-xs tracking-[0.08em] text-slate uppercase transition-colors hover:text-onyx"
+              className="absolute inset-y-0 right-0 px-4 font-mono text-xs tracking-[0.08em] text-foreground uppercase transition-colors hover:text-ink"
             >
               {showConfirmPassword ? "Hide" : "Show"}
             </button>
@@ -124,7 +124,7 @@ export function SignupForm() {
         </Button>
       </form>
 
-      <p className="mt-5 text-[13px] text-graphite">
+      <p className="mt-5 text-[13px] text-muted-foreground">
         By creating an account you agree to the Terms and the Privacy Policy.
       </p>
     </>

@@ -60,7 +60,7 @@ function BoardPage() {
   }, [state.selectedId]);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-canvas">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
       <BoardTopBar
         name="Test Board"
         canUndo={state.past.length > 0}
@@ -87,7 +87,7 @@ function BoardPage() {
         />
 
         {state.elements.length === 0 && (
-          <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-24 text-center text-sm text-graphite">
+          <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-24 text-center text-sm text-muted-foreground">
             Pick a tool and start creating — or try the AI assistant
           </p>
         )}

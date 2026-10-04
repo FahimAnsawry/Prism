@@ -54,7 +54,7 @@ export function Sketch({
             y1={shape.y1}
             x2={shape.x2}
             y2={shape.y2}
-            className="stroke-slate"
+            className="stroke-foreground"
             vectorEffect="non-scaling-stroke"
           />
         ),

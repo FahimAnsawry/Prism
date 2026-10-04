@@ -26,14 +26,14 @@ export function LoginForm() {
 
   return (
     <>
-      <h1 className="font-display text-[2.25rem] leading-[1.1] sm:text-[2.875rem] lg:whitespace-nowrap font-bold tracking-display text-slate">
+      <h1 className="font-display text-[2.25rem] leading-[1.1] sm:text-[2.875rem] lg:whitespace-nowrap font-bold tracking-display text-foreground">
         Log in to Prism
       </h1>
-      <p className="mt-3 text-base text-graphite">
+      <p className="mt-3 text-base text-muted-foreground">
         New to Prism?{" "}
         <Link
           to="/signup"
-          className="text-slate underline underline-offset-[3px] transition-colors hover:text-onyx"
+          className="text-foreground underline underline-offset-[3px] transition-colors hover:text-ink"
         >
           Create an account
         </Link>
@@ -65,7 +65,7 @@ export function LoginForm() {
             // TODO: route to the password reset flow once it exists.
             <button
               type="button"
-              className="font-mono text-xs tracking-[0.08em] text-slate uppercase underline-offset-4 transition-colors hover:text-onyx hover:underline"
+              className="font-mono text-xs tracking-[0.08em] text-foreground uppercase underline-offset-4 transition-colors hover:text-ink hover:underline"
             >
               Forgot?
             </button>
@@ -84,7 +84,7 @@ export function LoginForm() {
         </Button>
       </form>
 
-      <p className="mt-5 text-[13px] text-graphite">
+      <p className="mt-5 text-[13px] text-muted-foreground">
         By continuing you agree to the Terms and the Privacy Policy.
       </p>
     </>

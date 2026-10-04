@@ -43,7 +43,7 @@ export function NewMenu() {
 
   return (
     <Menu.Root open={open} onOpenChange={setOpen}>
-      <Menu.Trigger className="inline-flex h-11 w-[140px] shrink-0 items-center justify-center gap-2 border border-transparent bg-brand text-[15px] font-bold text-slate transition-colors duration-150 ease-standard select-none hover:bg-brand/80 data-popup-open:border-slate">
+      <Menu.Trigger className="inline-flex h-11 w-[140px] shrink-0 items-center justify-center gap-2 border border-transparent bg-brand text-[15px] font-bold text-slate transition-colors duration-150 ease-standard select-none hover:bg-brand/80 data-popup-open:border-foreground">
         <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />
         New
       </Menu.Trigger>
@@ -51,10 +51,10 @@ export function NewMenu() {
         <Menu.Positioner side="bottom" align="end" sideOffset={14} className="z-50 outline-none">
           <Menu.Popup
             onKeyDown={onKeyDown}
-            className="w-80 origin-(--transform-origin) border border-edge bg-fog p-1.5 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
+            className="w-80 origin-(--transform-origin) border border-input bg-popover p-1.5 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
           >
             <Menu.Group>
-              <Menu.GroupLabel className="px-2.5 pt-1.5 pb-2.5 font-mono text-3xs font-bold text-graphite">
+              <Menu.GroupLabel className="px-2.5 pt-1.5 pb-2.5 font-mono text-3xs font-bold text-muted-foreground">
                 CREATE
               </Menu.GroupLabel>
               <div className="flex flex-col gap-1">
@@ -62,18 +62,18 @@ export function NewMenu() {
                   <Menu.Item
                     key={option.kind}
                     onClick={() => create(option.kind)}
-                    className="flex h-18 cursor-default items-center gap-3.5 pr-2.5 pl-3 outline-none select-none data-highlighted:bg-seafoam"
+                    className="flex h-18 cursor-default items-center gap-3.5 pr-2.5 pl-3 outline-none select-none data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
                   >
                     {option.kind === "project" ? <ProjectIcon /> : <WhiteboardIcon />}
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] leading-[21px] font-bold text-slate">
+                      <span className="block text-[15px] leading-[21px] font-bold text-foreground">
                         {option.title}
                       </span>
-                      <span className="block text-xs leading-[17px] text-graphite">
+                      <span className="block text-xs leading-[17px] text-muted-foreground">
                         {option.description}
                       </span>
                     </span>
-                    <kbd className="flex h-6 w-[26px] shrink-0 items-center justify-center border border-silver bg-fog font-mono text-2xs text-graphite">
+                    <kbd className="flex h-6 w-[26px] shrink-0 items-center justify-center border border-divider bg-card font-mono text-2xs text-muted-foreground">
                       {option.shortcut}
                     </kbd>
                   </Menu.Item>
@@ -92,7 +92,7 @@ function OptionIcon({ children }: { children: ReactNode }) {
     <svg
       viewBox="0 0 38 36"
       aria-hidden="true"
-      className="h-9 w-[38px] shrink-0 overflow-visible stroke-slate"
+      className="h-9 w-[38px] shrink-0 overflow-visible stroke-foreground"
     >
       {children}
     </svg>
@@ -103,7 +103,7 @@ function OptionIcon({ children }: { children: ReactNode }) {
 function ProjectIcon() {
   return (
     <OptionIcon>
-      <rect x="4.5" y="0.5" width="30" height="9" className="fill-canvas" />
+      <rect x="4.5" y="0.5" width="30" height="9" className="fill-background" />
       <rect x="0.5" y="6.5" width="37" height="29" className="fill-lime" />
     </OptionIcon>
   );

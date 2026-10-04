@@ -19,8 +19,8 @@ function LandingPage() {
       <main>
         <Hero />
         <ViewsSection />
-        <LoopSection />
         <ClaudeSection />
+        <LoopSection />
         <ClosingCta />
       </main>
       <SiteFooter />

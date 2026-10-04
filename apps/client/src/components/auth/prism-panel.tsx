@@ -33,8 +33,15 @@ function PrismDiagram() {
       aria-label="A single beam labelled Idea enters a prism and splits into wireframe, flowchart, notes, sketch and chart."
       className="block h-auto w-full overflow-visible font-mono text-[12px]"
     >
-      <line className="stroke-fog" strokeWidth="3" x1="60" y1="500" x2="324" y2="440" />
-      <text className="fill-fog" x="60" y="530">
+      <line
+        className="stroke-inverse-foreground"
+        strokeWidth="3"
+        x1="60"
+        y1="500"
+        x2="324"
+        y2="440"
+      />
+      <text className="fill-inverse-foreground" x="60" y="530">
         IDEA
       </text>
       {RAYS.map((ray) => (
@@ -52,7 +59,7 @@ function PrismDiagram() {
           </text>
         </g>
       ))}
-      <path className="fill-slate stroke-fog" d="M400 300 520 520H280Z" />
+      <path className="fill-inverse-panel stroke-inverse-foreground" d="M400 300 520 520H280Z" />
     </svg>
   );
 }
@@ -60,8 +67,8 @@ function PrismDiagram() {
 /** The dark right half of the login and signup screens. */
 export function PrismPanel() {
   return (
-    <aside className="hidden flex-col bg-onyx px-(--page-gutter) pt-16 pb-14 lg:flex lg:min-h-screen lg:px-20 lg:pt-24">
-      <p className="font-display text-[2.25rem] leading-[1.05] font-bold tracking-display text-fog sm:text-[2.875rem]">
+    <aside className="hidden flex-col bg-inverse px-(--page-gutter) pt-16 pb-14 lg:flex lg:min-h-screen lg:px-20 lg:pt-24">
+      <p className="font-display text-[2.25rem] leading-[1.05] font-bold tracking-display text-inverse-foreground sm:text-[2.875rem]">
         One idea broken
         <br />
         into many views.
@@ -69,7 +76,7 @@ export function PrismPanel() {
       <div className="-mx-(--page-gutter) mt-4 max-w-[50rem] pr-6 lg:-mx-20 lg:pr-0">
         <PrismDiagram />
       </div>
-      <p className="mt-auto pt-10 font-mono text-xs tracking-[0.08em] text-silver">
+      <p className="mt-auto pt-10 font-mono text-xs tracking-[0.08em] text-inverse-muted">
         REAL-TIME BOARDS FOR TEAMS AND AGENTS
       </p>
     </aside>

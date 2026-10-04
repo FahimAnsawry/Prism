@@ -24,12 +24,12 @@ export function PasswordStrength({ password, id }: { password: string; id: strin
       <div className="flex items-center justify-between gap-4">
         <div className="grid w-73 grid-cols-4 gap-2" aria-hidden="true">
           {RULES.map((rule, i) => (
-            <span key={rule.label} className={cn("h-2", i < score ? barColor : "bg-silver")} />
+            <span key={rule.label} className={cn("h-2", i < score ? barColor : "bg-divider")} />
           ))}
         </div>
         <p
           aria-live="polite"
-          className="font-mono text-[11px] tracking-[0.08em] text-slate uppercase"
+          className="font-mono text-[11px] tracking-[0.08em] text-foreground uppercase"
         >
           {score > 0 && (
             <>
@@ -45,14 +45,14 @@ export function PasswordStrength({ password, id }: { password: string; id: strin
             key={rule.label}
             className={cn(
               "flex items-center gap-2 text-[13px] leading-[19px]",
-              results[i] ? "text-slate" : "text-graphite",
+              results[i] ? "text-foreground" : "text-muted-foreground",
             )}
           >
             <span
               aria-hidden="true"
               className={cn(
                 "size-2.5 shrink-0",
-                results[i] ? "bg-brand" : "border border-edge bg-canvas",
+                results[i] ? "bg-brand" : "border border-input bg-background",
               )}
             />
             {rule.label}

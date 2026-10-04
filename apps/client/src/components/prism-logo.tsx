@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
  */
 export function PrismMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 36 36" aria-hidden="true" className={cn("size-9 fill-slate", className)}>
+    <svg viewBox="0 0 36 36" aria-hidden="true" className={cn("size-9 fill-foreground", className)}>
       <path d="M18 0 25.86 15.72H10.14Z" />
       <path d="M7.86 20.28 15.72 36H0Z" />
       <path d="M28.14 20.28 36 36H20.28Z" />
@@ -28,7 +28,11 @@ export function PrismLogo({
     <Link
       to="/"
       aria-label="Prism home"
-      className={cn("inline-flex items-center text-slate", compact ? "gap-2" : "gap-3", className)}
+      className={cn(
+        "inline-flex items-center text-foreground",
+        compact ? "gap-2" : "gap-3",
+        className,
+      )}
     >
       <PrismMark className={cn(compact && "size-[25px]")} />
       <span

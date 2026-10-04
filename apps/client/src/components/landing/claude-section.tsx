@@ -12,7 +12,7 @@ export function ClaudeSection() {
     <section
       id="claude"
       aria-labelledby="claude-title"
-      className="bg-onyx [--focus-ring:var(--color-fog)]"
+      className="border-b border-dashed border-border"
     >
       <div
         className={cn(
@@ -23,11 +23,11 @@ export function ClaudeSection() {
         <div className="flex flex-col items-start">
           <h2
             id="claude-title"
-            className="max-w-[33rem] font-display text-[2.5rem] leading-[0.95] font-bold tracking-display text-fog md:text-5xl lg:text-[3.375rem] lg:leading-[0.9]"
+            className="max-w-[33rem] font-display text-[2.5rem] leading-[0.95] font-bold tracking-display text-foreground md:text-5xl lg:text-[3.375rem] lg:leading-[0.9]"
           >
             Claude draws with you.
           </h2>
-          <p className="mt-8 max-w-[32rem] text-lg leading-[1.45] tracking-body text-silver lg:mt-auto lg:text-xl">
+          <p className="mt-8 max-w-[32rem] text-lg leading-[1.45] tracking-body text-muted-foreground lg:mt-auto lg:text-xl">
             Connect Claude Code through the Prism MCP bridge. Ask for a flowchart, a wireframe or a
             cleanup, and watch it edit the same board in real time. One request is one undo step.
           </p>
@@ -38,9 +38,9 @@ export function ClaudeSection() {
 
         <figure
           aria-label="Example Claude Code session using the Prism MCP bridge"
-          className="m-0 flex min-h-[22rem] flex-col bg-slate font-mono text-[13px] sm:text-[15px]"
+          className="m-0 flex min-h-[22rem] flex-col bg-inverse-panel font-mono text-[13px] sm:text-[15px]"
         >
-          <figcaption className="flex h-10 items-center justify-center bg-graphite px-4 text-xs tracking-[0.08em] text-fog uppercase">
+          <figcaption className="flex h-10 items-center justify-center bg-inverse-bar px-4 text-xs tracking-[0.08em] text-inverse-foreground uppercase">
             Claude Code
             <span aria-hidden="true" className="mx-3">
               ·
@@ -48,12 +48,12 @@ export function ClaudeSection() {
             MCP: Prism
           </figcaption>
           <div className="flex flex-1 flex-col px-6 py-8 sm:px-9">
-            <p className="text-silver">&gt; wireframe a login page in the Auth frame</p>
+            <p className="text-inverse-muted">&gt; wireframe a login page in the Auth frame</p>
             <dl className="mt-10 grid gap-x-6 gap-y-4 sm:grid-cols-[10.5rem_1fr]">
               {TOOL_CALLS.map((call) => (
                 <div key={call.tool} className="contents">
                   <dt className="text-neon">{call.tool}</dt>
-                  <dd className="text-silver max-sm:-mt-3">{call.detail}</dd>
+                  <dd className="text-inverse-muted max-sm:-mt-3">{call.detail}</dd>
                 </div>
               ))}
             </dl>

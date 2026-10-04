@@ -467,7 +467,7 @@
   font-size: var(--text-base);
   line-height: var(--text-base--line-height);
   letter-spacing: var(--tracking-label);
-  color: var(--color-slate);
+  color: var(--foreground);
 }
 
 @utility type-label-sm {
@@ -475,7 +475,7 @@
   font-size: var(--text-sm);
   line-height: var(--text-sm--line-height);
   letter-spacing: var(--tracking-wider);
-  color: var(--color-slate);
+  color: var(--foreground);
 }
 
 @utility type-label-xs {
@@ -483,7 +483,7 @@
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
   letter-spacing: var(--tracking-wide);
-  color: var(--color-slate);
+  color: var(--foreground);
 }
 
 /* ==========================================================================
@@ -528,8 +528,12 @@
    shadcn theme
    ========================================================================== */
 
-/* shadcn semantic colors, mapped onto the tokens above */
+/* Semantic colors. Components use these (bg-background, text-foreground, border-divider…), never
+   the raw neutrals above, so one class works in both themes. The raw brand and pastel accents
+   stay fixed in both themes (sticky notes are yellow at night too), so text sitting on them keeps
+   its raw class (bg-brand text-slate). */
 :root {
+  color-scheme: light;
   --radius: 0rem; /* Greptile squares every corner */
 
   --background: var(--color-canvas);
@@ -551,6 +555,17 @@
   --input: var(--color-edge);
   --ring: var(--color-slate); /* inferred: the site's ring color is undefined */
 
+  /* Prism roles shadcn has no name for */
+  --divider: var(--color-silver); /* solid dividers, empty bars, placeholder blocks in drawings */
+  --ink: var(--color-onyx); /* strongest text, outlines of drawn shapes */
+  --chrome: var(--color-ash); /* board editor chrome outlines */
+  --grid-dot: var(--color-dot); /* board canvas dot grid */
+  --inverse: var(--color-onyx); /* the dark bands: views, Claude, the auth prism panel */
+  --inverse-foreground: var(--color-fog);
+  --inverse-muted: var(--color-silver);
+  --inverse-panel: var(--color-slate); /* terminal and code panels */
+  --inverse-bar: var(--color-graphite); /* their title bars */
+
   --chart-1: var(--color-brand);
   --chart-2: var(--color-blue);
   --chart-3: var(--color-violet);
@@ -567,26 +582,41 @@
   --sidebar-ring: var(--color-slate);
 }
 
-/* Dark mode, inferred: Greptile only has scattered dark: variants (slate surface, fog text, peach accent) */
+/* Dark mode: the night board. Neutrals are tinted toward slate's violet hue so surfaces read as
+   one family; the dark bands drop below the page instead of disappearing into it.
+   Contrast on card (#27262f): foreground 13.6:1, muted-foreground 6.1:1, input edge 3.5:1.
+   The page background is repeated in index.html (theme-color) and lib/theme.tsx. */
 .dark {
-  --background: var(--color-onyx);
-  --foreground: var(--color-fog);
-  --card: var(--color-slate);
-  --card-foreground: var(--color-fog);
-  --popover: var(--color-slate);
-  --popover-foreground: var(--color-fog);
+  color-scheme: dark;
+
+  --background: #1d1c23;
+  --foreground: #ecebf0;
+  --card: #27262f;
+  --card-foreground: #ecebf0;
+  --popover: #27262f;
+  --popover-foreground: #ecebf0;
   --primary: var(--color-brand);
   --primary-foreground: #000;
-  --secondary: var(--color-fog);
-  --secondary-foreground: var(--color-slate);
-  --muted: var(--color-slate);
-  --muted-foreground: rgb(238 238 238 / 0.6);
-  --accent: rgb(255 188 179 / 0.1);
-  --accent-foreground: var(--color-peach);
-  --destructive: var(--color-bloom);
-  --border: rgb(238 238 238 / 0.2);
-  --input: rgb(238 238 238 / 0.3);
-  --ring: rgb(238 238 238 / 0.4);
+  --secondary: #ecebf0; /* filled controls invert: light block, dark label */
+  --secondary-foreground: #1d1c23;
+  --muted: #27262f;
+  --muted-foreground: #a6a4b2;
+  --accent: color-mix(in oklab, var(--color-brand) 14%, transparent);
+  --accent-foreground: #ecebf0;
+  --destructive: var(--color-bloom); /* danger red is too dark to read on night surfaces */
+  --border: rgb(236 235 240 / 0.16);
+  --input: #7c7a89;
+  --ring: #ecebf0;
+
+  --divider: #3d3b48;
+  --ink: #f6f5f9;
+  --chrome: #4a4856;
+  --grid-dot: #3a3845;
+  --inverse: #121117;
+  --inverse-foreground: var(--color-fog);
+  --inverse-muted: var(--color-silver);
+  --inverse-panel: #2a2933;
+  --inverse-bar: #3d3b4a;
 
   --chart-1: var(--color-brand);
   --chart-2: var(--color-sky);
@@ -594,14 +624,14 @@
   --chart-4: var(--color-peach);
   --chart-5: var(--color-lime);
 
-  --sidebar: var(--color-slate);
-  --sidebar-foreground: var(--color-fog);
+  --sidebar: #27262f;
+  --sidebar-foreground: #ecebf0;
   --sidebar-primary: var(--color-brand);
   --sidebar-primary-foreground: #000;
-  --sidebar-accent: rgb(255 188 179 / 0.1);
-  --sidebar-accent-foreground: var(--color-peach);
-  --sidebar-border: rgb(238 238 238 / 0.2);
-  --sidebar-ring: rgb(238 238 238 / 0.4);
+  --sidebar-accent: color-mix(in oklab, var(--color-brand) 14%, transparent);
+  --sidebar-accent-foreground: #ecebf0;
+  --sidebar-border: rgb(236 235 240 / 0.16);
+  --sidebar-ring: #ecebf0;
 }
 
 @theme inline {
@@ -636,6 +666,15 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-divider: var(--divider);
+  --color-ink: var(--ink);
+  --color-chrome: var(--chrome);
+  --color-grid-dot: var(--grid-dot);
+  --color-inverse: var(--inverse);
+  --color-inverse-foreground: var(--inverse-foreground);
+  --color-inverse-muted: var(--inverse-muted);
+  --color-inverse-panel: var(--inverse-panel);
+  --color-inverse-bar: var(--inverse-bar);
 
   /* All derive from --radius, so they are 0 too; rounded-full stays a circle for avatars and handles */
   --radius-sm: calc(var(--radius) * 0.6);
@@ -673,12 +712,100 @@
 
   input,
   textarea {
-    caret-color: var(--color-slate);
+    caret-color: var(--foreground);
   }
 
-  /* One focus style for every control. Dark sections set --focus-ring to a light color. */
+  /* One focus style for every control. The inverse bands set --focus-ring to their light text. */
   :focus-visible {
-    outline: 2px solid var(--focus-ring, var(--color-slate));
+    outline: 2px solid var(--focus-ring, var(--foreground));
     outline-offset: 2px;
   }
+}
+
+/* ==========================================================================
+   Theme switch (lib/theme.tsx, components/theme-toggle.tsx)
+   ========================================================================== */
+
+/* While the theme flips, every color changes at once instead of each control easing on its own
+   duration. The toggle keeps its transitions: its icon morph is the one animated moment. */
+:root[data-theme-switching] *:not(.theme-toggle, .theme-toggle *) {
+  transition: none !important;
+}
+
+/* The new theme is revealed by a circle growing from the toggle (clip-path animated from JS).
+   Turn off the default cross-fade so the old snapshot stays put underneath. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Sun ↔ moon. One 24×24 icon: the core circle grows and a mask circle slides over it to cut
+   the crescent, the rays retract one after another, and two small stars come out at night. */
+.theme-toggle {
+  --toggle-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.theme-toggle__core,
+.theme-toggle__bite,
+.theme-toggle__ray,
+.theme-toggle__rays,
+.theme-toggle__star {
+  transform-box: view-box;
+  transition:
+    transform 500ms var(--toggle-ease),
+    opacity 300ms var(--toggle-ease);
+}
+
+.theme-toggle__core {
+  transform-origin: 12px 12px;
+  transform: scale(0.5);
+}
+.theme-toggle__bite {
+  transform: translate(9px, -9px);
+}
+.theme-toggle__rays {
+  transform-origin: 12px 12px;
+}
+.theme-toggle__ray {
+  transform-origin: 12px 12px;
+  transition-delay: calc(var(--i) * 25ms);
+}
+.theme-toggle__star {
+  opacity: 0;
+  transform-origin: var(--origin);
+  transform: scale(0) rotate(-90deg);
+}
+
+/* Hover: the sun turns an eighth, the moon tilts. */
+@media (hover: hover) {
+  :root:not(.dark) .theme-toggle:hover .theme-toggle__rays {
+    transform: rotate(45deg);
+  }
+  .dark .theme-toggle:hover .theme-toggle__icon {
+    transform: rotate(-12deg);
+  }
+}
+
+.theme-toggle__icon {
+  transition: transform 500ms var(--toggle-ease);
+}
+
+.dark .theme-toggle__core {
+  transform: scale(1);
+}
+.dark .theme-toggle__bite {
+  transform: translate(0, 0);
+}
+.dark .theme-toggle__ray {
+  opacity: 0;
+  transform: scale(0.4) rotate(-30deg);
+}
+.dark .theme-toggle__rays {
+  transform: rotate(-45deg);
+}
+.dark .theme-toggle__star {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+  transition-delay: calc(200ms + var(--i) * 80ms);
 }

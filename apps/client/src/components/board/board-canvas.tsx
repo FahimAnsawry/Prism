@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent } from "react";
 import { cn } from "@/lib/utils";
-import { type BoardElement, FONT_SIZES, type StrokeStyle } from "./board-model";
+import { type BoardElement, displayColor, FONT_SIZES, type StrokeStyle } from "./board-model";
 import type { ToolId } from "./tools";
 
 export interface Camera {
@@ -88,7 +88,7 @@ export function BoardCanvas({
       <defs>
         {/* 2px dots every 16px, as in the Miro canvas image. */}
         <pattern id="dot-grid" width="16" height="16" y="8" patternUnits="userSpaceOnUse">
-          <circle cx="8" cy="8" r="1" className="fill-dot" />
+          <circle cx="8" cy="8" r="1" className="fill-grid-dot" />
         </pattern>
       </defs>
 
@@ -119,8 +119,9 @@ export function BoardCanvas({
 }
 
 function ElementShape({ el }: { el: BoardElement }) {
+  const ink = displayColor(el.stroke);
   const stroke = {
-    stroke: el.stroke,
+    style: { stroke: ink },
     strokeWidth: el.strokeWidth,
     strokeDasharray: dashArray(el.strokeStyle, el.strokeWidth),
     strokeLinecap: el.strokeStyle === "dotted" ? ("round" as const) : undefined,
@@ -159,7 +160,7 @@ function ElementShape({ el }: { el: BoardElement }) {
           />
           {/* Wide invisible hit area so a 1px arrow is still easy to click. */}
           <line x1={el.x} y1={el.y} x2={x2} y2={y2} stroke="transparent" strokeWidth={14} />
-          <polygon points={`${x2},${y2} ${back(half)} ${back(-half)}`} fill={el.stroke} />
+          <polygon points={`${x2},${y2} ${back(half)} ${back(-half)}`} style={{ fill: ink }} />
         </>
       );
     }
@@ -198,7 +199,7 @@ function ElementShape({ el }: { el: BoardElement }) {
             y={el.y + el.height / 2}
             dominantBaseline="central"
             textAnchor={({ left: "start", center: "middle", right: "end" } as const)[align]}
-            fill={el.stroke}
+            style={{ fill: ink }}
             fontSize={FONT_SIZES[el.font ?? "sans"][el.fontSize ?? "M"]}
             fontWeight={el.fontWeight === "bold" ? 700 : 400}
             className={FONT_CLASS[el.font ?? "sans"]}
@@ -235,7 +236,7 @@ function SelectionFrame({ el }: { el: BoardElement }) {
       {!el.locked && (
         <>
           <line x1={midX} y1={top - 24} x2={midX} y2={top} />
-          <circle cx={midX} cy={top - 30} r={6} className="fill-fog" />
+          <circle cx={midX} cy={top - 30} r={6} className="fill-card" />
           {handles.map(([x, y], i) => (
             <rect
               key={i}
@@ -244,7 +245,7 @@ function SelectionFrame({ el }: { el: BoardElement }) {
               width={10}
               height={10}
               strokeWidth={1.5}
-              className="fill-fog"
+              className="fill-card"
             />
           ))}
         </>

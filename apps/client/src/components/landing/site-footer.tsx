@@ -15,7 +15,7 @@ export function SiteFooter() {
       <div className="flex flex-col gap-12 md:flex-row md:justify-between">
         <div>
           <PrismLogo />
-          <p className="mt-6 text-lg tracking-body text-graphite">
+          <p className="mt-6 text-lg tracking-body text-muted-foreground">
             One idea broken into many views.
           </p>
         </div>
@@ -23,7 +23,7 @@ export function SiteFooter() {
         <nav aria-label="Footer" className="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3">
           {COLUMNS.map((column) => (
             <div key={column.title} className="w-[12.5rem] max-sm:w-auto">
-              <h2 className="font-mono text-xs tracking-[0.08em] text-graphite uppercase">
+              <h2 className="font-mono text-xs tracking-[0.08em] text-muted-foreground uppercase">
                 {column.title}
               </h2>
               <ul className="mt-3 space-y-1">
@@ -31,7 +31,7 @@ export function SiteFooter() {
                   <li key={link}>
                     <a
                       href="#"
-                      className="text-base text-slate underline-offset-4 transition-colors hover:text-onyx hover:underline"
+                      className="text-base text-foreground underline-offset-4 transition-colors hover:text-ink hover:underline"
                     >
                       {link}
                     </a>
@@ -43,7 +43,7 @@ export function SiteFooter() {
         </nav>
       </div>
 
-      <p className="mt-10 font-mono text-xs tracking-[0.08em] text-graphite uppercase">
+      <p className="mt-10 font-mono text-xs tracking-[0.08em] text-muted-foreground uppercase">
         © 2026 Prism
       </p>
     </footer>

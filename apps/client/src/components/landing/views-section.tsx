@@ -8,10 +8,10 @@ import { ArrowMarker, SvgSticky } from "./svg-parts";
 function WireframeArt() {
   return (
     <>
-      <rect className="fill-canvas stroke-onyx" x="40" y="12" width="88" height="88" />
-      <rect className="fill-silver" x="50" y="22" width="44" height="8" />
-      <rect className="fill-fog stroke-rule" x="50" y="38" width="68" height="12" />
-      <rect className="fill-fog stroke-rule" x="50" y="56" width="68" height="12" />
+      <rect className="fill-background stroke-ink" x="40" y="12" width="88" height="88" />
+      <rect className="fill-divider" x="50" y="22" width="44" height="8" />
+      <rect className="fill-card stroke-border" x="50" y="38" width="68" height="12" />
+      <rect className="fill-card stroke-border" x="50" y="56" width="68" height="12" />
       <rect className="fill-brand" x="50" y="76" width="68" height="14" />
     </>
   );
@@ -24,10 +24,10 @@ function FlowchartArt() {
       <defs>
         <ArrowMarker id={arrowId} />
       </defs>
-      <rect className="fill-canvas stroke-onyx" x="12" y="41" width="40" height="28" />
-      <path className="fill-neon stroke-onyx" d="M84 37 102 55 84 73 66 55Z" />
-      <ellipse className="fill-canvas stroke-onyx" cx="138" cy="55" rx="18" ry="14" />
-      <g className="stroke-onyx" strokeWidth="1.5">
+      <rect className="fill-background stroke-ink" x="12" y="41" width="40" height="28" />
+      <path className="fill-neon stroke-ink" d="M84 37 102 55 84 73 66 55Z" />
+      <ellipse className="fill-background stroke-ink" cx="138" cy="55" rx="18" ry="14" />
+      <g className="stroke-ink" strokeWidth="1.5">
         <line x1="52" y1="55" x2="64" y2="55" markerEnd={`url(#${arrowId})`} />
         <line x1="102" y1="55" x2="118" y2="55" markerEnd={`url(#${arrowId})`} />
       </g>
@@ -54,7 +54,7 @@ function NotesArt() {
 
 function SketchArt() {
   return (
-    <g className="fill-none stroke-onyx" strokeWidth="1.5" strokeLinecap="round">
+    <g className="fill-none stroke-ink" strokeWidth="1.5" strokeLinecap="round">
       <path className="fill-lavender" d="M24 30 86 27 89 82 22 85Z" />
       <path d="M22 28 88 31 86 84 25 82Z" />
       <ellipse cx="126" cy="50" rx="24" ry="21" />
@@ -70,14 +70,14 @@ function ChartArt() {
       {[30, 46, 38, 62].map((height, i) => (
         <rect
           key={height}
-          className="fill-peach stroke-onyx"
+          className="fill-peach stroke-ink"
           x={34 + i * 26}
           y={92 - height}
           width="18"
           height={height}
         />
       ))}
-      <line className="stroke-onyx" strokeWidth="1.5" x1="24" y1="92" x2="144" y2="92" />
+      <line className="stroke-ink" strokeWidth="1.5" x1="24" y1="92" x2="144" y2="92" />
     </>
   );
 }
@@ -149,7 +149,7 @@ function BeamDesktop() {
       className="block overflow-visible font-mono text-[13px] max-lg:hidden"
     >
       <line
-        className="ray-draw stroke-fog"
+        className="ray-draw stroke-inverse-foreground"
         strokeWidth="3"
         pathLength={1}
         x1="0"
@@ -157,7 +157,7 @@ function BeamDesktop() {
         x2="138"
         y2="338"
       />
-      <text className="fill-fog tracking-[0.08em]" x="0" y="440">
+      <text className="fill-inverse-foreground tracking-[0.08em]" x="0" y="440">
         IDEA
       </text>
       {VIEWS.map((view, i) => (
@@ -172,8 +172,15 @@ function BeamDesktop() {
           y2={56 + i * ROW_PITCH}
         />
       ))}
-      <path className="fill-slate stroke-fog" d="M210 170 330 450H90Z" />
-      <line className="stroke-fog/40" strokeWidth="2" x1="138" y1="338" x2="276" y2="324" />
+      <path className="fill-inverse-panel stroke-inverse-foreground" d="M210 170 330 450H90Z" />
+      <line
+        className="stroke-inverse-foreground/40"
+        strokeWidth="2"
+        x1="138"
+        y1="338"
+        x2="276"
+        y2="324"
+      />
     </svg>
   );
 }
@@ -186,8 +193,8 @@ function BeamCompact() {
       aria-hidden="true"
       className="block h-auto w-full max-w-xl overflow-visible font-mono text-[12px] lg:hidden"
     >
-      <line className="stroke-fog" strokeWidth="3" x1="0" y1="96" x2="139" y2="75" />
-      <text className="fill-fog tracking-[0.08em]" x="0" y="122">
+      <line className="stroke-inverse-foreground" strokeWidth="3" x1="0" y1="96" x2="139" y2="75" />
+      <text className="fill-inverse-foreground tracking-[0.08em]" x="0" y="122">
         IDEA
       </text>
       {VIEWS.map((view, i) => (
@@ -201,7 +208,7 @@ function BeamCompact() {
           y2={8 + i * 28}
         />
       ))}
-      <path className="fill-slate stroke-fog" d="M170 8 222 120H118Z" />
+      <path className="fill-inverse-panel stroke-inverse-foreground" d="M170 8 222 120H118Z" />
     </svg>
   );
 }
@@ -211,13 +218,13 @@ export function ViewsSection() {
     <section
       id="tools"
       aria-labelledby="tools-title"
-      className="scroll-mt-[59px] border-b border-dashed border-fog/15 bg-onyx [--focus-ring:var(--color-fog)]"
+      className="scroll-mt-[59px] border-b border-dashed border-inverse-foreground/15 bg-inverse [--focus-ring:var(--inverse-foreground)]"
     >
       <div className={cn(pageContainer, "pt-16 pb-20 lg:pb-24")}>
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-10">
           <h2
             id="tools-title"
-            className="max-w-[56rem] font-display text-[2.5rem] leading-[0.95] font-bold tracking-display text-fog md:text-5xl lg:text-[3.375rem] lg:leading-[0.9]"
+            className="max-w-[56rem] font-display text-[2.5rem] leading-[0.95] font-bold tracking-display text-inverse-foreground md:text-5xl lg:text-[3.375rem] lg:leading-[0.9]"
           >
             Every tool you need to think out loud.
           </h2>
@@ -235,7 +242,7 @@ export function ViewsSection() {
                 <svg
                   viewBox="0 0 168 112"
                   aria-hidden="true"
-                  className="block h-auto w-full bg-fog"
+                  className="block h-auto w-full bg-card"
                 >
                   {view.art}
                 </svg>
@@ -248,7 +255,7 @@ export function ViewsSection() {
                   >
                     {view.name}
                   </h3>
-                  <p className="mt-1.5 max-w-[30rem] text-base leading-[1.45] tracking-body text-silver">
+                  <p className="mt-1.5 max-w-[30rem] text-base leading-[1.45] tracking-body text-inverse-muted">
                     {view.body}
                   </p>
                 </div>

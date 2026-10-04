@@ -9,9 +9,9 @@ const VISIBLE_TILES = 3;
 export function WorkspaceCard({ item }: { item: WorkspaceItem }) {
   const body = (
     <>
-      <div className="h-[175px] shrink-0 border-b border-silver">
+      <div className="h-[175px] shrink-0 border-b border-divider">
         {item.kind === "board" ? (
-          <div className="size-full bg-canvas">
+          <div className="size-full bg-background">
             <Sketch {...BOARD_THUMB} shapes={item.thumbnail} />
           </div>
         ) : (
@@ -20,8 +20,8 @@ export function WorkspaceCard({ item }: { item: WorkspaceItem }) {
       </div>
 
       <div className="px-5 pt-3.5">
-        <h3 className="truncate text-[17px] leading-6 font-bold text-slate">{item.title}</h3>
-        <p className="mt-0.5 truncate text-[13px] leading-[19px] text-graphite">
+        <h3 className="truncate text-[17px] leading-6 font-bold text-foreground">{item.title}</h3>
+        <p className="mt-0.5 truncate text-[13px] leading-[19px] text-muted-foreground">
           {item.description}
         </p>
         <div className="mt-2.5 flex items-center">
@@ -33,10 +33,10 @@ export function WorkspaceCard({ item }: { item: WorkspaceItem }) {
           >
             {item.kind === "project" ? "PROJECT" : "BOARD"}
           </span>
-          <span className="ml-2.5 text-xs text-graphite">
+          <span className="ml-2.5 text-xs text-muted-foreground">
             {item.kind === "project" ? `${item.boardCount} boards` : `${item.itemCount} items`}
           </span>
-          <span className="ml-auto font-mono text-2xs text-graphite">{item.edited}</span>
+          <span className="ml-auto font-mono text-2xs text-muted-foreground">{item.edited}</span>
         </div>
       </div>
     </>
@@ -47,7 +47,7 @@ export function WorkspaceCard({ item }: { item: WorkspaceItem }) {
     return (
       <Link
         to="/board"
-        className="flex h-[280px] flex-col border border-silver bg-fog transition-colors duration-150 ease-standard hover:border-edge"
+        className="flex h-[280px] flex-col border border-divider bg-card transition-colors duration-150 ease-standard hover:border-input"
       >
         {body}
       </Link>
@@ -59,13 +59,13 @@ export function WorkspaceCard({ item }: { item: WorkspaceItem }) {
     <article className="relative">
       <div
         aria-hidden="true"
-        className="absolute inset-x-6 -top-3.5 h-3.5 border border-silver bg-canvas"
+        className="absolute inset-x-6 -top-3.5 h-3.5 border border-divider bg-background"
       />
       <div
         aria-hidden="true"
-        className="absolute inset-x-3 -top-[7px] h-3.5 border border-silver bg-fog"
+        className="absolute inset-x-3 -top-[7px] h-3.5 border border-divider bg-card"
       />
-      <div className="relative flex h-[280px] flex-col border border-silver bg-fog">{body}</div>
+      <div className="relative flex h-[280px] flex-col border border-divider bg-card">{body}</div>
     </article>
   );
 }
@@ -77,16 +77,16 @@ function ProjectTiles({ item }: { item: Extract<WorkspaceItem, { kind: "project"
   return (
     <div className="grid size-full grid-cols-2 grid-rows-2 gap-2 p-2">
       {shown.map((shapes, i) => (
-        <div key={i} className="min-h-0 border border-silver bg-canvas">
+        <div key={i} className="min-h-0 border border-divider bg-background">
           <Sketch {...PROJECT_TILE} shapes={shapes} />
         </div>
       ))}
       {more > 0 ? (
-        <div className="flex items-center justify-center bg-slate font-mono text-[13px] font-bold text-fog">
+        <div className="flex items-center justify-center bg-secondary font-mono text-[13px] font-bold text-secondary-foreground">
           +{more} more
         </div>
       ) : (
-        <div aria-hidden="true" className="border border-dashed border-edge bg-fog" />
+        <div aria-hidden="true" className="border border-dashed border-input bg-card" />
       )}
     </div>
   );

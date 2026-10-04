@@ -15,11 +15,13 @@ export function BoardToolbar({
       role="toolbar"
       aria-label="Tools"
       aria-orientation="vertical"
-      className="absolute top-6 left-4 z-10 flex max-h-[calc(100%-2.5rem)] w-12 flex-col gap-1 overflow-y-auto border border-ash bg-fog p-[3px] pb-5 [scrollbar-width:none]"
+      className="absolute top-6 left-4 z-10 flex max-h-[calc(100%-2.5rem)] w-12 flex-col gap-1 overflow-y-auto border border-chrome bg-card p-[3px] pb-5 [scrollbar-width:none]"
     >
       {TOOL_GROUPS.map((group, i) => (
         <Fragment key={i}>
-          {i > 0 && <div aria-hidden="true" className="mx-1 mt-1 -mb-px h-px shrink-0 bg-silver" />}
+          {i > 0 && (
+            <div aria-hidden="true" className="mx-1 mt-1 -mb-px h-px shrink-0 bg-divider" />
+          )}
           {group.map((tool) => {
             const Icon = tool.icon;
             const isActive = tool.id === active;
@@ -33,7 +35,9 @@ export function BoardToolbar({
                 onClick={() => onSelect(tool.id)}
                 className={cn(
                   "flex size-10 shrink-0 items-center justify-center transition-colors duration-150 ease-standard",
-                  isActive ? "bg-slate text-fog" : "text-slate hover:bg-canvas",
+                  isActive
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-foreground hover:bg-background",
                 )}
               >
                 <Icon aria-hidden="true" className="size-[18px]" />

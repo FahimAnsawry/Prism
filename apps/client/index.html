@@ -8,6 +8,22 @@
       content="Prism: one idea broken into many views. Real-time boards for teams and agents."
     />
     <meta name="theme-color" content="#e9e9e9" />
+    <!-- Apply the saved or system theme before first paint (keep in step with src/lib/theme.ts). -->
+    <script>
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem("prism:theme");
+        } catch (e) {}
+        if (theme !== "light" && theme !== "dark") {
+          theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        if (theme === "dark") {
+          document.documentElement.classList.add("dark");
+          document.querySelector('meta[name="theme-color"]').content = "#1d1c23";
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Prism</title>
   </head>

@@ -8,17 +8,17 @@ import { pageContainer } from "./page-container";
 
 export function Hero() {
   return (
-    <section aria-labelledby="hero-title" className="border-b border-dashed border-rule">
+    <section aria-labelledby="hero-title" className="border-b border-dashed border-border">
       <div className={cn(pageContainer, "relative pt-[52px] pb-20")}>
         <h1
           id="hero-title"
-          className="font-display text-5xl leading-[0.92] font-bold tracking-display text-slate sm:text-[4rem] md:text-[5rem] lg:text-[5.75rem] lg:leading-[0.9]"
+          className="font-display text-5xl leading-[0.92] font-bold tracking-display text-foreground sm:text-[4rem] md:text-[5rem] lg:text-[5.75rem] lg:leading-[0.9]"
         >
           One idea, broken <br className="max-sm:hidden" />
           into many views.
         </h1>
 
-        <p className="mt-10 max-w-[38rem] text-lg leading-[1.45] tracking-body text-slate md:text-[22px] lg:mt-[124px]">
+        <p className="mt-10 max-w-[38rem] text-lg leading-[1.45] tracking-body text-foreground md:text-[22px] lg:mt-[124px]">
           Sketch, wireframe and plan together on one live canvas. Every stroke syncs as you draw,
           and Claude can draw right alongside you.
         </p>
@@ -31,7 +31,7 @@ export function Hero() {
           <a href="#how-it-works" className={ctaVariants({ variant: "secondary", size: "lg" })}>
             See how it works
           </a>
-          <p className="-rotate-3 font-hand text-[26px] md:text-[32px] leading-none text-slate md:ml-6">
+          <p className="-rotate-3 font-hand text-[26px] md:text-[32px] leading-none text-foreground md:ml-6">
             <span aria-hidden="true">← </span>no install, just share a link
           </p>
         </div>

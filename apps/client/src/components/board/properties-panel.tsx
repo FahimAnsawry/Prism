@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import {
   type BoardElement,
+  displayColor,
   type ElementType,
   elementLabel,
   type FontFamily,
@@ -51,15 +52,15 @@ export function PropertiesPanel({
   return (
     <aside
       aria-label={`${elementLabel(el)} properties`}
-      className="absolute top-6 right-4 z-10 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-ash bg-fog md:right-6"
+      className="absolute top-6 right-4 z-10 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card md:right-6"
     >
-      <h2 className="flex h-12 items-center border-b border-silver px-4 text-sm font-bold text-onyx">
+      <h2 className="flex h-12 items-center border-b border-divider px-4 text-sm font-bold text-ink">
         {elementLabel(el)}
       </h2>
 
       <fieldset disabled={locked} className="contents">
         {hasStroke || FILLED.includes(el.type) ? (
-          <section className="flex flex-col gap-3.5 border-b border-silver px-4 pt-2.5 pb-6">
+          <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-2.5 pb-6">
             {hasStroke && (
               <Row label="Stroke">
                 <div className="flex gap-[5px]">
@@ -74,9 +75,9 @@ export function PropertiesPanel({
                   <label
                     title="Custom color"
                     className={cn(
-                      "relative flex size-5 cursor-pointer items-center justify-center border border-edge bg-fog text-slate hover:bg-canvas",
+                      "relative flex size-5 cursor-pointer items-center justify-center border border-input bg-card text-foreground hover:bg-background",
                       !STROKES.includes(el.stroke) &&
-                        "ring-1 ring-slate ring-offset-1 ring-offset-fog",
+                        "ring-1 ring-foreground ring-offset-1 ring-offset-card",
                     )}
                   >
                     <Plus aria-hidden="true" className="size-3" />
@@ -101,10 +102,10 @@ export function PropertiesPanel({
                       aria-pressed={el.fill === null}
                       onClick={() => onChange({ fill: null })}
                       className={cn(
-                        "h-5 w-[45px] border font-mono text-3xs text-slate",
+                        "h-5 w-[45px] border font-mono text-3xs text-foreground",
                         el.fill === null
-                          ? "border-slate bg-fog"
-                          : "border-silver bg-fog hover:bg-canvas",
+                          ? "border-foreground bg-card"
+                          : "border-divider bg-card hover:bg-background",
                       )}
                     >
                       None
@@ -154,7 +155,7 @@ export function PropertiesPanel({
         ) : null}
 
         {hasText && (
-          <section className="flex flex-col gap-3.5 border-b border-silver px-4 pt-4.5 pb-6">
+          <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-4.5 pb-6">
             <Row label="Font">
               <Segmented<FontFamily>
                 options={["sans", "caveat", "mono"]}
@@ -182,9 +183,9 @@ export function PropertiesPanel({
 
       <section className="flex flex-col px-4 pt-4.5 pb-5">
         <label className="flex flex-col">
-          <span className="mb-4 flex justify-between font-mono text-3xs leading-[14px] text-graphite">
+          <span className="mb-4 flex justify-between font-mono text-3xs leading-[14px] text-muted-foreground">
             OPACITY
-            <span className="text-2xs text-slate tabular-nums">
+            <span className="text-2xs text-foreground tabular-nums">
               {Math.round(el.opacity * 100)}%
             </span>
           </span>
@@ -195,7 +196,7 @@ export function PropertiesPanel({
             value={Math.round(el.opacity * 100)}
             disabled={locked}
             onChange={(event) => onChange({ opacity: Number(event.target.value) / 100 })}
-            className="h-3 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-default disabled:opacity-60 [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-slate [&::-moz-range-thumb]:bg-brand [&::-moz-range-track]:h-0.5 [&::-moz-range-track]:bg-slate [&::-webkit-slider-runnable-track]:h-0.5 [&::-webkit-slider-runnable-track]:bg-slate [&::-webkit-slider-thumb]:-mt-[5px] [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-slate [&::-webkit-slider-thumb]:bg-brand"
+            className="h-3 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-default disabled:opacity-60 [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-foreground [&::-moz-range-thumb]:bg-brand [&::-moz-range-track]:h-0.5 [&::-moz-range-track]:bg-foreground [&::-webkit-slider-runnable-track]:h-0.5 [&::-webkit-slider-runnable-track]:bg-foreground [&::-webkit-slider-thumb]:-mt-[5px] [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-foreground [&::-webkit-slider-thumb]:bg-brand"
           />
         </label>
 
@@ -207,7 +208,10 @@ export function PropertiesPanel({
                 type="button"
                 disabled={locked}
                 onClick={() => onLayer(move)}
-                className={cn(segmentButton, "bg-canvas text-slate capitalize hover:bg-silver")}
+                className={cn(
+                  segmentButton,
+                  "bg-background text-foreground capitalize hover:bg-divider",
+                )}
               >
                 {move}
               </button>
@@ -240,7 +244,9 @@ function Row({
 }) {
   return (
     <div className={className}>
-      <p className="mb-3 font-mono text-3xs leading-[14px] text-graphite uppercase">{label}</p>
+      <p className="mb-3 font-mono text-3xs leading-[14px] text-muted-foreground uppercase">
+        {label}
+      </p>
       {children}
     </div>
   );
@@ -261,10 +267,11 @@ function Swatch({
       aria-label={color}
       aria-pressed={selected}
       onClick={onClick}
-      style={{ backgroundColor: color }}
+      style={{ backgroundColor: displayColor(color) }}
       className={cn(
         "size-5 shrink-0",
-        selected && "border border-slate ring-1 ring-slate ring-offset-1 ring-offset-fog",
+        selected &&
+          "border border-foreground ring-1 ring-foreground ring-offset-1 ring-offset-card",
       )}
     />
   );
@@ -290,7 +297,9 @@ function Segmented<T extends string>({
           className={cn(
             segmentButton,
             "capitalize",
-            option === value ? "bg-slate text-fog" : "bg-canvas text-slate hover:bg-silver",
+            option === value
+              ? "bg-secondary text-secondary-foreground"
+              : "bg-background text-foreground hover:bg-divider",
           )}
         >
           {option}
@@ -300,7 +309,7 @@ function Segmented<T extends string>({
   );
 }
 
-/** Switch (approved change): an edge-colored track border so off reads at 3:1, slate when on. */
+/** Switch (approved change): an edge-colored track border so off reads at 3:1, filled when on. */
 function Toggle({
   label,
   checked,
@@ -314,21 +323,21 @@ function Toggle({
 }) {
   return (
     <label className={cn("flex cursor-pointer items-center justify-between", className)}>
-      <span className="text-[13px] text-slate">{label}</span>
+      <span className="text-[13px] text-foreground">{label}</span>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative h-5 w-10 border border-edge transition-colors duration-150 ease-standard",
-          checked ? "bg-slate" : "bg-silver",
+          "relative h-5 w-10 border border-input transition-colors duration-150 ease-standard",
+          checked ? "bg-secondary" : "bg-divider",
         )}
       >
         <span
           className={cn(
-            "absolute top-px left-px size-4 bg-fog transition-transform duration-150 ease-standard",
-            checked && "translate-x-5",
+            "absolute top-px left-px size-4 bg-card transition-transform duration-150 ease-standard",
+            checked ? "translate-x-5" : "dark:bg-muted-foreground",
           )}
         />
       </button>

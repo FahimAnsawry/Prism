@@ -4,7 +4,8 @@
 const cursorTones = {
   pink: { body: "fill-brand", text: "fill-onyx" },
   brand: { body: "fill-brand", text: "fill-onyx" },
-  onyx: { body: "fill-onyx", text: "fill-neon" },
+  // Claude: onyx with a neon name by day, inverted to neon at night so it stays the loudest cursor.
+  onyx: { body: "fill-onyx dark:fill-neon", text: "fill-neon dark:fill-onyx" },
   sky: { body: "fill-sky", text: "fill-slate" },
 } as const;
 
@@ -87,7 +88,7 @@ export function ArrowMarker({ id }: { id: string }) {
       markerHeight="7"
       orient="auto-start-reverse"
     >
-      <path className="fill-onyx" d="M0 0 10 5 0 10Z" />
+      <path className="fill-ink" d="M0 0 10 5 0 10Z" />
     </marker>
   );
 }

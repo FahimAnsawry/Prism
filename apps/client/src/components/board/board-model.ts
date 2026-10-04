@@ -43,6 +43,22 @@ export const FONT_SIZES: Record<FontFamily, Record<FontSize, number>> = {
 
 export const STROKE_WIDTHS = { thin: 1, medium: 2, thick: 4 } as const;
 
+/**
+ * The palette's neutral inks are stored as plain hex (they are board data and sync as-is) but
+ * drawn through the theme, so a slate outline turns light on the night board instead of
+ * vanishing. Accent colors draw as stored. Apply it with `style`: SVG presentation attributes
+ * don't resolve var().
+ */
+const THEMED_INKS: Record<string, string> = {
+  "#3d3b4f": "var(--foreground)", // slate
+  "#2a2a2a": "var(--ink)", // onyx
+  "#5f5f5f": "var(--muted-foreground)", // graphite
+};
+
+export function displayColor(color: string) {
+  return THEMED_INKS[color.toLowerCase()] ?? color;
+}
+
 const base = {
   rotation: 0,
   stroke: "#3d3b4f",

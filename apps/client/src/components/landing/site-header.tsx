@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ctaVariants } from "@/components/cta";
 import { PrismLogo } from "@/components/prism-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { pageContainer } from "./page-container";
 
@@ -51,10 +52,11 @@ export function SiteHeader() {
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 border-b border-dashed border-rule bg-canvas animate-in fade-in slide-in-from-top-4",
+        "sticky top-0 z-40 border-b border-dashed border-border bg-background animate-in fade-in slide-in-from-top-4",
         "transition-[translate,box-shadow] duration-300 ease-decelerate focus-within:translate-y-0",
         hidden && "-translate-y-full",
-        scrolled && "shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)]",
+        scrolled &&
+          "shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] dark:shadow-[0_10px_24px_-14px_rgb(0_0_0/0.8)]",
       )}
     >
       <nav aria-label="Main">
@@ -62,6 +64,7 @@ export function SiteHeader() {
           <PrismLogo compact />
 
           <div className="flex items-center gap-3">
+            <ThemeToggle className="size-[38px] border border-input hover:bg-card" />
             {/* TEMP: quick links to the in-progress app screens; remove once auth routes there. */}
             <Link
               to="/dashboard"

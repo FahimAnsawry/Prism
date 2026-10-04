@@ -40,14 +40,14 @@ function DashboardPage() {
   const items = WORKSPACE.items.filter((item) => matches(item, filter, query));
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="min-h-dvh bg-background">
       <DashboardHeader query={query} onQueryChange={setQuery} />
 
       <main className={cn(column, "pt-8 pb-26")}>
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div>
-            <h1 className="text-[40px] leading-14 font-bold text-onyx">Your workspace</h1>
-            <p className="mt-0.5 font-mono text-[13px] leading-[19px] text-graphite">
+            <h1 className="text-[40px] leading-14 font-bold text-ink">Your workspace</h1>
+            <p className="mt-0.5 font-mono text-[13px] leading-[19px] text-muted-foreground">
               {WORKSPACE.projectCount} projects · {WORKSPACE.boardCount} boards
             </p>
           </div>
@@ -60,7 +60,7 @@ function DashboardPage() {
           <div
             role="group"
             aria-label="Show"
-            className="flex max-w-full gap-2 border border-silver bg-fog p-[3px] max-sm:w-full"
+            className="flex max-w-full gap-2 border border-divider bg-card p-[3px] max-sm:w-full"
           >
             {FILTERS.map((f) => (
               <button
@@ -73,8 +73,8 @@ function DashboardPage() {
                   f.width,
                   "max-sm:w-auto max-sm:min-w-0 max-sm:flex-1 max-sm:px-2",
                   filter === f.id
-                    ? "bg-slate font-bold text-fog"
-                    : "bg-fog text-slate hover:bg-canvas",
+                    ? "bg-secondary font-bold text-secondary-foreground"
+                    : "bg-card text-foreground hover:bg-background",
                 )}
               >
                 {f.label}
@@ -87,7 +87,7 @@ function DashboardPage() {
           <div className="ml-auto flex items-center gap-3">
             <button
               type="button"
-              className="inline-flex items-center gap-1 font-mono text-xs text-slate hover:text-onyx"
+              className="inline-flex items-center gap-1 font-mono text-xs text-foreground hover:text-ink"
             >
               Last edited
               <ChevronDown aria-hidden="true" className="size-3.5" />
@@ -97,7 +97,7 @@ function DashboardPage() {
                 type="button"
                 aria-label="Grid view"
                 aria-pressed="true"
-                className="flex size-8 items-center justify-center bg-slate text-fog"
+                className="flex size-8 items-center justify-center bg-secondary text-secondary-foreground"
               >
                 <LayoutGrid aria-hidden="true" className="size-4" />
               </button>
@@ -105,7 +105,7 @@ function DashboardPage() {
                 type="button"
                 aria-label="List view"
                 aria-pressed="false"
-                className="flex size-8 items-center justify-center border border-silver bg-fog text-slate hover:bg-canvas"
+                className="flex size-8 items-center justify-center border border-divider bg-card text-foreground hover:bg-background"
               >
                 <List aria-hidden="true" className="size-4" />
               </button>
@@ -122,7 +122,7 @@ function DashboardPage() {
             ))}
           </ul>
         ) : (
-          <p className="mt-16 text-center text-sm text-graphite">
+          <p className="mt-16 text-center text-sm text-muted-foreground">
             Nothing matches “{query.trim()}”. Try another name, or clear the search.
           </p>
         )}
