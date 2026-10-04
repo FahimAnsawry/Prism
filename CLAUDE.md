@@ -61,7 +61,9 @@ pnpm workspaces: `apps/client` (React SPA, static build), `apps/server` (Express
 ### Server and env
 
 - Better Auth is served by the Express server under `/api/auth`. OAuth callbacks are `<BETTER_AUTH_URL>/api/auth/callback/{google,github}`.
-- Images are stored in Cloudflare R2 through `@aws-sdk/client-s3` (`R2_*` env vars).
+- Images go to S3-compatible object storage through `@aws-sdk/client-s3`, configured only by the provider-neutral `S3_*` env vars (endpoint, region, force-path-style, keys, bucket). Never hard-code a provider.
+  - The default provider is **Neon Object Storage** (beta, AWS `us-east-2` projects only). It needs `forcePathStyle: true`. The endpoint and credentials are **per database branch** (credentials also work on descendant branches), so a Neon branch has its own files, separate from production's.
+  - Cloudflare R2 works by changing env values only (`S3_REGION=auto`, `S3_FORCE_PATH_STYLE=false`).
 - The server loads `apps/server/.env` via `node/tsx --env-file-if-exists=.env`. The Prisma CLI loads it via `dotenv`.
 - Client env vars must start with `VITE_`. They get baked into the static build, so never put secrets there.
 - Only `.env.example` files are committed.
