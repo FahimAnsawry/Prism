@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/landing/site-header";
 import { ViewsSection } from "@/components/landing/views-section";
 
 export const Route = createFileRoute("/")({
-  head: () => ({ meta: [{ title: "Prism · One idea broken into many views." }] }),
+  head: () => ({ meta: [{ title: "Prism - One idea broken into many views." }] }),
   component: LandingPage,
 });
 

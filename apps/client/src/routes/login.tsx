@@ -4,7 +4,7 @@ import { LoginForm } from "@/components/auth/login-form";
 import { redirectIfSignedIn } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/login")({
-  head: () => ({ meta: [{ title: "Log in · Prism" }] }),
+  head: () => ({ meta: [{ title: "Log in - Prism" }] }),
   // Better Auth sends failed Google/GitHub sign-ins back here with ?error=<code>
   validateSearch: (search: Record<string, unknown>): { error?: string } =>
     typeof search["error"] === "string" ? { error: search["error"] } : {},

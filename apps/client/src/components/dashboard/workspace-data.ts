@@ -1,214 +1,101 @@
-import type { SketchShape } from "./sketch";
-
-// Placeholder workspace copied from the Miro frame "13 Dashboard · All". No API yet.
-
-const rect = (
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  fill: string,
-  stroke?: string,
-): SketchShape => ({ kind: "rect", x, y, w, h, fill, stroke });
-const line = (x1: number, y1: number, x2: number, y2: number): SketchShape => ({
-  kind: "line",
-  x1,
-  y1,
-  x2,
-  y2,
-});
-
-/** Board cards: a 382×175 preview. */
-export const BOARD_THUMB = { width: 382, height: 175 } as const;
-/** Project cards: up to three 180×76 board tiles. */
-export const PROJECT_TILE = { width: 180, height: 76 } as const;
-
-const titleBar = rect(23, 17, 99, 12, "fill-foreground");
-const tileTitle = rect(11, 8, 47, 8, "fill-foreground");
-const fogRow = "fill-card";
-
-const thumbs = {
-  schema: [
-    titleBar,
-    line(92, 99, 122, 99),
-    line(183, 99, 214, 99),
-    line(275, 99, 298, 99),
-    rect(31, 84, 61, 30, "fill-ice", "stroke-foreground"),
-    rect(122, 84, 61, 30, "fill-sage", "stroke-foreground"),
-    rect(214, 84, 61, 30, "fill-lavender", "stroke-foreground"),
-    rect(298, 84, 61, 30, "fill-ice", "stroke-foreground"),
-    rect(122, 136, 61, 24, "fill-peach", "stroke-foreground"),
-    line(153, 114, 153, 136),
-  ],
-  notes: [
-    titleBar,
-    rect(46, 56, 38, 38, "fill-lime"),
-    rect(122, 53, 38, 38, "fill-lavender"),
-    rect(199, 63, 38, 38, "fill-ice"),
-    rect(84, 109, 38, 38, "fill-peach"),
-    rect(168, 112, 38, 38, "fill-seafoam"),
-    rect(267, 70, 38, 38, "fill-lime"),
-  ],
-  journey: [
-    titleBar,
-    rect(23, 45, 99, 14, "fill-ice"),
-    rect(23, 66, 99, 23, fogRow, "stroke-divider"),
-    rect(23, 96, 99, 23, fogRow, "stroke-divider"),
-    rect(23, 126, 99, 23, fogRow, "stroke-divider"),
-    rect(137, 45, 99, 14, "fill-lime"),
-    rect(137, 66, 99, 23, fogRow, "stroke-divider"),
-    rect(137, 96, 99, 23, fogRow, "stroke-divider"),
-    rect(252, 45, 99, 14, "fill-seafoam"),
-    rect(252, 66, 99, 23, fogRow, "stroke-divider"),
-    rect(252, 96, 99, 23, fogRow, "stroke-divider"),
-    rect(252, 126, 99, 23, fogRow, "stroke-divider"),
-  ],
-  wireframe: [
-    titleBar,
-    rect(76, 42, 229, 119, "fill-card", "stroke-input"),
-    rect(76, 42, 229, 14, "fill-divider"),
-    rect(95, 68, 115, 14, "fill-foreground"),
-    rect(95, 92, 82, 8, "fill-divider"),
-    rect(95, 113, 57, 14, "fill-brand"),
-    rect(219, 68, 69, 60, "fill-ice"),
-  ],
-} satisfies Record<string, SketchShape[]>;
-
-const tiles = {
-  flow: [
-    tileTitle,
-    line(43, 43, 58, 43),
-    line(86, 43, 101, 43),
-    line(130, 43, 140, 43),
-    rect(14, 36, 29, 13, "fill-ice", "stroke-foreground"),
-    rect(58, 36, 29, 13, "fill-sage", "stroke-foreground"),
-    rect(101, 36, 29, 13, "fill-lavender", "stroke-foreground"),
-    rect(140, 36, 29, 13, "fill-ice", "stroke-foreground"),
-    rect(58, 59, 29, 10, "fill-peach", "stroke-foreground"),
-    line(72, 49, 72, 59),
-  ],
-  columns: [
-    tileTitle,
-    rect(11, 20, 47, 8, "fill-ice"),
-    rect(11, 29, 47, 10, fogRow, "stroke-divider"),
-    rect(11, 42, 47, 10, fogRow, "stroke-divider"),
-    rect(11, 55, 47, 10, fogRow, "stroke-divider"),
-    rect(65, 20, 47, 8, "fill-lime"),
-    rect(65, 29, 47, 10, fogRow, "stroke-divider"),
-    rect(65, 42, 47, 10, fogRow, "stroke-divider"),
-    rect(119, 20, 47, 8, "fill-seafoam"),
-    rect(119, 29, 47, 10, fogRow, "stroke-divider"),
-    rect(119, 42, 47, 10, fogRow, "stroke-divider"),
-    rect(119, 55, 47, 10, fogRow, "stroke-divider"),
-  ],
-  chart: [
-    tileTitle,
-    rect(18, 35, 22, 30, "fill-steel"),
-    rect(47, 24, 22, 42, "fill-ice"),
-    rect(76, 43, 22, 23, "fill-lavender"),
-    rect(104, 29, 22, 36, "fill-seafoam"),
-    line(11, 65, 137, 65),
-    rect(144, 23, 25, 8, "fill-peach"),
-    rect(144, 35, 25, 8, "fill-lime"),
-  ],
-  stickies: [
-    tileTitle,
-    rect(22, 24, 17, 17, "fill-lime"),
-    rect(58, 23, 17, 17, "fill-lavender"),
-    rect(94, 27, 17, 17, "fill-ice"),
-    rect(40, 47, 17, 17, "fill-peach"),
-    rect(79, 49, 17, 17, "fill-seafoam"),
-    rect(126, 30, 17, 17, "fill-lime"),
-  ],
-  window: [
-    tileTitle,
-    rect(36, 18, 108, 52, "fill-card", "stroke-input"),
-    rect(36, 18, 108, 8, "fill-divider"),
-    rect(45, 30, 54, 8, "fill-foreground"),
-    rect(45, 40, 39, 8, "fill-divider"),
-    rect(45, 49, 27, 8, "fill-brand"),
-    rect(103, 30, 32, 26, "fill-ice"),
-  ],
-} satisfies Record<string, SketchShape[]>;
+import type { BoardSummary, ProjectSummary, Workspace } from "@prism/shared";
 
 export type WorkspaceItem =
-  | {
-      kind: "project";
-      id: string;
-      title: string;
-      description: string;
-      boardCount: number;
-      edited: string;
-      /** Previews of the first three boards. */
-      tiles: SketchShape[][];
-    }
-  | {
-      kind: "board";
-      id: string;
-      title: string;
-      description: string;
-      itemCount: number;
-      edited: string;
-      thumbnail: SketchShape[];
-    };
+  | ({ kind: "project" } & ProjectSummary)
+  /** `projectName` is set when the board lives inside a project. */
+  | ({ kind: "board"; projectName?: string } & BoardSummary);
 
-export const WORKSPACE = {
-  projectCount: 2,
-  boardCount: 14,
-  items: [
-    {
-      kind: "project",
-      id: "q4-launch",
-      title: "Q4 Launch",
-      description: "Plan, research and user flows",
-      boardCount: 6,
-      edited: "2h ago",
-      tiles: [tiles.flow, tiles.columns, tiles.chart],
-    },
-    {
-      kind: "board",
-      id: "database-schema",
-      title: "Database Schema",
-      description: "Core tables and relationships",
-      itemCount: 26,
-      edited: "6d ago",
-      thumbnail: thumbs.schema,
-    },
-    {
-      kind: "board",
-      id: "kickoff-notes",
-      title: "Kickoff Meeting Notes",
-      description: "Notes from the project kickoff",
-      itemCount: 30,
-      edited: "6d ago",
-      thumbnail: thumbs.notes,
-    },
-    {
-      kind: "board",
-      id: "onboarding-journey",
-      title: "Onboarding Journey",
-      description: "Steps from signup to activation",
-      itemCount: 14,
-      edited: "7d ago",
-      thumbnail: thumbs.journey,
-    },
-    {
-      kind: "project",
-      id: "user-research",
-      title: "User Research",
-      description: "Interviews and synthesis",
-      boardCount: 3,
-      edited: "1d ago",
-      tiles: [tiles.stickies, tiles.window, tiles.chart],
-    },
-    {
-      kind: "board",
-      id: "landing-wireframe",
-      title: "Landing Wireframe",
-      description: "Hero, features and pricing",
-      itemCount: 144,
-      edited: "7d ago",
-      thumbnail: thumbs.wireframe,
-    },
-  ] satisfies WorkspaceItem[] as WorkspaceItem[],
-};
+export type Filter = "all" | "project" | "board";
+export type SortKey = "edited" | "created" | "name";
+export type ViewMode = "grid" | "list";
+
+export const SORT_OPTIONS: { id: SortKey; label: string }[] = [
+  { id: "edited", label: "Last edited" },
+  { id: "created", label: "Date created" },
+  { id: "name", label: "Name" },
+];
+
+/**
+ * What each filter lists. "All" is the top level: projects and the boards outside them.
+ * "Whiteboards" is every board, so boards past a project card's three tiles stay reachable.
+ */
+export function itemsFor(workspace: Workspace, filter: Filter): WorkspaceItem[] {
+  const projects = workspace.projects.map((p) => ({ kind: "project" as const, ...p }));
+  if (filter === "project") return projects;
+
+  const projectNames = new Map(workspace.projects.map((p) => [p.id, p.name]));
+  const boards = workspace.boards
+    .filter((b) => filter === "board" || b.projectId === null)
+    .map((b) => ({
+      kind: "board" as const,
+      ...b,
+      projectName: (b.projectId && projectNames.get(b.projectId)) || undefined,
+    }));
+  return filter === "board" ? boards : [...projects, ...boards];
+}
+
+export function matchesQuery(item: WorkspaceItem, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const project = item.kind === "board" ? item.projectName : undefined;
+  return [item.name, item.description, project].some((text) => text?.toLowerCase().includes(q));
+}
+
+const byName = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+/** Newest first for both dates; names A–Z, ignoring case. Ties fall back to the newest edit. */
+export function sortItems(items: WorkspaceItem[], sort: SortKey) {
+  const time = (iso: string) => Date.parse(iso);
+  const byEdited = (a: WorkspaceItem, b: WorkspaceItem) => time(b.editedAt) - time(a.editedAt);
+  return items.toSorted((a, b) => {
+    if (sort === "name") return byName.compare(a.name, b.name) || byEdited(a, b);
+    if (sort === "created") return time(b.createdAt) - time(a.createdAt) || byEdited(a, b);
+    return byEdited(a, b);
+  });
+}
+
+/** The date a card or row shows: the creation date when sorting by it, else the last edit. */
+export function shownDate(item: WorkspaceItem, sort: SortKey) {
+  return sort === "created"
+    ? { label: "Created", iso: item.createdAt }
+    : { label: "Edited", iso: item.editedAt };
+}
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+const fullDateTime = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+/** "just now", "5m ago", "2h ago", "6d ago", then a date ("Mar 4", or "Mar 4, 2025" in past years). */
+export function timeAgo(iso: string, now = Date.now()) {
+  const date = new Date(iso);
+  const diff = Math.max(0, now - date.getTime());
+  if (diff < MINUTE) return "just now";
+  if (diff < HOUR) return `${Math.floor(diff / MINUTE)}m ago`;
+  if (diff < DAY) return `${Math.floor(diff / HOUR)}h ago`;
+  if (diff < 30 * DAY) return `${Math.floor(diff / DAY)}d ago`;
+  return date.getFullYear() === new Date(now).getFullYear()
+    ? shortDate.format(date)
+    : fullDate.format(date);
+}
+
+/** The exact time, for a tooltip. */
+export function exactTime(iso: string) {
+  return fullDateTime.format(new Date(iso));
+}
+
+export function plural(count: number, one: string, many = `${one}s`) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/** "6 boards" for a project, "26 items" for a board. */
+export function itemMeta(item: WorkspaceItem) {
+  return item.kind === "project"
+    ? plural(item.boardCount, "board")
+    : plural(item.itemCount, "item");
+}

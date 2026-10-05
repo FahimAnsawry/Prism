@@ -1,5 +1,6 @@
 import { redirect } from "@tanstack/react-router";
 import { createAuthClient } from "better-auth/react";
+import { SERVER_UNREACHABLE } from "./api";
 import { reportError } from "./errors";
 
 // Better Auth runs on the Express server; the client adds the /api/auth base path itself.
@@ -35,9 +36,6 @@ export function authErrorMessage(code: string | undefined) {
     (code && AUTH_ERROR_MESSAGES[code]) || "Something went wrong signing you in. Please try again."
   );
 }
-
-const SERVER_UNREACHABLE =
-  "Can't reach the Prism server right now. Check your connection and try again.";
 
 /**
  * Runs a Better Auth call and returns a message to show, or undefined on success.

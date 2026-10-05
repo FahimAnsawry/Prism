@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useReducer, useState } from "react";
 import { BoardCanvas, type Camera } from "@/components/board/board-canvas";
@@ -6,9 +7,15 @@ import { BoardToolbar } from "@/components/board/board-toolbar";
 import { BoardTopBar } from "@/components/board/board-top-bar";
 import { PropertiesPanel } from "@/components/board/properties-panel";
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
+import { NotFoundPage } from "@/components/feedback/not-found-page";
+import { ApiError } from "@/lib/api";
+import { requireSession } from "@/lib/auth-client";
+import { isTyping } from "@/lib/keyboard";
+import { boardQuery } from "@/lib/workspace";
 
-export const Route = createFileRoute("/board")({
-  head: () => ({ meta: [{ title: "Test Board · Prism" }] }),
+export const Route = createFileRoute("/board/$boardId")({
+  head: () => ({ meta: [{ title: "Board - Prism" }] }),
+  beforeLoad: requireSession,
   component: BoardPage,
 });
 
@@ -18,14 +25,15 @@ const MAX_ZOOM = 4;
 const clampZoom = (zoom: number) =>
   Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(zoom * 10) / 10));
 
-function isTyping(target: EventTarget | null) {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
-  );
+function BoardPage() {
+  const { boardId } = Route.useParams();
+  // TEMP: only the board's name comes from the server; the canvas is still the local demo board.
+  const board = useQuery(boardQuery(boardId));
+  if (board.error instanceof ApiError && board.error.status === 404) return <NotFoundPage />;
+  return <BoardEditor key={boardId} name={board.data?.name ?? ""} />;
 }
 
-function BoardPage() {
+function BoardEditor({ name }: { name: string }) {
   const [state, dispatch] = useReducer(boardReducer, initialBoardState);
   const [tool, setTool] = useState<ToolId>("select");
   const [grid, setGrid] = useState(true);
@@ -62,7 +70,7 @@ function BoardPage() {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
       <BoardTopBar
-        name="Test Board"
+        name={name}
         canUndo={state.past.length > 0}
         canRedo={state.future.length > 0}
         onUndo={() => dispatch({ type: "undo" })}

@@ -7,6 +7,9 @@ import { cn } from "@/lib/utils";
 export const fieldInputClass =
   "h-12 rounded-none border-input bg-card px-4 text-[15px] text-foreground placeholder:text-muted-foreground md:text-[15px] dark:bg-card aria-invalid:border-destructive aria-invalid:ring-0 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)] dark:aria-invalid:border-destructive";
 
+export const fieldLabelClass =
+  "font-mono text-xs leading-4 font-normal tracking-[0.08em] text-foreground uppercase";
+
 export function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) return null;
   return (
@@ -57,10 +60,7 @@ export function FormField({
   return (
     <div className={className}>
       <div className="flex items-center justify-between gap-4">
-        <Label
-          htmlFor={id}
-          className="font-mono text-xs leading-4 font-normal tracking-[0.08em] text-foreground uppercase"
-        >
+        <Label htmlFor={id} className={fieldLabelClass}>
           {label}
         </Label>
         {labelAside}

@@ -1,9 +1,8 @@
 import { Menu } from "@base-ui/react/menu";
-import { useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useState, type KeyboardEvent, type ReactNode } from "react";
-
-type CreateKind = "project" | "whiteboard";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { isTyping } from "@/lib/keyboard";
+import type { CreateKind } from "./item-dialog";
 
 const OPTIONS: { kind: CreateKind; title: string; description: string; shortcut: string }[] = [
   {
@@ -20,30 +19,60 @@ const OPTIONS: { kind: CreateKind; title: string; description: string; shortcut:
   },
 ];
 
+/** The option whose shortcut this key press is, if any. Ctrl/⌘/Alt combos stay with the browser. */
+function shortcutOption(event: {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+}) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return undefined;
+  return OPTIONS.find((o) => o.shortcut.toLowerCase() === event.key.toLowerCase());
+}
+
 /** "+ New": one button, one menu with both things a workspace can hold (frame 14). */
-export function NewMenu() {
+export function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => void }) {
   const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
 
   const create = (kind: CreateKind) => {
     setOpen(false);
-    // TEMP: no create API yet. A whiteboard opens the demo board; projects have no page.
-    if (kind === "whiteboard") void navigate({ to: "/board" });
+    onCreate(kind);
   };
 
-  // The shortcuts shown on each row work while the menu is open.
+  // While the menu is open, its handler below takes the key (and marks it handled).
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    const option = OPTIONS.find((o) => o.shortcut.toLowerCase() === event.key.toLowerCase());
+    const option = shortcutOption(event);
     if (option) {
       event.preventDefault();
       create(option.kind);
     }
   };
 
+  // The same shortcuts anywhere on the page, unless the user is typing or a dialog is open.
+  const onCreateRef = useRef(onCreate);
+  useEffect(() => {
+    onCreateRef.current = onCreate;
+  });
+  useEffect(() => {
+    const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || isTyping(event.target)) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      const option = shortcutOption(event);
+      if (option) {
+        event.preventDefault();
+        onCreateRef.current(option.kind);
+      }
+    };
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => window.removeEventListener("keydown", onWindowKeyDown);
+  }, []);
+
   return (
     <Menu.Root open={open} onOpenChange={setOpen}>
-      <Menu.Trigger className="inline-flex h-11 w-[140px] shrink-0 items-center justify-center gap-2 border border-transparent bg-brand text-[15px] font-bold text-slate transition-colors duration-150 ease-standard select-none hover:bg-brand/80 data-popup-open:border-foreground">
+      <Menu.Trigger
+        title="New project (P) or whiteboard (B)"
+        className="inline-flex h-11 w-[140px] shrink-0 items-center justify-center gap-2 border border-transparent bg-brand text-[15px] font-bold text-slate transition-colors duration-150 ease-standard select-none hover:bg-brand/80 data-popup-open:border-foreground"
+      >
         <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />
         New
       </Menu.Trigger>
@@ -62,6 +91,7 @@ export function NewMenu() {
                   <Menu.Item
                     key={option.kind}
                     onClick={() => create(option.kind)}
+                    aria-keyshortcuts={option.shortcut}
                     className="flex h-18 cursor-default items-center gap-3.5 pr-2.5 pl-3 outline-none select-none data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
                   >
                     {option.kind === "project" ? <ProjectIcon /> : <WhiteboardIcon />}
@@ -100,7 +130,7 @@ function OptionIcon({ children }: { children: ReactNode }) {
 }
 
 /** A folder: tab behind, body in front. */
-function ProjectIcon() {
+export function ProjectIcon() {
   return (
     <OptionIcon>
       <rect x="4.5" y="0.5" width="30" height="9" className="fill-background" />
@@ -109,7 +139,7 @@ function ProjectIcon() {
   );
 }
 
-function WhiteboardIcon() {
+export function WhiteboardIcon() {
   return (
     <OptionIcon>
       <rect x="0.5" y="3.5" width="37" height="29" className="fill-ice" />
