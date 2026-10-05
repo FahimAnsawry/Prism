@@ -134,7 +134,7 @@ interface BaseElement {
   opacity: number;
   groupId?: string; locked?: boolean;
   role?: string;       // wireframe meaning: "button", "input", "card", ...
-  updatedBy: "user" | "claude";
+  updatedBy: "user" | "ai_agent";
   version: number;     // for conflict checks during sync
 }
 ```

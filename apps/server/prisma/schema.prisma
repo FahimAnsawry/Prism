@@ -34,6 +34,8 @@ model User {
 
   sessions Session[]
   accounts Account[]
+  projects Project[]
+  boards   Board[]
 
   @@map("user")
 }
@@ -88,4 +90,117 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+// ── Workspace: projects, boards and board elements ────────────────────────
+
+enum ElementType {
+  text
+  sticky
+  list
+  rect
+  ellipse
+  diamond
+  line
+  arrow
+  freehand
+  emoji
+  image
+  svg
+  chart
+  frame
+}
+
+enum StrokeStyle {
+  solid
+  dashed
+  dotted
+}
+
+// Who made the last change to an element.
+enum Author {
+  user
+  ai_agent
+}
+
+// A folder of boards on the dashboard.
+model Project {
+  id          String    @id @default(uuid())
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String    @default("Untitled project")
+  description String?
+  // Last change to the project or any of its boards ("edited 2h ago").
+  editedAt    DateTime  @default(now())
+  // Set = in the trash; hides the project and its boards.
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  boards Board[]
+
+  @@index([ownerId, editedAt(sort: Desc)])
+  @@map("project")
+}
+
+// One whiteboard. projectId = null means a standalone board.
+// ownerId must equal project.ownerId when projectId is set (checked in app code).
+model Board {
+  id           String    @id @default(uuid())
+  ownerId      String
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId    String?
+  project      Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name         String    @default("Untitled board")
+  description  String?
+  // S3 object key of the PNG preview shown on dashboard cards.
+  thumbnailKey String?
+  // Last content change (rename or any element change).
+  editedAt     DateTime  @default(now())
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  elements Element[]
+
+  @@index([ownerId, editedAt(sort: Desc)])
+  @@index([projectId, editedAt(sort: Desc)])
+  @@map("board")
+}
+
+// One drawn item (tools.md §7). Shared fields are columns; type-specific
+// data (text, points, bindings, chart data, S3 key, ...) lives in props.
+model Element {
+  boardId     String
+  board       Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  // crypto.randomUUID(), made by the client or by the MCP server.
+  id          String
+  type        ElementType
+  x           Float
+  y           Float
+  width       Float
+  height      Float
+  rotation    Float       @default(0)
+  // Float so an element can be placed between two layers without renumbering.
+  z           Float
+  stroke      String
+  fill        String?
+  strokeWidth Float
+  strokeStyle StrokeStyle @default(solid)
+  sketch      Boolean     @default(false)
+  opacity     Float       @default(1)
+  groupId     String?
+  locked      Boolean     @default(false)
+  role        String?
+  props       Json        @default("{}")
+  updatedBy   Author
+  // Sync conflict check: the higher version wins.
+  version     Int         @default(1)
+  // Tombstone, so a stale update can't bring a deleted element back.
+  deletedAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@id([boardId, id])
+  @@map("element")
 }
