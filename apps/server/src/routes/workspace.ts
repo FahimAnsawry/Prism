@@ -7,10 +7,10 @@ import {
   type ProjectSummary,
   type Workspace,
 } from "@prism/shared";
-import { Router, type Response } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
-import { Prisma } from "../db/generated/client.js";
+import { notFound, orNotFound, parseBody } from "../errors.js";
 import { requireUser } from "../session.js";
 
 /** How many board tiles a project card shows. */
@@ -82,17 +82,6 @@ function toProjectSummary({ _count, createdAt, editedAt, ...project }: ProjectRo
   };
 }
 
-/** Parses a request body, or sends a 400 with each field's first message and returns undefined. */
-function parseBody<T extends z.ZodType>(schema: T, body: unknown, res: Response) {
-  const result = schema.safeParse(body ?? {});
-  if (result.success) return result.data as z.infer<T>;
-  res.status(400).json({
-    error: result.error.issues[0]?.message ?? "Invalid request.",
-    fieldErrors: z.flattenError(result.error).fieldErrors,
-  });
-  return undefined;
-}
-
 /** A route param that must be a UUID; anything else can't match a row, so it reads as "not found". */
 function uuidParam(value: string | string[] | undefined) {
   const result = z.uuid().safeParse(value);
@@ -116,11 +105,6 @@ const BOARD_NOT_FOUND = "Board not found.";
 // query is a round trip to the database, so fewer queries is what makes these routes fast.
 // The project.editedAt bumps aren't in a transaction with the board write; if one fails, the
 // only cost is a stale "edited" time.
-
-/** Prisma's "no row matched the WHERE" error, from update/delete. */
-function isNotFound(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
-}
 
 /**
  * Marks the user's live project as edited. Returns false if it isn't theirs or doesn't exist,
@@ -162,8 +146,7 @@ workspaceRouter.get("/workspace", async (_req, res) => {
 });
 
 workspaceRouter.post("/projects", async (req, res) => {
-  const input = parseBody(createProjectSchema, req.body, res);
-  if (!input) return;
+  const input = parseBody(createProjectSchema, req.body);
 
   const project = await prisma.project.create({
     data: {
@@ -178,24 +161,18 @@ workspaceRouter.post("/projects", async (req, res) => {
 
 workspaceRouter.patch("/projects/:projectId", async (req, res) => {
   const projectId = uuidParam(req.params.projectId);
-  const input = parseBody(updateProjectSchema, req.body, res);
-  if (!input) return;
-  if (!projectId) {
-    res.status(404).json({ error: PROJECT_NOT_FOUND });
-    return;
-  }
+  const input = parseBody(updateProjectSchema, req.body);
+  if (!projectId) throw notFound(PROJECT_NOT_FOUND);
 
-  try {
-    const project = await prisma.project.update({
+  const project = await orNotFound(
+    prisma.project.update({
       where: { id: projectId, ...liveProjectWhere(res.locals.userId) },
       data: { name: input.name, description: input.description || null, editedAt: new Date() },
       select: projectSelect,
-    });
-    res.json(toProjectSummary(project));
-  } catch (error) {
-    if (!isNotFound(error)) throw error;
-    res.status(404).json({ error: PROJECT_NOT_FOUND });
-  }
+    }),
+    PROJECT_NOT_FOUND,
+  );
+  res.json(toProjectSummary(project));
 });
 
 /** Permanent: the project's boards and their elements are deleted with it (onDelete: Cascade). */
@@ -204,24 +181,19 @@ workspaceRouter.delete("/projects/:projectId", async (req, res) => {
   const { count } = projectId
     ? await prisma.project.deleteMany({ where: { id: projectId, ownerId: res.locals.userId } })
     : { count: 0 };
-  if (count === 0) {
-    res.status(404).json({ error: PROJECT_NOT_FOUND });
-    return;
-  }
+  if (count === 0) throw notFound(PROJECT_NOT_FOUND);
   res.json({ id: projectId });
 });
 
 workspaceRouter.post("/boards", async (req, res) => {
-  const input = parseBody(createBoardSchema, req.body, res);
-  if (!input) return;
+  const input = parseBody(createBoardSchema, req.body);
   const ownerId = res.locals.userId;
   const projectId = input.projectId || null;
   const editedAt = new Date();
 
   // A new board counts as an edit to its project; the bump is also the ownership check.
   if (projectId && !(await touchProject(ownerId, projectId, editedAt))) {
-    res.status(404).json({ error: PROJECT_NOT_FOUND });
-    return;
+    throw notFound(PROJECT_NOT_FOUND);
   }
 
   const board = await prisma.board.create({
@@ -245,18 +217,14 @@ workspaceRouter.get("/boards/:boardId", async (req, res) => {
         select: boardSelect,
       })
     : null;
-  if (!board) {
-    res.status(404).json({ error: BOARD_NOT_FOUND });
-    return;
-  }
+  if (!board) throw notFound(BOARD_NOT_FOUND);
   res.json(toBoardSummary(board));
 });
 
 /** Renames a board, changes its description, or moves it into, out of, or between projects. */
 workspaceRouter.patch("/boards/:boardId", async (req, res) => {
   const boardId = uuidParam(req.params.boardId);
-  const input = parseBody(updateBoardSchema, req.body, res);
-  if (!input) return;
+  const input = parseBody(updateBoardSchema, req.body);
   const ownerId = res.locals.userId;
 
   // Needed for the project it may be leaving.
@@ -266,17 +234,13 @@ workspaceRouter.patch("/boards/:boardId", async (req, res) => {
         select: { id: true, projectId: true },
       })
     : null;
-  if (!current) {
-    res.status(404).json({ error: BOARD_NOT_FOUND });
-    return;
-  }
+  if (!current) throw notFound(BOARD_NOT_FOUND);
 
   const projectId = input.projectId || null;
   const editedAt = new Date();
   // The project it joins and the one it leaves have both changed. Joining one also checks it's theirs.
   if (projectId && !(await touchProject(ownerId, projectId, editedAt))) {
-    res.status(404).json({ error: PROJECT_NOT_FOUND });
-    return;
+    throw notFound(PROJECT_NOT_FOUND);
   }
   const left = current.projectId !== projectId ? current.projectId : null;
 
@@ -295,21 +259,13 @@ workspaceRouter.patch("/boards/:boardId", async (req, res) => {
 workspaceRouter.delete("/boards/:boardId", async (req, res) => {
   const boardId = uuidParam(req.params.boardId);
   const ownerId = res.locals.userId;
-  if (!boardId) {
-    res.status(404).json({ error: BOARD_NOT_FOUND });
-    return;
-  }
+  if (!boardId) throw notFound(BOARD_NOT_FOUND);
 
-  try {
-    const { projectId } = await prisma.board.delete({
-      where: { id: boardId, ownerId },
-      select: { projectId: true },
-    });
-    // Losing a board counts as an edit to its project.
-    if (projectId) await touchProject(ownerId, projectId, new Date());
-    res.json({ id: boardId });
-  } catch (error) {
-    if (!isNotFound(error)) throw error;
-    res.status(404).json({ error: BOARD_NOT_FOUND });
-  }
+  const { projectId } = await orNotFound(
+    prisma.board.delete({ where: { id: boardId, ownerId }, select: { projectId: true } }),
+    BOARD_NOT_FOUND,
+  );
+  // Losing a board counts as an edit to its project.
+  if (projectId) await touchProject(ownerId, projectId, new Date());
+  res.json({ id: boardId });
 });
