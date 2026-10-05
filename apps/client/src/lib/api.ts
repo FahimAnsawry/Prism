@@ -27,7 +27,15 @@ type ErrorBody = { error?: string; fieldErrors?: Partial<Record<string, string[]
 export async function apiFetch<T>(
   path: string,
   schema: { parse: (data: unknown) => T },
-  { method = "GET", body }: { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown } = {},
+  {
+    method = "GET",
+    body,
+    headers,
+  }: {
+    method?: "GET" | "POST" | "PATCH" | "DELETE";
+    body?: unknown;
+    headers?: Record<string, string>;
+  } = {},
 ): Promise<T> {
   // A Blob (an uploaded file) goes as-is with its own type; anything else as JSON.
   const raw = body instanceof Blob;
@@ -36,10 +44,12 @@ export async function apiFetch<T>(
     response = await fetch(new URL(path, import.meta.env.VITE_SERVER_URL), {
       method,
       credentials: "include",
-      headers:
-        body === undefined
-          ? undefined
-          : { "Content-Type": raw ? body.type || "application/octet-stream" : "application/json" },
+      headers: {
+        ...headers,
+        ...(body !== undefined && {
+          "Content-Type": raw ? body.type || "application/octet-stream" : "application/json",
+        }),
+      },
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
     });
   } catch {

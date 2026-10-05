@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Prism**: _One idea broken into many views._
 
-A custom real-time whiteboard and wireframing tool. Claude Code will drive it through an MCP bridge (planned for later). `tools.md` is the product spec: the tools (§1), core engine pieces (§2), element data model (§7) and dependency rules (§8). Read the relevant section before building a feature.
+A custom real-time whiteboard and wireframing tool. AI editors (Claude Code, Codex, …) drive it through the remote MCP endpoint at `<server>/mcp`. `tools.md` is the product spec: the tools (§1), core engine pieces (§2), element data model (§7) and dependency rules (§8). Read the relevant section before building a feature.
 
 **Status:** the foundation is set up (workspaces, dependencies, config files) but there is **no source code yet**. The first coding task must create the entry points: `apps/client/index.html`, `apps/client/src/main.tsx`, `apps/client/src/routes/`, `apps/client/src/index.css` (Tailwind and the shadcn theme), `apps/client/src/lib/utils.ts` (`cn`), `apps/server/src/index.ts` and `packages/shared/src/index.ts`.
 
@@ -34,6 +34,15 @@ No test runner is configured yet.
 ## Architecture
 
 pnpm workspaces: `apps/client` (React SPA, static build), `apps/server` (Express + Socket.IO, long-running Node process), `packages/shared` (Zod schemas and types used by both).
+
+### AI editors (remote MCP endpoint)
+
+- `apps/server/src/mcp/` serves MCP (Streamable HTTP, `@modelcontextprotocol/server` v2) at `/mcp`, mounted before `express.json()`. Setup for users is one line: `claude mcp add --transport http prism <server>/mcp` (or `codex mcp add prism --url …`), then the editor signs in through the browser.
+- Sign-in is OAuth 2.1 from Better Auth's `jwt` + `mcp` + `cimd` plugins (`src/auth.ts`): discovery at `/.well-known/*` (routed to Better Auth), login on the web app's `/login` (the `oauthProviderClient` plugin continues the flow after sign-in) and consent on `/oauth/consent`. A `prism_…` personal access token in `Authorization: Bearer` also works (dashboard → Connect AI); only its SHA-256 is stored.
+- Tools (`mcp/tools.ts`) call server functions directly (`ai-actions.ts`, `routes/elements.ts`, `routes/workspace.ts`) as the signed-in user. Prompts `watch_edits` and `design_screen` show up as slash commands (`/mcp__prism__watch_edits`).
+- The OAuth tables' Prisma models were written by hand from `getAuthTables()` (Better Auth's CLI can't generate them: the plugin queries its tables at startup). Better Auth stores `json` fields as text and passes `null` for unset optional lists, so those lists are `Json?` columns and `src/db/auth-prisma.ts` maps `null` to a database NULL.
+- Element writes from any source go through `applyOps` in `apps/server/src/routes/elements.ts`, which the save route follows with `broadcastOps` (`apps/server/src/realtime.ts`): one `element:ops` Socket.IO event per save, skipping the tab that saved (`x-prism-socket` header). The browser applies a batch as one undo step (`remote` action in `board-model.ts`).
+- "Ask AI" requests (`edit_request` table): the browser creates them (`routes/ai.ts`); the `wait_for_edits` tool waits for and claims them and `complete_edit` finishes them (`ai-actions.ts`).
 
 ### How `@prism/shared` resolves (spans several files)
 

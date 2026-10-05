@@ -1,6 +1,7 @@
 import {
   ELEMENT_COLUMNS,
   saveElementsSchema,
+  SOCKET_ID_HEADER,
   type BoardElement,
   type ElementChanges,
   type ElementOp,
@@ -9,6 +10,7 @@ import express, { Router } from "express";
 import type { Prisma } from "../db/generated/client.js";
 import { prisma } from "../db/client.js";
 import { notFound, parseBody } from "../errors.js";
+import { broadcastOps } from "../realtime.js";
 import { requireUser } from "../session.js";
 import { BOARD_NOT_FOUND, liveBoardWhere, uuidParam } from "./board-access.js";
 
@@ -42,7 +44,7 @@ function mergeProps(current: unknown, changes: Props) {
 /** Optional columns: absent on the client means null/false in the table. */
 const columnDefaults = { groupId: null, locked: false, role: null };
 
-function toElement(row: ElementRow): BoardElement {
+export function toElement(row: ElementRow): BoardElement {
   const {
     boardId: _board,
     props,
@@ -60,12 +62,12 @@ function toElement(row: ElementRow): BoardElement {
 }
 
 /** The board if it's the user's and live; otherwise a 404. */
-async function ownedBoard(boardIdParam: string | string[] | undefined, ownerId: string) {
+export async function ownedBoard(boardIdParam: string | string[] | undefined, ownerId: string) {
   const boardId = uuidParam(boardIdParam);
   const board = boardId
     ? await prisma.board.findFirst({
         where: { id: boardId, ...liveBoardWhere(ownerId) },
-        select: { id: true, projectId: true },
+        select: { id: true, name: true, projectId: true },
       })
     : null;
   if (!board) throw notFound(BOARD_NOT_FOUND);
@@ -125,6 +127,56 @@ function writeFor(
   }
 }
 
+/**
+ * Applies a batch of create/update/delete ops in one transaction. Each op carries the element's
+ * next version; an op whose version isn't higher than the stored one is stale and skipped.
+ * Returns the ops that were applied (for broadcasting) and the ids of the stale ones.
+ */
+export async function applyOps(board: { id: string; projectId: string | null }, ops: ElementOp[]) {
+  const ids = [...new Set(ops.map((op) => (op.op === "create" ? op.element.id : op.id)))];
+  const rows = await prisma.element.findMany({
+    where: { boardId: board.id, id: { in: ids } },
+    select: { id: true, version: true, deletedAt: true, props: true },
+  });
+  const existing = new Map<string, Existing>(rows.map((row) => [row.id, row]));
+
+  const now = new Date();
+  const writes: Prisma.PrismaPromise<unknown>[] = [];
+  const applied: ElementOp[] = [];
+  const stale: string[] = [];
+  for (const op of ops) {
+    const id = op.op === "create" ? op.element.id : op.id;
+    const before = existing.get(id);
+    const write = writeFor(board.id, op, before, now);
+    if (!write) {
+      stale.push(id);
+      continue;
+    }
+    writes.push(write);
+    applied.push(op);
+    // Later ops in the same batch see this one's result.
+    const version = op.op === "create" ? op.element.version : op.version;
+    const props =
+      op.op === "update"
+        ? mergeProps(before?.props, split(op.changes as Record<string, unknown>).props)
+        : op.op === "create"
+          ? split(op.element as unknown as Record<string, unknown>).props
+          : before?.props;
+    existing.set(id, { id, version, deletedAt: op.op === "delete" ? now : null, props });
+  }
+
+  if (writes.length > 0) {
+    await prisma.$transaction([
+      ...writes,
+      prisma.board.update({ where: { id: board.id }, data: { editedAt: now } }),
+      ...(board.projectId
+        ? [prisma.project.update({ where: { id: board.projectId }, data: { editedAt: now } })]
+        : []),
+    ]);
+  }
+  return { applied, stale };
+}
+
 // Mounted before the app-wide express.json(), so the save route can take a larger body. Each
 // route checks the session itself: a router-level `use` would run for every /api request.
 export const elementsRouter = Router();
@@ -139,59 +191,18 @@ elementsRouter.get("/boards/:boardId/elements", requireUser, async (req, res) =>
   res.json({ elements: rows.map(toElement) });
 });
 
-/**
- * Applies a batch of create/update/delete ops in one transaction. Each op carries the element's
- * next version; an op whose version isn't higher than the stored one is stale and skipped.
- */
+/** Saves a batch of ops (see applyOps) and sends the applied ones to the board's other tabs. */
 elementsRouter.post(
   "/boards/:boardId/elements",
   requireUser,
   // Freehand strokes and big batches outgrow express.json()'s 100 KB default.
   express.json({ limit: "8mb" }),
   async (req, res) => {
-    const ownerId = res.locals.userId;
-    const board = await ownedBoard(req.params.boardId, ownerId);
+    const board = await ownedBoard(req.params.boardId, res.locals.userId);
     const { ops } = parseBody(saveElementsSchema, req.body);
-
-    const ids = [...new Set(ops.map((op) => (op.op === "create" ? op.element.id : op.id)))];
-    const rows = await prisma.element.findMany({
-      where: { boardId: board.id, id: { in: ids } },
-      select: { id: true, version: true, deletedAt: true, props: true },
-    });
-    const existing = new Map<string, Existing>(rows.map((row) => [row.id, row]));
-
-    const now = new Date();
-    const writes: Prisma.PrismaPromise<unknown>[] = [];
-    const stale: string[] = [];
-    for (const op of ops) {
-      const id = op.op === "create" ? op.element.id : op.id;
-      const before = existing.get(id);
-      const write = writeFor(board.id, op, before, now);
-      if (!write) {
-        stale.push(id);
-        continue;
-      }
-      writes.push(write);
-      // Later ops in the same batch see this one's result.
-      const version = op.op === "create" ? op.element.version : op.version;
-      const props =
-        op.op === "update"
-          ? mergeProps(before?.props, split(op.changes as Record<string, unknown>).props)
-          : op.op === "create"
-            ? split(op.element as unknown as Record<string, unknown>).props
-            : before?.props;
-      existing.set(id, { id, version, deletedAt: op.op === "delete" ? now : null, props });
-    }
-
-    if (writes.length > 0) {
-      await prisma.$transaction([
-        ...writes,
-        prisma.board.update({ where: { id: board.id }, data: { editedAt: now } }),
-        ...(board.projectId
-          ? [prisma.project.update({ where: { id: board.projectId }, data: { editedAt: now } })]
-          : []),
-      ]);
-    }
-    res.json({ applied: writes.length, stale });
+    const { applied, stale } = await applyOps(board, ops);
+    // The saving tab already has these; every other tab on the board gets them now.
+    broadcastOps(board.id, applied, req.get(SOCKET_ID_HEADER) || undefined);
+    res.json({ applied: applied.length, stale });
   },
 );

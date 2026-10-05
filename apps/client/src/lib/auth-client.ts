@@ -1,10 +1,26 @@
+import { oauthProviderClient } from "@better-auth/oauth-provider/client";
 import { redirect } from "@tanstack/react-router";
 import { createAuthClient } from "better-auth/react";
 import { SERVER_UNREACHABLE } from "./api";
 import { reportError } from "./errors";
 
 // Better Auth runs on the Express server; the client adds the /api/auth base path itself.
-export const authClient = createAuthClient({ baseURL: import.meta.env.VITE_SERVER_URL });
+// oauthProviderClient: when an AI editor's sign-in (MCP OAuth) sent the user to /login, it
+// passes the signed request along with the sign-in, and the server continues that flow.
+export const authClient = createAuthClient({
+  baseURL: import.meta.env.VITE_SERVER_URL,
+  plugins: [oauthProviderClient()],
+});
+
+/**
+ * Whether this page is part of an AI editor's sign-in: Better Auth sent the user here with a
+ * signed authorization request. Signing in then continues to the consent page (Better Auth's
+ * client follows that redirect), not to the dashboard.
+ */
+export function inOAuthFlow() {
+  const query = new URLSearchParams(window.location.search);
+  return query.has("sig") && query.has("client_id");
+}
 
 /** Absolute URL on this app. OAuth redirects come back from the server, so a bare path would resolve there. */
 export function appUrl(path: string) {
@@ -65,6 +81,7 @@ export async function requireSession() {
  * If the session can't be checked, the form still shows; submitting it then reports the problem.
  */
 export async function redirectIfSignedIn() {
+  if (inOAuthFlow()) return;
   let signedIn = false;
   try {
     signedIn = Boolean((await authClient.getSession()).data);

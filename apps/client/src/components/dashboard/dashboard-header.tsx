@@ -1,9 +1,10 @@
 import { useNavigate } from "@tanstack/react-router";
-import { LogOut } from "lucide-react";
-import { type RefObject, useEffect, useRef } from "react";
+import { LogOut, Sparkles } from "lucide-react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { PrismLogo } from "@/components/prism-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { authClient, runAuthAction } from "@/lib/auth-client";
+import { AiAccessDialog } from "./ai-access-dialog";
 
 /** Ctrl K (⌘K on macOS) jumps to search from anywhere on the dashboard. */
 function useSearchShortcut(input: RefObject<HTMLInputElement | null>) {
@@ -29,6 +30,7 @@ export function DashboardHeader({
   const searchRef = useRef<HTMLInputElement>(null);
   useSearchShortcut(searchRef);
   const navigate = useNavigate();
+  const [aiOpen, setAiOpen] = useState(false);
   // The route guard already loaded the session, so this is normally filled on first render.
   const user = authClient.useSession().data?.user;
 
@@ -59,6 +61,16 @@ export function DashboardHeader({
         </label>
 
         <div className="flex items-center gap-2.5 justify-self-end">
+          <button
+            type="button"
+            onClick={() => setAiOpen(true)}
+            title="Connect an AI editor (Claude Code, Codex…)"
+            className="flex h-9 items-center gap-2 border border-divider px-3 text-sm text-foreground transition-colors hover:text-ink"
+          >
+            <Sparkles aria-hidden="true" className="size-4" />
+            <span className="hidden md:inline">Connect AI</span>
+            <span className="sr-only md:hidden">Connect an AI editor</span>
+          </button>
           <ThemeToggle className="mr-2 size-9 border border-divider md:mr-4" />
           {/* Avatar only; name and email stay available to hover and screen readers. */}
           {user && (
@@ -92,6 +104,7 @@ export function DashboardHeader({
           </button>
         </div>
       </div>
+      <AiAccessDialog open={aiOpen} onOpenChange={setAiOpen} />
     </header>
   );
 }

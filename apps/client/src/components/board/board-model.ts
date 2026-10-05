@@ -1,7 +1,7 @@
 // Board elements and the editor reducer. Field names follow tools.md §7 (the schema lives in
 // @prism/shared); history keeps whole snapshots, one per user action.
 
-import type { BoardElement, ElementType } from "@prism/shared";
+import type { BoardElement, ElementOp, ElementType } from "@prism/shared";
 import { isHandwriting } from "./fonts";
 import { updateBindings } from "./geometry";
 import { fitTextBox } from "./text-layout";
@@ -143,6 +143,8 @@ export type BoardAction =
   | { type: "finishEdit"; id: string; before: BoardElement[] }
   | { type: "delete"; ids: string[] }
   | { type: "layer"; ids: string[]; move: LayerMove }
+  /** Ops saved by another tab or an AI editor: one history step per batch. */
+  | { type: "remote"; ops: ElementOp[] }
   | { type: "undo" }
   | { type: "redo" };
 
@@ -194,6 +196,36 @@ function isEmpty(el: BoardElement) {
   if (el.type === "text") return !el.text?.trim();
   if (el.type === "list") return !el.items?.some((item) => item.text.trim());
   return false;
+}
+
+const opId = (op: ElementOp) => (op.op === "create" ? op.element.id : op.id);
+
+/**
+ * `elements` with sync ops applied: a create adds (or replaces) the element, an update merges its
+ * changes (null clears a field, except `fill`, where null means no fill) and a delete removes it.
+ * Ops for elements that aren't there are skipped. Versions are the caller's to check.
+ */
+export function applyOps(elements: BoardElement[], ops: ElementOp[]): BoardElement[] {
+  if (ops.length === 0) return elements;
+  const byId = new Map(elements.map((el) => [el.id, el]));
+  for (const op of ops) {
+    if (op.op === "create") {
+      byId.set(op.element.id, op.element);
+    } else if (op.op === "update") {
+      const el = byId.get(op.id);
+      if (!el) continue;
+      const next: Record<string, unknown> = { ...el, version: op.version };
+      for (const [key, value] of Object.entries(op.changes)) {
+        if (value === undefined) continue;
+        if (value === null && key !== "fill") delete next[key];
+        else next[key] = value;
+      }
+      byId.set(op.id, next as BoardElement);
+    } else {
+      byId.delete(op.id);
+    }
+  }
+  return [...byId.values()];
 }
 
 export function boardReducer(state: BoardState, action: BoardAction): BoardState {
@@ -287,6 +319,16 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
       }
       const renumbered = next.map((el, z) => (el.z === z ? el : { ...el, z }));
       return commit(state, state.elements, renumbered);
+    }
+
+    case "remote": {
+      if (action.ops.length === 0) return state;
+      const touched = new Set(action.ops.filter((op) => op.op !== "delete").map(opId));
+      // Text an AI editor wrote is measured here, like typed text.
+      const next = applyOps(state.elements, action.ops).map((el) =>
+        touched.has(el.id) ? fitTextBox(el) : el,
+      );
+      return keepSelection(commit(state, state.elements, updateBindings(next)));
     }
 
     case "undo": {

@@ -3,7 +3,11 @@ import express from "express";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
 import { catchProcessErrors, errorHandler, notFoundHandler } from "./errors.js";
+import { mcpRouter } from "./mcp/index.js";
+import { attachRealtime } from "./realtime.js";
+import { aiRouter } from "./routes/ai.js";
 import { elementsRouter } from "./routes/elements.js";
+import { tokensRouter } from "./routes/tokens.js";
 import { fileRouter, uploadRouter } from "./routes/uploads.js";
 import { workspaceRouter } from "./routes/workspace.js";
 
@@ -20,6 +24,11 @@ app.use(cors({ origin: clientUrl, credentials: true }));
 
 // Better Auth reads the raw request body, so it must be mounted before express.json()
 app.all("/api/auth/*splat", toNodeHandler(auth));
+// OAuth discovery for MCP clients (authorization server and protected resource metadata).
+app.get("/.well-known/*splat", toNodeHandler(auth));
+
+// The remote MCP endpoint for AI editors (Claude Code, Codex, …). Reads its own body.
+app.use(mcpRouter);
 
 // Uploaded images and SVGs, served publicly by unguessable key (tools.md §1, tools 15 and 17).
 app.use(fileRouter);
@@ -30,6 +39,9 @@ app.use("/api", elementsRouter);
 
 app.use(express.json());
 
+// AI editors (the MCP bridge) and the browser's "Ask AI" box; personal access tokens.
+app.use("/api", aiRouter);
+app.use("/api", tokensRouter);
 app.use("/api", workspaceRouter);
 
 // Unknown /api paths. Requests reach it through workspaceRouter, so signed-out ones get a 401 first.
@@ -38,6 +50,9 @@ app.use("/api", notFoundHandler);
 // Express 5 sends thrown errors and rejected handler promises here.
 app.use(errorHandler);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Prism server listening on http://localhost:${port}`);
 });
+
+// Socket.IO shares the HTTP server: live element updates for open board tabs.
+attachRealtime(server, clientUrl);

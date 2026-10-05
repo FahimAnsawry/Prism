@@ -38,6 +38,8 @@ import {
 import { clampFontPx, fontPx, resetMeasurements } from "./text-layout";
 
 const SHAPES: ElementType[] = ["rect", "ellipse", "diamond"];
+/** The corner radius "Round" sets, in px. */
+const ROUND_RADIUS = 12;
 
 /** Which element types each property applies to (tools.md §3). Unlisted ones apply to all. */
 const APPLIES_TO: Partial<Record<keyof BoardElement, ElementType[]>> = {
@@ -47,6 +49,7 @@ const APPLIES_TO: Partial<Record<keyof BoardElement, ElementType[]>> = {
   strokeWidth: [...SHAPES, "line", "arrow", "freehand"],
   strokeStyle: [...SHAPES, "line", "arrow"],
   sketch: [...SHAPES, "line", "arrow"],
+  radius: ["rect", "frame"],
   font: ["text", "sticky", "list"],
   fontSize: ["text", "sticky", "list"],
   fontSizePx: ["text", "sticky", "list"],
@@ -93,6 +96,7 @@ export function PropertiesPanel({
   const widthEl = source("strokeWidth");
   const styleEl = source("strokeStyle");
   const sketchEl = source("sketch");
+  const radiusEl = source("radius");
   const textEl = source("font");
   const chartEl = elements.length === 1 && first.type === "chart" ? first : undefined;
   const width = widthEl
@@ -216,6 +220,18 @@ export function PropertiesPanel({
                   options={["solid", "dashed", "dotted"]}
                   value={styleEl.strokeStyle}
                   onChange={(strokeStyle) => onChange({ strokeStyle })}
+                />
+              </Row>
+            )}
+
+            {radiusEl && (
+              <Row label="Corners">
+                <Segmented
+                  options={["sharp", "round"] as const}
+                  value={radiusEl.radius ? "round" : "sharp"}
+                  onChange={(corners) =>
+                    onChange({ radius: corners === "round" ? ROUND_RADIUS : 0 })
+                  }
                 />
               </Row>
             )}
@@ -680,7 +696,12 @@ function Segmented<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div className={cn("grid gap-1", options.length === 4 ? "grid-cols-4" : "grid-cols-3")}>
+    <div
+      className={cn(
+        "grid gap-1",
+        options.length === 4 ? "grid-cols-4" : options.length === 2 ? "grid-cols-2" : "grid-cols-3",
+      )}
+    >
       {options.map((option) => (
         <button
           key={option}

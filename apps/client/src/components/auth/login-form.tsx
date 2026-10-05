@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { ctaVariants } from "@/components/cta";
 import { Button } from "@/components/ui/button";
-import { authClient, authErrorMessage, runAuthAction } from "@/lib/auth-client";
+import { authClient, authErrorMessage, inOAuthFlow, runAuthAction } from "@/lib/auth-client";
 import { rememberLastSignIn } from "@/lib/last-sign-in";
 import { FormError, FormField } from "./form-field";
 import { OrDivider, SocialSignIn } from "./social-sign-in";
@@ -34,6 +34,8 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
       return;
     }
     rememberLastSignIn("email");
+    // An AI editor's sign-in continues on its own (Better Auth's client follows the redirect).
+    if (inOAuthFlow()) return;
     await navigate({ to: "/dashboard" });
   };
 
@@ -46,6 +48,8 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
         New to Prism?{" "}
         <Link
           to="/signup"
+          // Keeps an AI editor's sign-in request, so it continues after sign-up.
+          search={(prev) => prev}
           className="text-foreground underline underline-offset-[3px] transition-colors hover:text-ink"
         >
           Create an account

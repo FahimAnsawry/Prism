@@ -132,6 +132,8 @@ const propFields = {
   endBinding: elementRef.nullable().optional(),
   // image, svg: the uploaded file, served at /uploads/<assetKey>
   assetKey: z.string().max(200).optional(),
+  // rect, frame: corner radius in px (capped at half the shorter side when drawn)
+  radius: z.number().min(0).max(10_000).nullable().optional(),
   // chart
   chart: chartDataSchema.optional(),
 };

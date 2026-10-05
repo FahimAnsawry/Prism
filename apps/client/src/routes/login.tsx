@@ -5,9 +5,12 @@ import { redirectIfSignedIn } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Log in - Prism" }] }),
-  // Better Auth sends failed Google/GitHub sign-ins back here with ?error=<code>
-  validateSearch: (search: Record<string, unknown>): { error?: string } =>
-    typeof search["error"] === "string" ? { error: search["error"] } : {},
+  // Better Auth sends failed Google/GitHub sign-ins back here with ?error=<code>. Everything
+  // else is kept as-is: an AI editor's sign-in arrives with a signed query (see inOAuthFlow).
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { error?: string } & Record<string, unknown> =>
+    typeof search["error"] === "string" ? { ...search, error: search["error"] } : search,
   beforeLoad: redirectIfSignedIn,
   component: LoginPage,
 });

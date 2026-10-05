@@ -5,6 +5,7 @@ import {
   updateBoardStyleSchema,
   updateProjectSchema,
   type BoardSummary,
+  type CreateBoardInput,
   type ProjectSummary,
   type Workspace,
 } from "@prism/shared";
@@ -114,8 +115,7 @@ export const workspaceRouter = Router();
 workspaceRouter.use(requireUser);
 
 /** Everything the dashboard shows: live projects and every live board. */
-workspaceRouter.get("/workspace", async (_req, res) => {
-  const ownerId = res.locals.userId;
+export async function loadWorkspace(ownerId: string): Promise<Workspace> {
   const [projects, boards] = await Promise.all([
     prisma.project.findMany({
       where: liveProjectWhere(ownerId),
@@ -128,12 +128,50 @@ workspaceRouter.get("/workspace", async (_req, res) => {
       select: boardSelect,
     }),
   ]);
+  return { projects: projects.map(toProjectSummary), boards: boards.map(toBoardSummary) };
+}
 
-  const workspace: Workspace = {
-    projects: projects.map(toProjectSummary),
-    boards: boards.map(toBoardSummary),
-  };
-  res.json(workspace);
+/** A new board, standalone or in one of the owner's live projects. */
+export async function createBoard(ownerId: string, input: CreateBoardInput) {
+  const projectId = input.projectId || null;
+  const editedAt = new Date();
+
+  // A new board counts as an edit to its project; the bump is also the ownership check.
+  if (projectId && !(await touchProject(ownerId, projectId, editedAt))) {
+    throw notFound(PROJECT_NOT_FOUND);
+  }
+
+  const board = await prisma.board.create({
+    data: {
+      ownerId,
+      projectId,
+      name: input.name,
+      description: input.description || null,
+      editedAt,
+    },
+    select: boardSelect,
+  });
+  return toBoardSummary(board);
+}
+
+/** The owner's live board, or a 404. */
+export async function getBoardSummary(
+  ownerId: string,
+  boardIdParam: string | string[] | undefined,
+) {
+  const boardId = uuidParam(boardIdParam);
+  const board = boardId
+    ? await prisma.board.findFirst({
+        where: { id: boardId, ...liveBoardWhere(ownerId) },
+        select: boardSelect,
+      })
+    : null;
+  if (!board) throw notFound(BOARD_NOT_FOUND);
+  return toBoardSummary(board);
+}
+
+workspaceRouter.get("/workspace", async (_req, res) => {
+  res.json(await loadWorkspace(res.locals.userId));
 });
 
 workspaceRouter.post("/projects", async (req, res) => {
@@ -178,38 +216,11 @@ workspaceRouter.delete("/projects/:projectId", async (req, res) => {
 
 workspaceRouter.post("/boards", async (req, res) => {
   const input = parseBody(createBoardSchema, req.body);
-  const ownerId = res.locals.userId;
-  const projectId = input.projectId || null;
-  const editedAt = new Date();
-
-  // A new board counts as an edit to its project; the bump is also the ownership check.
-  if (projectId && !(await touchProject(ownerId, projectId, editedAt))) {
-    throw notFound(PROJECT_NOT_FOUND);
-  }
-
-  const board = await prisma.board.create({
-    data: {
-      ownerId,
-      projectId,
-      name: input.name,
-      description: input.description || null,
-      editedAt,
-    },
-    select: boardSelect,
-  });
-  res.status(201).json(toBoardSummary(board));
+  res.status(201).json(await createBoard(res.locals.userId, input));
 });
 
 workspaceRouter.get("/boards/:boardId", async (req, res) => {
-  const boardId = uuidParam(req.params.boardId);
-  const board = boardId
-    ? await prisma.board.findFirst({
-        where: { id: boardId, ...liveBoardWhere(res.locals.userId) },
-        select: boardSelect,
-      })
-    : null;
-  if (!board) throw notFound(BOARD_NOT_FOUND);
-  res.json(toBoardSummary(board));
+  res.json(await getBoardSummary(res.locals.userId, req.params.boardId));
 });
 
 /** Renames a board, changes its description, or moves it into, out of, or between projects. */

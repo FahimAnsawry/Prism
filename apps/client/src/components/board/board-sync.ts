@@ -1,16 +1,21 @@
-// Loading and saving a board's elements. Saves are debounced: after a pause the editor's elements
-// are compared with what the server last accepted, and the difference goes out as one batch of
-// create / update / delete ops, each carrying the element's next version (the higher one wins).
+// Loading, saving and live-syncing a board's elements. Saves are debounced: after a pause the
+// editor's elements are compared with what the server last accepted, and the difference goes out
+// as one batch of create / update / delete ops, each carrying the element's next version (the
+// higher one wins). Ops that other tabs and AI editors save arrive over Socket.IO.
 
 import {
   type BoardElement,
   boardElementsSchema,
+  type EditRequest,
   type ElementOp,
   saveElementsResultSchema,
+  SOCKET_ID_HEADER,
 } from "@prism/shared";
 import { queryOptions } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { getSocket } from "@/lib/realtime";
+import { applyOps } from "./board-model";
 
 const elementsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}/elements`;
 
@@ -29,8 +34,11 @@ const RETRY_DELAY = 4_000;
 
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 
-/** Fields that never travel as changes. */
-const IGNORED = new Set(["id", "version", "type"]);
+/** Fields that never travel as changes (`updatedBy` is set on every op instead). */
+const IGNORED = new Set(["id", "version", "type", "updatedBy"]);
+
+const opId = (op: ElementOp) => (op.op === "create" ? op.element.id : op.id);
+const opVersion = (op: ElementOp) => (op.op === "create" ? op.element.version : op.version);
 
 function sameValue(a: unknown, b: unknown) {
   if (a === b) return true;
@@ -88,8 +96,9 @@ function diff(
 }
 
 /**
- * Keeps the server in step with `elements`. Returns the save status for the top bar, and a flush
- * for leaving the board.
+ * Keeps the server in step with `elements`. Returns the save status for the top bar, and
+ * `receive` / `resync` for ops saved elsewhere: they record those ops as saved and return the
+ * ones that are new, for the editor to apply.
  */
 export function useBoardSaver(boardId: string, initial: BoardElement[], elements: BoardElement[]) {
   const saved = useRef(new Map(initial.map((el) => [el.id, el])));
@@ -117,20 +126,27 @@ export function useBoardSaver(boardId: string, initial: BoardElement[], elements
     setRequest("saving");
     const run = (async () => {
       try {
+        const socketId = getSocket().id;
         const result = await apiFetch(elementsPath(boardId), saveElementsResultSchema, {
           method: "POST",
           body: { ops },
+          // So the server doesn't echo this tab's own save back to it.
+          headers: socketId ? { [SOCKET_ID_HEADER]: socketId } : undefined,
         });
         for (const op of ops) {
-          versions.current.set(
-            op.op === "create" ? op.element.id : op.id,
-            op.op === "create" ? op.element.version : op.version,
-          );
+          const id = opId(op);
+          versions.current.set(id, Math.max(versions.current.get(id) ?? 0, opVersion(op)));
         }
         if (result.stale.length > 0) {
           console.warn("[Prism] The server had newer versions of", result.stale);
         }
-        saved.current = new Map(snapshot.map((el) => [el.id, el]));
+        // Only what this save sent: ops that arrived meanwhile stay recorded as saved.
+        const sent = new Map(snapshot.map((el) => [el.id, el]));
+        for (const op of ops) {
+          const el = sent.get(opId(op));
+          if (el) saved.current.set(el.id, el);
+          else saved.current.delete(opId(op));
+        }
         setSavedElements(snapshot);
         setRequest("idle");
       } catch (error) {
@@ -176,6 +192,40 @@ export function useBoardSaver(boardId: string, initial: BoardElement[], elements
     };
   }, [flush]);
 
+  /** Records ops saved elsewhere; returns the ones newer than what this tab has. */
+  const receive = useCallback((ops: ElementOp[]) => {
+    const fresh = ops.filter((op) => opVersion(op) > (versions.current.get(opId(op)) ?? 0));
+    if (fresh.length === 0) return fresh;
+    for (const op of fresh) versions.current.set(opId(op), opVersion(op));
+    const next = applyOps([...saved.current.values()], fresh);
+    saved.current = new Map(next.map((el) => [el.id, el]));
+    return fresh;
+  }, []);
+
+  /**
+   * Catches up with the server's elements after (re)joining the board, when ops may have been
+   * missed: newer elements come in whole, and elements the server no longer has are deleted.
+   */
+  const resync = useCallback(
+    (server: BoardElement[]) => {
+      const ops: ElementOp[] = [];
+      const ids = new Set<string>();
+      for (const el of server) {
+        ids.add(el.id);
+        if (el.version > (versions.current.get(el.id) ?? 0)) {
+          ops.push({ op: "create", element: el });
+        }
+      }
+      for (const id of saved.current.keys()) {
+        if (!ids.has(id)) {
+          ops.push({ op: "delete", id, version: (versions.current.get(id) ?? 0) + 1 });
+        }
+      }
+      return receive(ops);
+    },
+    [receive],
+  );
+
   const status: SaveStatus =
     request === "error"
       ? "error"
@@ -184,5 +234,58 @@ export function useBoardSaver(boardId: string, initial: BoardElement[], elements
         : elements === savedElements
           ? "saved"
           : "unsaved";
-  return status;
+  return { status, receive, resync };
+}
+
+export interface RealtimeHandlers {
+  /** Ops another tab or an AI editor saved on this board. */
+  onOps: (ops: ElementOp[]) => void;
+  /** Joined (or rejoined after a disconnect): time to catch up on missed changes. */
+  onJoined: () => void;
+  /** An "Ask AI" request on this board was created or changed status. */
+  onEdit: (request: EditRequest) => void;
+}
+
+/** Joins the board's Socket.IO room for as long as the board is open. */
+export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
+  const latest = useRef(handlers);
+  useEffect(() => {
+    latest.current = handlers;
+  });
+
+  useEffect(() => {
+    const socket = getSocket();
+    const join = () => {
+      socket.emit("board:join", boardId, (ok) => {
+        if (ok) latest.current.onJoined();
+      });
+    };
+    const onOps = (payload: { boardId: string; ops: ElementOp[] }) => {
+      if (payload.boardId === boardId) latest.current.onOps(payload.ops);
+    };
+    const onEdit = (request: EditRequest) => {
+      if (request.boardId === boardId) latest.current.onEdit(request);
+    };
+    socket.on("connect", join);
+    socket.on("element:ops", onOps);
+    socket.on("edit:update", onEdit);
+    if (socket.connected) join();
+    return () => {
+      socket.off("connect", join);
+      socket.off("element:ops", onOps);
+      socket.off("edit:update", onEdit);
+      socket.emit("board:leave", boardId);
+    };
+  }, [boardId]);
+}
+
+/** Tells the server what this tab has selected, so AI editors can read it (get_selection). */
+export function reportSelection(boardId: string, elementIds: string[]) {
+  const socket = getSocket();
+  if (socket.connected) socket.emit("selection:set", { boardId, elementIds });
+}
+
+/** The board's elements as the server has them now (for a resync). */
+export function fetchBoardElements(boardId: string) {
+  return apiFetch(elementsPath(boardId), boardElementsSchema).then((data) => data.elements);
 }

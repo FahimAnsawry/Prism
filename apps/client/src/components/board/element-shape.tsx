@@ -60,6 +60,8 @@ function Shape({ el }: { el: BoardElement }) {
   // A transparent fill keeps the inside clickable when the fill is "none".
   const fill = el.fill ? displayColor(el.fill) : "transparent";
   const { x, y, width, height } = el;
+  // Corner radius, at most half the shorter side (SVG clamps it per axis, which distorts).
+  const radius = Math.min(el.radius ?? 0, Math.abs(width) / 2, Math.abs(height) / 2);
 
   switch (el.type) {
     case "rect":
@@ -90,7 +92,15 @@ function Shape({ el }: { el: BoardElement }) {
         );
       }
       return el.type === "rect" ? (
-        <rect x={x} y={y} width={width} height={height} {...stroke} style={{ fill, stroke: ink }} />
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          rx={radius || undefined}
+          {...stroke}
+          style={{ fill, stroke: ink }}
+        />
       ) : (
         <polygon points={polygon} {...stroke} style={{ fill, stroke: ink }} />
       );
@@ -288,6 +298,7 @@ function Shape({ el }: { el: BoardElement }) {
           y={y}
           width={width}
           height={height}
+          rx={radius || undefined}
           className="fill-card"
           style={{ stroke: "var(--chrome)" }}
         />

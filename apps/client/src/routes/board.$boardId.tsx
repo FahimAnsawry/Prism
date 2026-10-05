@@ -1,4 +1,4 @@
-import { type BoardElement, type BoardSummary, SVG_TYPE } from "@prism/shared";
+import { type BoardElement, type BoardSummary, type ElementOp, SVG_TYPE } from "@prism/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { type RefObject, useCallback, useEffect, useReducer, useRef, useState } from "react";
@@ -10,9 +10,16 @@ import {
   sanitizeSvg,
   uploadAsset,
 } from "@/components/board/assets";
+import { AskAiBox } from "@/components/board/ask-ai-box";
 import { BoardCanvas } from "@/components/board/board-canvas";
 import { boardReducer, initialBoardState, newElement } from "@/components/board/board-model";
-import { boardElementsQuery, useBoardSaver } from "@/components/board/board-sync";
+import {
+  boardElementsQuery,
+  fetchBoardElements,
+  reportSelection,
+  useBoardRealtime,
+  useBoardSaver,
+} from "@/components/board/board-sync";
 import { BoardToolbar } from "@/components/board/board-toolbar";
 import { BoardTopBar } from "@/components/board/board-top-bar";
 import { type Camera, fitCamera, screenToWorld, stepZoom, zoomAt } from "@/components/board/camera";
@@ -34,6 +41,7 @@ import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
 import { ErrorScreen } from "@/components/feedback/error-page";
 import { NotFoundPage } from "@/components/feedback/not-found-page";
 import { PrismLoader } from "@/components/feedback/prism-loader";
+import { boardEditsQuery, useMergeEdit } from "@/lib/ai";
 import { ApiError, apiErrorMessage } from "@/lib/api";
 import { requireSession } from "@/lib/auth-client";
 import { isTyping } from "@/lib/keyboard";
@@ -134,11 +142,65 @@ function BoardEditor({
   const size = useElementSize(viewport);
   const pointer = useRef<Point | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const saveStatus = useBoardSaver(boardId, initial, state.elements);
+  const { status: saveStatus, receive, resync } = useBoardSaver(boardId, initial, state.elements);
   const updateStyle = useUpdateBoardStyle(boardId);
   const customFonts = board?.customFonts;
   const selected = state.elements.filter((el) => state.selectedIds.includes(el.id));
   const editingEl = editing && state.elements.find((el) => el.id === editing.id);
+
+  // ── Live sync and AI editors ─────────────────────────────────────────────
+
+  /** Applies ops saved elsewhere (another tab, an AI editor) as one undo step. */
+  const applyRemote = useCallback(
+    (ops: ElementOp[]) => {
+      const fresh = receive(ops);
+      if (fresh.length === 0) return;
+      dispatch({ type: "remote", ops: fresh });
+      // Text an AI editor wrote may use fonts this tab hasn't loaded yet.
+      for (const op of fresh) {
+        const el = op.op === "create" ? op.element : op.op === "update" ? op.changes : null;
+        if (el?.font)
+          void loadFont(el.font, typeof el.fontWeight === "number" ? el.fontWeight : 400);
+      }
+    },
+    [receive],
+  );
+
+  const edits = useQuery(boardEditsQuery(boardId));
+  const mergeEdit = useMergeEdit(boardId);
+  // Statuses show for unfinished requests, and for ones made or changed while the board is open.
+  const [seenEdits, setSeenEdits] = useState<ReadonlySet<string>>(() => new Set());
+  const recentEdits = (edits.data ?? []).filter(
+    (r) => r.status === "pending" || r.status === "working" || seenEdits.has(r.id),
+  );
+
+  /** The selection as last reported, re-sent after a reconnect. */
+  const selection = useRef(state.selectedIds);
+  useBoardRealtime(boardId, {
+    onOps: applyRemote,
+    onJoined: () => {
+      reportSelection(boardId, selection.current);
+      void edits.refetch();
+      fetchBoardElements(boardId).then(
+        (server) => {
+          const fresh = resync(server);
+          if (fresh.length > 0) dispatch({ type: "remote", ops: fresh });
+        },
+        (error: unknown) => console.warn("[Prism] Couldn't catch up with the board:", error),
+      );
+    },
+    onEdit: (request) => {
+      mergeEdit(request);
+      setSeenEdits((ids) => (ids.has(request.id) ? ids : new Set(ids).add(request.id)));
+    },
+  });
+
+  // AI editors read the selection (get_selection) from the server.
+  useEffect(() => {
+    selection.current = state.selectedIds;
+    const timer = setTimeout(() => reportSelection(boardId, state.selectedIds), 150);
+    return () => clearTimeout(timer);
+  }, [boardId, state.selectedIds]);
 
   const zoomIn = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
   const zoomOut = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
@@ -484,11 +546,15 @@ function BoardEditor({
           />
         )}
 
+        {!editing && (
+          <AskAiBox boardId={boardId} selectedIds={state.selectedIds} requests={recentEdits} />
+        )}
+
         {notice && (
           <p
             role={notice.error ? "alert" : "status"}
             className={
-              "absolute bottom-6 left-1/2 z-20 -translate-x-1/2 border px-4 py-2 text-sm " +
+              "absolute top-6 left-1/2 z-20 -translate-x-1/2 border px-4 py-2 text-sm " +
               (notice.error
                 ? "border-coral bg-card text-ink"
                 : "border-chrome bg-card text-foreground")
