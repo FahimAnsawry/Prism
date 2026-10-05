@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { googleFontNameSchema } from "./elements.js";
 
 // Dashboard API: the request bodies the server validates and the responses the client parses.
 
@@ -34,6 +35,22 @@ export const updateBoardSchema = createBoardSchema.extend({
   projectId: z.union([z.uuid(), z.literal("")]),
 });
 
+/** Custom swatches and added Google fonts a board keeps for everyone who edits it. */
+export const CUSTOM_COLORS_MAX = 16;
+export const CUSTOM_FONTS_MAX = 20;
+
+export const hexColorSchema = z.string().regex(/^#[0-9a-f]{6}$/, "Use a hex color like #1a2b3c.");
+
+export const boardStyleSchema = z.object({
+  /** Newest first. */
+  customColors: z.array(hexColorSchema).max(CUSTOM_COLORS_MAX),
+  /** Google Fonts family names, newest first. */
+  customFonts: z.array(googleFontNameSchema).max(CUSTOM_FONTS_MAX),
+});
+
+/** Replaces either list (or both). */
+export const updateBoardStyleSchema = boardStyleSchema.partial();
+
 /** Reply to a delete. */
 export const deletedSchema = z.object({ id: z.uuid() });
 
@@ -51,6 +68,7 @@ export const boardSummarySchema = z.object({
   projectId: z.uuid().nullable(),
   /** Live (non-deleted) elements on the board. */
   itemCount: z.number().int(),
+  ...boardStyleSchema.shape,
   ...timestamps,
 });
 
@@ -74,6 +92,8 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type CreateBoardInput = z.infer<typeof createBoardSchema>;
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 export type UpdateBoardInput = z.infer<typeof updateBoardSchema>;
+export type BoardStyle = z.infer<typeof boardStyleSchema>;
+export type UpdateBoardStyleInput = z.infer<typeof updateBoardStyleSchema>;
 export type BoardSummary = z.infer<typeof boardSummarySchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;

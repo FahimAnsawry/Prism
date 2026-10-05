@@ -29,13 +29,18 @@ export async function apiFetch<T>(
   schema: { parse: (data: unknown) => T },
   { method = "GET", body }: { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown } = {},
 ): Promise<T> {
+  // A Blob (an uploaded file) goes as-is with its own type; anything else as JSON.
+  const raw = body instanceof Blob;
   let response: Response;
   try {
     response = await fetch(new URL(path, import.meta.env.VITE_SERVER_URL), {
       method,
       credentials: "include",
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers:
+        body === undefined
+          ? undefined
+          : { "Content-Type": raw ? body.type || "application/octet-stream" : "application/json" },
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(SERVER_UNREACHABLE, 0);

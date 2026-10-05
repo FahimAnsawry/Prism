@@ -2,16 +2,17 @@ import {
   createBoardSchema,
   createProjectSchema,
   updateBoardSchema,
+  updateBoardStyleSchema,
   updateProjectSchema,
   type BoardSummary,
   type ProjectSummary,
   type Workspace,
 } from "@prism/shared";
 import { Router } from "express";
-import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { notFound, orNotFound, parseBody } from "../errors.js";
 import { requireUser } from "../session.js";
+import { BOARD_NOT_FOUND, liveBoardWhere, uuidParam } from "./board-access.js";
 
 /** How many board tiles a project card shows. */
 const PROJECT_TILES = 3;
@@ -24,6 +25,8 @@ const boardSelect = {
   name: true,
   description: true,
   projectId: true,
+  customColors: true,
+  customFonts: true,
   createdAt: true,
   editedAt: true,
   _count: { select: { elements: { where: { deletedAt: null } } } },
@@ -49,6 +52,8 @@ type BoardRow = {
   name: string;
   description: string | null;
   projectId: string | null;
+  customColors: string[];
+  customFonts: string[];
   createdAt: Date;
   editedAt: Date;
   _count: { elements: number };
@@ -82,24 +87,10 @@ function toProjectSummary({ _count, createdAt, editedAt, ...project }: ProjectRo
   };
 }
 
-/** A route param that must be a UUID; anything else can't match a row, so it reads as "not found". */
-function uuidParam(value: string | string[] | undefined) {
-  const result = z.uuid().safeParse(value);
-  return result.success ? result.data : undefined;
-}
-
 /** The user's live projects. */
 const liveProjectWhere = (ownerId: string) => ({ ownerId, archivedAt: null });
 
-/** The user's live boards. A board in an archived project is hidden along with it. */
-const liveBoardWhere = (ownerId: string) => ({
-  ownerId,
-  archivedAt: null,
-  OR: [{ projectId: null }, { project: { archivedAt: null } }],
-});
-
 const PROJECT_NOT_FOUND = "That project no longer exists.";
-const BOARD_NOT_FOUND = "Board not found.";
 
 // Writes check ownership in their own WHERE clause instead of a separate lookup first: every
 // query is a round trip to the database, so fewer queries is what makes these routes fast.
@@ -252,6 +243,23 @@ workspaceRouter.patch("/boards/:boardId", async (req, res) => {
     }),
     left && touchProject(ownerId, left, editedAt),
   ]);
+  res.json(toBoardSummary(board));
+});
+
+/** Replaces the board's custom swatches and/or added fonts. Not a content edit, so editedAt stays. */
+workspaceRouter.patch("/boards/:boardId/style", async (req, res) => {
+  const boardId = uuidParam(req.params.boardId);
+  const input = parseBody(updateBoardStyleSchema, req.body);
+  if (!boardId) throw notFound(BOARD_NOT_FOUND);
+  const { count } = await prisma.board.updateMany({
+    where: { id: boardId, ...liveBoardWhere(res.locals.userId) },
+    data: input,
+  });
+  if (count === 0) throw notFound(BOARD_NOT_FOUND);
+  const board = await prisma.board.findUniqueOrThrow({
+    where: { id: boardId },
+    select: boardSelect,
+  });
   res.json(toBoardSummary(board));
 });
 

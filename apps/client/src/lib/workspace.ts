@@ -8,6 +8,7 @@ import {
   type CreateProjectInput,
   type ProjectSummary,
   type UpdateBoardInput,
+  type UpdateBoardStyleInput,
   type UpdateProjectInput,
   type Workspace,
 } from "@prism/shared";
@@ -170,6 +171,35 @@ export function useDeleteBoard() {
         const next = { ...w, boards: w.boards.filter((b) => b.id !== id) };
         return board ? removeFromProject(next, board.projectId, id) : next;
       });
+    },
+  });
+}
+
+/**
+ * Saves a board's custom swatches and added fonts. The board query updates first, so the panel
+ * shows the change at once; a failed save puts the previous lists back.
+ */
+export function useUpdateBoardStyle(boardId: string) {
+  const queryClient = useQueryClient();
+  const key = boardQuery(boardId).queryKey;
+  return useMutation({
+    mutationKey: ["board", "style", boardId],
+    mutationFn: (input: UpdateBoardStyleInput) =>
+      apiFetch(`${boardPath(boardId)}/style`, boardSummarySchema, { method: "PATCH", body: input }),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<BoardSummary>(key);
+      if (previous) queryClient.setQueryData<BoardSummary>(key, { ...previous, ...input });
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    },
+    onSuccess: (board) => {
+      queryClient.setQueryData(key, board);
+      queryClient.setQueryData<Workspace>(WORKSPACE_KEY, (w) =>
+        w ? { ...w, boards: w.boards.map((b) => (b.id === board.id ? board : b)) } : w,
+      );
     },
   });
 }

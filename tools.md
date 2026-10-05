@@ -11,9 +11,9 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | # | Tool | Shortcut | What it does | Creates element | How to build it (no library) | Difficulty |
 |---|------|----------|--------------|-----------------|------------------------------|------------|
 | 1 | Select | `V` | Click to select, drag to move, Shift+click to add, drag on empty canvas for marquee select | none | Pointer events (`pointerdown/move/up`) + hit-testing on each element's bounds; marquee = rectangle intersection test; selection box with 8 resize handles + 1 rotate handle | Medium |
-| 2 | Hand (pan) | `H` / hold `Space` | Drag to pan the canvas | none | Camera `{x, y, zoom}` applied as one SVG `transform` on a root `<g>`; wheel = pan, Ctrl+wheel = zoom toward the cursor | Easy |
+| 2 | Hand (pan) | `H` / hold `Space` / right- or middle-drag | Drag to pan the canvas; right- and middle-drag and `Space`+drag pan with any tool | none | Camera `{x, y, zoom}` applied as one SVG `transform` on a root `<g>`; wheel (and Ctrl+wheel, a trackpad pinch) = zoom toward the cursor | Easy |
 | 3 | Text | `T` | Click to place a text box and type | `text` | While editing: an HTML `<textarea>` positioned over the canvas. After: SVG `<text>` with one `<tspan>` per line. Measure width with a hidden `<canvas>` `measureText()` for wrapping | Hard |
-| 4 | Handwriting | `W` | Text in the Caveat handwriting font | `text` (font: `caveat`) | Same as Text with `font: "caveat"`; load Caveat with CSS `@font-face` (self-host the font file) | Easy (after Text) |
+| 4 | Handwriting | `W` | Text in a handwriting font (Caveat by default) | `text` (font: `caveat`) | Same as Text with `font: "caveat"`; the panel's "Handwriting style" switches between Caveat, Nanum Pen, Kalam, Patrick Hand and Indie Flower (all self-hosted with `@fontsource`) | Easy (after Text) |
 | 5 | Sticky note | `N` | Click to drop a colored note with text | `sticky` | `<rect>` + wrapped text; shrink the font size step by step until the text fits; 6 color presets | Medium |
 | 6 | Bullet list | `B` | Text box that starts as a bulleted list | `list` | Store items as `{text, indent}[]`; render "•" + text per line; Enter = new item, Tab = indent, Shift+Tab = outdent | Medium |
 | 7 | Rectangle | `R` | Drag to draw a box; Shift = square | `rect` | `<rect rx>` from drag start/end points | Easy |
@@ -51,15 +51,19 @@ Shortcuts are suggestions based on common whiteboard conventions.
 
 | Property | Applies to | Values |
 |----------|-----------|--------|
-| Stroke color | all shapes, lines, arrows, freehand | Palette of 8 + custom (`<input type="color">`) |
-| Fill color | rect, ellipse, diamond, sticky | Palette + none |
+| Stroke color | all shapes, lines, arrows, freehand; **text color** on text, handwriting and lists (bullets included) | Palette of 8 + the board's saved colors + "+" |
+| Fill color | rect, ellipse, diamond, sticky | Palette + the board's saved colors + "+" + none |
 | Stroke width | shapes, lines, arrows, freehand | Thin / medium / thick |
 | Stroke style | shapes, lines, arrows | Solid / dashed / dotted (`stroke-dasharray`) |
 | **Sketch mode** | rect, ellipse, diamond, line, arrow | On / off: hand-drawn look from the sketch renderer (section 2) |
-| Font | text, sticky, list | Sans / Caveat (handwriting) / Mono |
-| Font size | text, sticky, list | S / M / L / XL |
+| Font | text, sticky, list | Dropdown grouped Sans (DM Sans, Inter, Roboto, Open Sans, Montserrat, Poppins, Lato) / Serif (Playfair Display, Merriweather) / Mono (Space Mono) / Handwriting (Caveat, Nanum Pen, Kalam, Patrick Hand, Indie Flower), all self-hosted; plus Google fonts added to the board by name (stored as `font: "gf:<Family>"`) |
+| Font weight | text, sticky, list | The weights the chosen font ships (Light 300 to Black 900), each previewed as "Aa" in itself; stored as a number in `fontWeight` (older `"normal"` / `"bold"` still read as 400 / 700). Switching fonts moves the weight to the new font's closest one. Added Google fonts offer Regular / Bold |
+| Handwriting style | text, sticky, list using a handwriting font | The five handwriting fonts, each previewed in itself |
+| Font size | text, sticky, list | S / M / L / XL presets, or a free size in px (6–400, stored as `fontSizePx`, which wins over the preset). Dragging a text or list by a corner or the top / bottom handle scales its text freely (the opposite corner stays put); the left / right handles change the wrap width. Group resizes from a corner scale text too |
 | Text align | text, sticky, list | Left / center / right (`text-anchor`) |
 | Opacity | all | 0–100% |
+
+**Custom colors.** "+" opens a hand-built picker (saturation/brightness square, hue strip, editable hex accepting `#RGB`/`#RRGGBB`). "Add" applies the color and saves it to the board (`board.customColors`, newest first, max 16, removable), so everyone editing the board sees the same swatches. Added Google fonts are saved the same way (`board.customFonts`, max 20) via `PATCH /api/boards/:id/style`. Fonts load (`document.fonts.load`) before text using them is measured.
 | Layer order | all | Bring forward / send backward / to front / to back (change `z`) |
 | Lock | all | Locked elements can't be moved or edited |
 
@@ -78,6 +82,9 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | Move | Arrow keys (`Shift` = 10px) | |
 | Resize | Drag handles (`Shift` = keep ratio) | |
 | Rotate | Drag rotate handle (`Shift` = 15° steps) | Store `rotation` in degrees |
+| Zoom in / out / 100% / fit | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` / `Shift+1` | Around the middle of the view; fit never zooms past 100% |
+| Collapse / show toolbar | `Ctrl+B` | Folds the tool rail down to the active tool; tool shortcuts still work. The choice is remembered |
+| Shortcut list | `?` | A dialog with every tool key, canvas gesture and editing shortcut |
 
 ---
 

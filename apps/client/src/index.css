@@ -20,6 +20,7 @@
 @import "@fontsource/space-mono/400.css"; /* labels, eyebrows, code */
 @import "@fontsource/space-mono/700.css";
 @import "@fontsource/nanum-pen-script"; /* handwritten annotations */
+@import "@fontsource/caveat"; /* the board's handwriting font (Handwriting tool) */
 
 @custom-variant dark (&:is(.dark *));
 
@@ -29,6 +30,7 @@
   --font-mono:
     "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --font-hand: "Nanum Pen Script", "Comic Sans MS", cursive;
+  --font-caveat: "Caveat", "Comic Sans MS", cursive;
 
   /* ========================================================================
      Colors

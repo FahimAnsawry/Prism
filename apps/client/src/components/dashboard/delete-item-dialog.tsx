@@ -11,10 +11,13 @@ export function DeleteItemDialog({
   open,
   item,
   onOpenChange,
+  onDeleted,
 }: {
   open: boolean;
   item: WorkspaceItem | null;
   onOpenChange: (open: boolean) => void;
+  /** Runs once the server has deleted it, e.g. to leave the deleted board's page. */
+  onDeleted?: () => void;
 }) {
   const deleteProject = useDeleteProject();
   const deleteBoard = useDeleteBoard();
@@ -55,7 +58,14 @@ export function DeleteItemDialog({
       tone="danger"
       pending={mutation.isPending}
       error={mutation.isError ? apiErrorMessage(mutation.error) : undefined}
-      onConfirm={() => mutation.mutate(item.id, { onSuccess: () => changeOpen(false) })}
+      onConfirm={() =>
+        mutation.mutate(item.id, {
+          onSuccess: () => {
+            changeOpen(false);
+            onDeleted?.();
+          },
+        })
+      }
     />
   );
 }

@@ -3,6 +3,8 @@ import express from "express";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
 import { catchProcessErrors, errorHandler, notFoundHandler } from "./errors.js";
+import { elementsRouter } from "./routes/elements.js";
+import { fileRouter, uploadRouter } from "./routes/uploads.js";
 import { workspaceRouter } from "./routes/workspace.js";
 
 catchProcessErrors();
@@ -18,6 +20,13 @@ app.use(cors({ origin: clientUrl, credentials: true }));
 
 // Better Auth reads the raw request body, so it must be mounted before express.json()
 app.all("/api/auth/*splat", toNodeHandler(auth));
+
+// Uploaded images and SVGs, served publicly by unguessable key (tools.md §1, tools 15 and 17).
+app.use(fileRouter);
+
+// These parse their own bodies (raw files, large element batches), so they come before express.json().
+app.use("/api", uploadRouter);
+app.use("/api", elementsRouter);
 
 app.use(express.json());
 

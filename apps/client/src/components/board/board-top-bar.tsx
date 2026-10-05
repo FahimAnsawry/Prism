@@ -1,3 +1,4 @@
+import type { BoardSummary } from "@prism/shared";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -13,34 +14,48 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
+import { BoardTitle } from "./board-title";
+import type { SaveStatus } from "./board-sync";
+
+const SAVE_LABELS: Record<SaveStatus, string> = {
+  saved: "Saved",
+  unsaved: "Saving…",
+  saving: "Saving…",
+  error: "Couldn't save · retrying",
+};
 
 const iconButton =
   "flex size-8 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background disabled:pointer-events-none";
 
 export function BoardTopBar({
-  name,
+  board,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
+  saveStatus,
   grid,
   onToggleGrid,
   zoom,
   onZoomOut,
   onZoomIn,
   onZoomReset,
+  onShowShortcuts,
 }: {
-  name: string;
+  /** Undefined while it loads. */
+  board: BoardSummary | undefined;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  saveStatus: SaveStatus;
   grid: boolean;
   onToggleGrid: () => void;
   zoom: number;
   onZoomOut: () => void;
   onZoomIn: () => void;
   onZoomReset: () => void;
+  onShowShortcuts: () => void;
 }) {
   return (
     <header className="relative z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-divider bg-card pr-4 pl-4 md:pr-6">
@@ -52,9 +67,7 @@ export function BoardTopBar({
         >
           <ArrowLeft aria-hidden="true" className="size-[18px]" />
         </Link>
-        <h1 className="ml-3 min-w-0 truncate text-[15px] leading-[21px] font-bold text-ink">
-          {name}
-        </h1>
+        <BoardTitle board={board} />
         <div className="ml-6 flex shrink-0 gap-1">
           <button
             type="button"
@@ -77,6 +90,15 @@ export function BoardTopBar({
             <Redo2 aria-hidden="true" className="size-[18px]" />
           </button>
         </div>
+        <p
+          role="status"
+          className={cn(
+            "ml-3 hidden font-mono text-3xs whitespace-nowrap uppercase lg:block",
+            saveStatus === "error" ? "text-coral" : "text-muted-foreground",
+          )}
+        >
+          {SAVE_LABELS[saveStatus]}
+        </p>
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
@@ -123,6 +145,18 @@ export function BoardTopBar({
             <Plus aria-hidden="true" className="size-[18px]" />
           </button>
         </div>
+
+        {/* Shortcuts are for a keyboard and mouse, so phones don't get the button. */}
+        <button
+          type="button"
+          aria-label="Keyboard shortcuts (?)"
+          aria-haspopup="dialog"
+          title="Keyboard shortcuts · ?"
+          onClick={onShowShortcuts}
+          className="hidden size-9 items-center justify-center border border-chrome bg-card font-mono text-sm font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-background sm:flex"
+        >
+          ?
+        </button>
 
         <ThemeToggle className="size-9 border border-chrome bg-card" />
 
