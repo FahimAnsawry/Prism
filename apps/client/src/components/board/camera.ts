@@ -1,4 +1,4 @@
-import type { BoardElement } from "@prism/shared";
+import { type BoardElement, hiddenMindNodes } from "@prism/shared";
 
 // The canvas draws its world inside one <g> with `translate(x, y) scale(zoom)` and
 // `transform-origin: center` (the viewport's center). We keep that origin, so the default view
@@ -38,9 +38,16 @@ export function zoomAt(camera: Camera, zoom: number, offset: { x: number; y: num
   };
 }
 
-/** Frames every element in a `width` × `height` viewport, never past 100%. Empty boards reset. */
-export function fitCamera(elements: BoardElement[], width: number, height: number): Camera {
-  if (elements.length === 0 || width <= 0 || height <= 0) return { x: 0, y: 0, zoom: 1 };
+/**
+ * Frames every shown element in a `width` × `height` viewport, never past 100%. An empty board
+ * gets 100% with the world's origin in the middle, where new content goes.
+ */
+export function fitCamera(all: BoardElement[], width: number, height: number): Camera {
+  if (width <= 0 || height <= 0) return { x: 0, y: 0, zoom: 1 };
+  // Nodes inside folded mind map branches aren't drawn, so they don't count.
+  const hidden = hiddenMindNodes(all);
+  const elements = all.filter((el) => !hidden.has(el.id));
+  if (elements.length === 0) return { x: width / 2, y: height / 2, zoom: 1 };
 
   // An arrow's width and height can be negative (it points up or left).
   const xs = elements.flatMap((el) => [el.x, el.x + el.width]);

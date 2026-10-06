@@ -44,7 +44,7 @@ const projectSelect = {
     where: liveBoards,
     orderBy: { editedAt: "desc" },
     take: PROJECT_TILES,
-    select: { id: true, name: true },
+    select: { id: true, name: true, editedAt: true, _count: boardSelect._count },
   },
 } as const;
 
@@ -67,7 +67,7 @@ type ProjectRow = {
   createdAt: Date;
   editedAt: Date;
   _count: { boards: number };
-  boards: { id: string; name: string }[];
+  boards: { id: string; name: string; editedAt: Date; _count: { elements: number } }[];
 };
 
 function toBoardSummary({ _count, createdAt, editedAt, ...board }: BoardRow): BoardSummary {
@@ -79,10 +79,22 @@ function toBoardSummary({ _count, createdAt, editedAt, ...board }: BoardRow): Bo
   };
 }
 
-function toProjectSummary({ _count, createdAt, editedAt, ...project }: ProjectRow): ProjectSummary {
+function toProjectSummary({
+  _count,
+  createdAt,
+  editedAt,
+  boards,
+  ...project
+}: ProjectRow): ProjectSummary {
   return {
     ...project,
     boardCount: _count.boards,
+    boards: boards.map((board) => ({
+      id: board.id,
+      name: board.name,
+      itemCount: board._count.elements,
+      editedAt: board.editedAt.toISOString(),
+    })),
     createdAt: createdAt.toISOString(),
     editedAt: editedAt.toISOString(),
   };

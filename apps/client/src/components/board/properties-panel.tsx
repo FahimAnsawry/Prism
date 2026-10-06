@@ -3,6 +3,13 @@ import {
   type ChartKind,
   CUSTOM_COLORS_MAX,
   CUSTOM_FONTS_MAX,
+  LETTER_SPACING_MAX,
+  MIND_TEXT_COLOR,
+  LETTER_SPACING_MIN,
+  LINE_HEIGHT_MAX,
+  LINE_HEIGHT_MIN,
+  type Shadow,
+  SHADOW_TYPES,
   type UpdateBoardStyleInput,
 } from "@prism/shared";
 import { Plus, X } from "lucide-react";
@@ -25,6 +32,7 @@ import {
 } from "./board-model";
 import { ColorPicker } from "./color-picker";
 import { FontPicker } from "./font-picker";
+import { IconGrid } from "./icon-picker";
 import {
   BUILTIN_FONT_IDS,
   fontInfo,
@@ -35,27 +43,50 @@ import {
   WEIGHT_NAMES,
   weightOf,
 } from "./fonts";
-import { clampFontPx, fontPx, resetMeasurements } from "./text-layout";
+import {
+  clampFontPx,
+  fontPx,
+  letterSpacingOf,
+  lineHeightOf,
+  resetMeasurements,
+} from "./text-layout";
 
 const SHAPES: ElementType[] = ["rect", "ellipse", "diamond"];
+/** Text colors offered for mind map nodes: dark and white first, for light and dark fills. */
+const MIND_TEXT_COLORS = ["#3d3b4f", "#ffffff", ...STROKE_COLORS.slice(1, 7)];
 /** The corner radius "Round" sets, in px. */
 const ROUND_RADIUS = 12;
+/** The shadow choices, and the preset each one stores. */
+const SHADOW_OPTIONS = ["none", "small", "medium", "large"] as const;
+type ShadowOption = (typeof SHADOW_OPTIONS)[number];
+const SHADOW_PRESETS: Record<ShadowOption, Shadow | null> = {
+  none: null,
+  small: "sm",
+  medium: "md",
+  large: "lg",
+};
 
 /** Which element types each property applies to (tools.md §3). Unlisted ones apply to all. */
 const APPLIES_TO: Partial<Record<keyof BoardElement, ElementType[]>> = {
-  // On text and lists the stroke is the text color.
-  stroke: [...SHAPES, "line", "arrow", "freehand", "text", "list"],
-  fill: [...SHAPES, "sticky"],
-  strokeWidth: [...SHAPES, "line", "arrow", "freehand"],
+  // On text and lists the stroke is the text color; on icons, the icon's color.
+  // On mind map nodes it's the branch color, and the fill is the node's background.
+  stroke: [...SHAPES, "line", "arrow", "freehand", "text", "list", "icon", "mindnode"],
+  fill: [...SHAPES, "sticky", "icon", "mindnode"],
+  strokeWidth: [...SHAPES, "line", "arrow", "freehand", "icon", "mindnode"],
   strokeStyle: [...SHAPES, "line", "arrow"],
   sketch: [...SHAPES, "line", "arrow"],
   radius: ["rect", "frame"],
-  font: ["text", "sticky", "list"],
-  fontSize: ["text", "sticky", "list"],
-  fontSizePx: ["text", "sticky", "list"],
-  fontWeight: ["text", "sticky", "list"],
+  shadow: [...SHADOW_TYPES],
+  font: ["text", "sticky", "list", "mindnode"],
+  fontSize: ["text", "sticky", "list", "mindnode"],
+  fontSizePx: ["text", "sticky", "list", "mindnode"],
+  fontWeight: ["text", "sticky", "list", "mindnode"],
   textAlign: ["text", "sticky", "list"],
+  lineHeight: ["text", "sticky", "list"],
+  letterSpacing: ["text", "sticky", "list"],
+  textColor: ["mindnode"],
   chart: ["chart"],
+  icon: ["icon"],
 };
 
 const applies = (key: keyof BoardElement, el: BoardElement) =>
@@ -75,6 +106,7 @@ export function PropertiesPanel({
   customFonts,
   onChange,
   onLayer,
+  onTidy,
   onStyleChange,
 }: {
   /** The selection; changes go to each element they apply to. */
@@ -84,6 +116,8 @@ export function PropertiesPanel({
   customFonts: string[];
   onChange: (changes: Partial<BoardElement>) => void;
   onLayer: (move: LayerMove) => void;
+  /** Lays out the mind map a node belongs to again. */
+  onTidy: (id: string) => void;
   onStyleChange: (style: UpdateBoardStyleInput) => void;
 }) {
   const first = elements[0];
@@ -97,19 +131,32 @@ export function PropertiesPanel({
   const styleEl = source("strokeStyle");
   const sketchEl = source("sketch");
   const radiusEl = source("radius");
+  const shadowEl = source("shadow");
   const textEl = source("font");
   const chartEl = elements.length === 1 && first.type === "chart" ? first : undefined;
+  const iconEl = source("icon");
   const width = widthEl
     ? (Object.keys(STROKE_WIDTHS) as (keyof typeof STROKE_WIDTHS)[]).find(
         (key) => STROKE_WIDTHS[key] === widthEl.strokeWidth,
       )
     : undefined;
   const title = elements.length === 1 ? elementLabel(first) : `${elements.length} items`;
-  // Sticky notes always have a color; only shapes can have no fill.
-  const onlySticky = !elements.some((el) => SHAPES.includes(el.type));
-  const onlyText = elements
-    .filter((el) => applies("stroke", el))
-    .every((el) => el.type === "text" || el.type === "list");
+  // Sticky notes always have a color; shapes and icons can have no fill.
+  const onlySticky = elements
+    .filter((el) => applies("fill", el))
+    .every((el) => el.type === "sticky");
+  const inked = elements.filter((el) => applies("stroke", el));
+  const onlyText = inked.every((el) => el.type === "text" || el.type === "list");
+  const onlyIcons = inked.every((el) => el.type === "icon");
+  const onlyMind = inked.every((el) => el.type === "mindnode");
+  const strokeLabel = onlyText
+    ? "Text color"
+    : onlyIcons
+      ? "Icon color"
+      : onlyMind
+        ? "Branch color"
+        : "Stroke color";
+  const mindEl = source("textColor");
   const font = textEl?.font ?? "sans";
 
   const addColor = (hex: string) =>
@@ -149,12 +196,12 @@ export function PropertiesPanel({
       </h2>
 
       <fieldset disabled={locked} className="contents">
-        {stroke || fill ? (
+        {stroke || fill || radiusEl || shadowEl ? (
           <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-2.5 pb-6">
             {stroke && (
-              <Row label={onlyText ? "Text color" : "Stroke"}>
+              <Row label={onlyText || onlyIcons || onlyMind ? strokeLabel : "Stroke"}>
                 <ColorChoices
-                  label={onlyText ? "Text color" : "Stroke color"}
+                  label={strokeLabel}
                   value={stroke.stroke}
                   presets={STROKE_COLORS}
                   custom={customColors}
@@ -236,6 +283,18 @@ export function PropertiesPanel({
               </Row>
             )}
 
+            {shadowEl && (
+              <Row label="Shadow">
+                <Segmented<ShadowOption>
+                  options={SHADOW_OPTIONS}
+                  value={SHADOW_OPTIONS.find(
+                    (option) => SHADOW_PRESETS[option] === (shadowEl.shadow ?? null),
+                  )}
+                  onChange={(option) => onChange({ shadow: SHADOW_PRESETS[option] })}
+                />
+              </Row>
+            )}
+
             {sketchEl && (
               <Toggle
                 label="Sketch mode"
@@ -310,13 +369,81 @@ export function PropertiesPanel({
                 />
               </div>
             </Row>
-            <Row label="Text align">
-              <Segmented<TextAlign>
-                options={["left", "center", "right"]}
-                value={textEl.textAlign ?? "left"}
-                onChange={(textAlign) => onChange({ textAlign })}
+            {source("lineHeight") && (
+              <div className="grid grid-cols-2 gap-3">
+                <Row label="Line height">
+                  <PercentInput
+                    key={textEl.id}
+                    label="Line height, in percent of the text size"
+                    value={Math.round(lineHeightOf(textEl) * 100)}
+                    min={Math.round(LINE_HEIGHT_MIN * 100)}
+                    max={Math.round(LINE_HEIGHT_MAX * 100)}
+                    step={5}
+                    onChange={(percent) => onChange({ lineHeight: percent / 100 })}
+                  />
+                </Row>
+                <Row label="Letter spacing">
+                  <PercentInput
+                    key={textEl.id}
+                    label="Letter spacing, in percent of the text size"
+                    value={Math.round(letterSpacingOf(textEl) * 100)}
+                    min={Math.round(LETTER_SPACING_MIN * 100)}
+                    max={Math.round(LETTER_SPACING_MAX * 100)}
+                    step={1}
+                    onChange={(percent) => onChange({ letterSpacing: percent / 100 })}
+                  />
+                </Row>
+              </div>
+            )}
+            {source("textAlign") && (
+              <Row label="Text align">
+                <Segmented<TextAlign>
+                  options={["left", "center", "right"]}
+                  value={textEl.textAlign ?? "left"}
+                  onChange={(textAlign) => onChange({ textAlign })}
+                />
+              </Row>
+            )}
+          </section>
+        )}
+
+        {mindEl && (
+          <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-4.5 pb-6">
+            <Row label="Text color">
+              <ColorChoices
+                label="Text color"
+                value={mindEl.textColor ?? MIND_TEXT_COLOR}
+                presets={MIND_TEXT_COLORS}
+                custom={customColors}
+                disabled={locked}
+                onPick={(textColor) => onChange({ textColor })}
+                onAdd={(hex) => {
+                  addColor(hex);
+                  onChange({ textColor: hex });
+                }}
+                onRemove={removeColor}
               />
             </Row>
+            <button
+              type="button"
+              onClick={() => onTidy(mindEl.id)}
+              className="h-8 bg-background font-mono text-2xs text-foreground transition-colors duration-150 ease-standard hover:bg-divider"
+            >
+              Tidy up the map
+            </button>
+          </section>
+        )}
+
+        {iconEl && (
+          <section className="flex flex-col border-b border-divider pt-4.5">
+            <p className="mb-3 px-4 font-mono text-3xs leading-[14px] text-muted-foreground uppercase">
+              Icon
+            </p>
+            <IconGrid
+              value={iconEl.icon ?? null}
+              onPick={(icon) => onChange({ icon })}
+              className="border-t border-divider"
+            />
           </section>
         )}
 
@@ -414,6 +541,71 @@ function FontPxInput({ value, onChange }: { value: number; onChange: (px: number
       />
       <span aria-hidden="true" className="font-mono text-3xs text-muted-foreground">
         px
+      </span>
+    </label>
+  );
+}
+
+/**
+ * A whole percentage typed in, or stepped with the arrow keys (`step`, ×5 with Shift). It commits
+ * on Enter or blur, kept within `min`–`max`.
+ */
+function PercentInput({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (percent: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  // A value changed elsewhere (another element, undo, an AI edit) replaces the draft.
+  const [shown, setShown] = useState(value);
+  if (value !== shown) {
+    setShown(value);
+    setDraft(String(value));
+  }
+  const commit = (percent: number) => {
+    const next = Math.min(max, Math.max(min, Math.round(percent)));
+    setDraft(String(next));
+    if (next !== value) onChange(next);
+  };
+  const typed = () => {
+    const percent = Number.parseInt(draft, 10);
+    if (Number.isNaN(percent)) setDraft(String(value));
+    else commit(percent);
+  };
+  return (
+    <label className="flex h-7 items-center border border-divider bg-background pr-1.5 focus-within:border-foreground">
+      <span className="sr-only">{label}</span>
+      <input
+        value={draft}
+        inputMode="numeric"
+        maxLength={4}
+        onChange={(event) => setDraft(event.target.value.replace(/[^0-9-]/g, ""))}
+        onBlur={typed}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            typed();
+          } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+            event.preventDefault();
+            const delta = step * (event.shiftKey ? 5 : 1) * (event.key === "ArrowUp" ? 1 : -1);
+            const current = Number.parseInt(draft, 10);
+            commit((Number.isNaN(current) ? value : current) + delta);
+          }
+        }}
+        className="h-full w-full min-w-0 bg-transparent px-1.5 text-right font-mono text-2xs text-foreground tabular-nums outline-none"
+      />
+      <span aria-hidden="true" className="font-mono text-3xs text-muted-foreground">
+        %
       </span>
     </label>
   );

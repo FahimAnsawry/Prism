@@ -1,5 +1,7 @@
 import { z } from "zod";
-import type { ElementOp } from "./elements.js";
+import type { BoardElement, ElementOp } from "./elements.js";
+import type { LayoutNode, LayoutOptions } from "./layout.js";
+import type { MindmapInput, MindmapOptions } from "./mindmap.js";
 
 // AI editors (Claude Code, Codex, … through the MCP endpoint in apps/server/src/mcp): personal
 // access tokens, "Ask AI" edit requests and the Socket.IO events.
@@ -62,11 +64,83 @@ export const WAIT_EDITS_MAX_SECONDS = 300;
 
 // ── Socket.IO events ───────────────────────────────────────────────────────
 
+// ── Board images (export_image) ────────────────────────────────────────────
+
+/** Longest side of an exported image unless a scale is asked for: what vision models read well. */
+export const EXPORT_IMAGE_DEFAULT_SIDE = 1568;
+/** Longest side an exported image can have. */
+export const EXPORT_IMAGE_MAX_SIDE = 4096;
+
+/** What a board tab should render: a frame, some elements, or (neither) the whole board. */
+export interface ExportImageRequest {
+  boardId: string;
+  /** The board as the server has it, so the image shows what was saved. */
+  elements: BoardElement[];
+  frameId?: string;
+  ids?: string[];
+  /** Image px per board px; by default the image fits EXPORT_IMAGE_DEFAULT_SIDE. */
+  scale?: number;
+}
+
+const boxSchema = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() });
+
+export const exportImageReplySchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    /** The image, base64-encoded. */
+    data: z.string().max(6_000_000),
+    mimeType: z.enum(["image/png", "image/jpeg"]),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    /** The board area shown, in board px. */
+    region: boxSchema,
+  }),
+  z.object({ ok: z.literal(false), error: z.string().max(500) }),
+]);
+
+export type ExportImageReply = z.infer<typeof exportImageReplySchema>;
+
+// ── Screen layout (create_screen) ──────────────────────────────────────────
+
+/** A layout tree for a board tab to lay out, measuring text with the board's own fonts. */
+export interface LayoutScreenRequest {
+  boardId: string;
+  root: LayoutNode;
+  options: LayoutOptions;
+}
+
+export const layoutScreenReplySchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    /** The elements to create (checked again by the server before saving). */
+    elements: z.array(z.record(z.string(), z.unknown())).max(5_000),
+  }),
+  z.object({ ok: z.literal(false), error: z.string().max(500) }),
+]);
+
+export type LayoutScreenReply = z.infer<typeof layoutScreenReplySchema>;
+
+/** Mind map nodes for a board tab to size with the board's fonts (create_mindmap). */
+export interface LayoutMindmapRequest {
+  boardId: string;
+  nodes: MindmapInput[];
+  options: MindmapOptions;
+}
+
 export interface ServerToClientEvents {
   /** Element ops another tab or an AI editor saved, in one batch (= one undo step). */
   "element:ops": (payload: { boardId: string; ops: ElementOp[] }) => void;
   /** An edit request was created or changed status. */
   "edit:update": (request: EditRequest) => void;
+  /** An AI editor wants to see part of the board: render it and reply with the image. */
+  "export:image": (request: ExportImageRequest, ack: (reply: ExportImageReply) => void) => void;
+  /** An AI editor's create_screen: lay the tree out with real text measurements and reply. */
+  "layout:screen": (request: LayoutScreenRequest, ack: (reply: LayoutScreenReply) => void) => void;
+  /** An AI editor's create_mindmap: size the nodes with real text measurements and reply. */
+  "layout:mindmap": (
+    request: LayoutMindmapRequest,
+    ack: (reply: LayoutScreenReply) => void,
+  ) => void;
 }
 
 export interface ClientToServerEvents {

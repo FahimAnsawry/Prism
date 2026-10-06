@@ -1,7 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { BoardPreview } from "./board-preview";
 import { ItemActionsMenu, type ItemAction } from "./item-actions-menu";
-import { CanvasPreview, ItemDate, KindBadge } from "./workspace-item-parts";
+import { ItemDate, KindBadge } from "./workspace-item-parts";
 import { itemMeta, type SortKey, type WorkspaceItem } from "./workspace-data";
 
 /** Project folders show three boards; the fourth slot counts the rest or stays an empty slot. */
@@ -20,7 +21,12 @@ export function WorkspaceCard({
     <>
       <div className="h-[175px] shrink-0 border-b border-divider">
         {item.kind === "board" ? (
-          <CanvasPreview empty={item.itemCount === 0} className="size-full" />
+          <BoardPreview
+            boardId={item.id}
+            itemCount={item.itemCount}
+            editedAt={item.editedAt}
+            className="size-full"
+          />
         ) : (
           <ProjectTiles item={item} />
         )}
@@ -110,7 +116,12 @@ function ProjectTiles({ item }: { item: Extract<WorkspaceItem, { kind: "project"
     <div className="grid size-full grid-cols-2 grid-rows-2 gap-2 p-2">
       {shown.map((board) => (
         <div key={board.id} className="relative min-h-0 border border-divider">
-          <CanvasPreview className="absolute inset-0" />
+          <BoardPreview
+            boardId={board.id}
+            itemCount={board.itemCount}
+            editedAt={board.editedAt}
+            className="absolute inset-0"
+          />
           <span className="absolute inset-x-0 top-0 truncate bg-card/85 px-2 py-1 text-[11px] leading-4 font-bold text-foreground">
             {board.name}
           </span>

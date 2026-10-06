@@ -11,9 +11,11 @@ import {
   type LucideIcon,
   Minus,
   MousePointer2,
+  Network,
   PenTool,
   Pencil,
   Smile,
+  Shapes,
   Square,
   StickyNote,
   Type,
@@ -34,9 +36,11 @@ export type ToolId =
   | "pencil"
   | "eraser"
   | "emoji"
+  | "icon"
   | "image"
   | "svg"
-  | "chart";
+  | "chart"
+  | "mindmap";
 
 export interface Tool {
   id: ToolId;
@@ -70,10 +74,12 @@ export const TOOL_GROUPS: Tool[][] = [
   ],
   [
     { id: "emoji", label: "Emoji", shortcut: "M", icon: Smile },
+    { id: "icon", label: "Icon", shortcut: "K", icon: Shapes },
     { id: "image", label: "Image", shortcut: "I", icon: Image },
     { id: "svg", label: "SVG", shortcut: "S", icon: FileCode },
     { id: "chart", label: "Chart", shortcut: "C", icon: ChartColumn },
   ],
+  [{ id: "mindmap", label: "Mind map", shortcut: "G", icon: Network }],
 ];
 
 export const TOOLS_BY_SHORTCUT = new Map(

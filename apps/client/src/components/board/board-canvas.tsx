@@ -1,4 +1,4 @@
-import type { BoardElement } from "@prism/shared";
+import { type BoardElement, hiddenMindNodes } from "@prism/shared";
 import {
   type Dispatch,
   type DragEvent,
@@ -13,7 +13,9 @@ import { cn } from "@/lib/utils";
 import { type BoardAction, type BoardState, byZ } from "./board-model";
 import { type Camera, screenToWorld, zoomAt } from "./camera";
 import { ElementShape } from "./element-shape";
+import { MindBranches, mindToggles, MindToggles, TOGGLE_RADIUS } from "./mind-branches";
 import {
+  distance,
   elementBounds,
   type Frame,
   handleAt,
@@ -41,6 +43,8 @@ const TOOL_CURSORS: Partial<Record<ToolId, string>> = {
   sticky: "cursor-copy",
   list: "cursor-copy",
   emoji: "cursor-copy",
+  icon: "cursor-copy",
+  mindmap: "cursor-copy",
   chart: "cursor-copy",
 };
 
@@ -52,6 +56,7 @@ export function BoardCanvas({
   camera,
   editingId,
   emoji,
+  icon,
   onCameraChange,
   onBorrowHand,
   onStartEditing,
@@ -69,6 +74,8 @@ export function BoardCanvas({
   editingId: string | null;
   /** The emoji the Emoji tool places. */
   emoji: string | null;
+  /** The Lucide icon the Icon tool places. */
+  icon: string | null;
   onCameraChange: (camera: Camera) => void;
   /** True while a right/middle drag or held Space pans, so the toolbar can show the Hand tool. */
   onBorrowHand: (borrowing: boolean) => void;
@@ -91,10 +98,17 @@ export function BoardCanvas({
   const [panning, setPanning] = useState(false);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   const [hoverCursor, setHoverCursor] = useState<string | undefined>();
+  /** The mind map node under the pointer: its fold toggle shows, as on a selected node. */
+  const [hoverMindId, setHoverMindId] = useState<string | null>(null);
   const spaceHeld = useHeldSpace();
   const { elements, selectedIds } = state;
-  const ordered = byZ(elements);
-  const selected = elements.filter((el) => selectedIds.includes(el.id));
+  // Nodes inside folded mind map branches aren't drawn, hit or selected.
+  const hidden = hiddenMindNodes(elements);
+  const ordered = byZ(elements).filter((el) => !hidden.has(el.id));
+  const selected = elements.filter((el) => selectedIds.includes(el.id) && !hidden.has(el.id));
+  const toggles = editingId
+    ? []
+    : mindToggles(elements, ordered, hoverMindId ? [...selectedIds, hoverMindId] : selectedIds);
   const frame = editingId ? null : selectionFrame(selected, camera.zoom);
 
   const borrowingHand = spaceHeld || panning;
@@ -156,6 +170,9 @@ export function BoardCanvas({
     finishTool: onToolDone,
     toWorld,
     emoji,
+    icon,
+    hidden,
+    toggles,
   };
 
   /** Right or middle drag pans with any tool; so does a left drag with the Hand tool or Space. */
@@ -203,6 +220,19 @@ export function BoardCanvas({
       return;
     }
     if (tool === "select") setHoverCursor(cursorAt(p));
+    setHoverMindId(tool === "select" ? mindHoverAt(p) : null);
+  };
+
+  /** A toggle under `p`; the toggles past a node's edge belong to that node. */
+  const toggleAt = (p: Point) => toggles.find((t) => distance(t, p) <= TOGGLE_RADIUS / camera.zoom);
+
+  /** The mind map node whose toggle should show for a pointer at `p`. */
+  const mindHoverAt = (p: Point) => {
+    // On its toggle the node stays hovered, so the toggle doesn't vanish on the way to it.
+    const toggle = toggleAt(p);
+    if (toggle) return toggle.id;
+    const hit = topHit(ordered, p, 6 / camera.zoom);
+    return hit?.type === "mindnode" ? hit.id : null;
   };
 
   const endPointer = (event: PointerEvent<SVGSVGElement>) => {
@@ -220,6 +250,7 @@ export function BoardCanvas({
   const cursorAt = (p: Point) => {
     const handle = handleAt(frame, p, camera.zoom);
     if (handle) return handleCursor(handle, frame?.rotation ?? 0);
+    if (toggleAt(p)) return "pointer";
     const hit = topHit(ordered, p, 6 / camera.zoom);
     if (!hit) return undefined;
     return hit.locked ? "default" : "move";
@@ -260,6 +291,7 @@ export function BoardCanvas({
       onPointerMove={onPointerMove}
       onPointerUp={endPointer}
       onPointerCancel={endPointer}
+      onPointerLeave={() => setHoverMindId(null)}
       onDoubleClick={onDoubleClick}
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes("Files")) event.preventDefault();
@@ -293,11 +325,15 @@ export function BoardCanvas({
       >
         {grid && <rect x="-8000" y="-8000" width="16000" height="16000" fill="url(#dot-grid)" />}
 
+        <MindBranches elements={ordered} />
+
         {ordered.map((el) => (
           <g key={el.id} data-id={el.id} opacity={overlay?.erasing?.has(el.id) ? 0.25 : undefined}>
             <ElementShape el={el} hidden={el.id === editingId} />
           </g>
         ))}
+
+        <MindToggles toggles={toggles} zoom={camera.zoom} />
 
         {overlay?.snapTarget && (
           <SnapHighlight

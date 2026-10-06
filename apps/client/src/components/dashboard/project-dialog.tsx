@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { ctaVariants } from "@/components/cta";
+import { BoardPreview } from "./board-preview";
 import { DeleteItemDialog } from "./delete-item-dialog";
 import { ItemActionsMenu, type ItemAction } from "./item-actions-menu";
 import { ItemDialog, type ItemDialogTarget } from "./item-dialog";
@@ -116,10 +117,16 @@ export function ProjectDialog({
                         params={{ boardId: board.id }}
                         className="-ml-2 flex min-w-0 flex-1 items-center gap-4 py-3 pr-2 pl-2 transition-colors duration-150 ease-standard hover:bg-background focus-visible:-outline-offset-2"
                       >
-                        <CanvasPreview
-                          empty={board.kind === "board" && board.itemCount === 0}
-                          className="h-12 w-20 shrink-0 border border-divider"
-                        />
+                        {board.kind === "board" ? (
+                          <BoardPreview
+                            boardId={board.id}
+                            itemCount={board.itemCount}
+                            editedAt={board.editedAt}
+                            className="h-12 w-20 shrink-0 border border-divider"
+                          />
+                        ) : (
+                          <CanvasPreview className="h-12 w-20 shrink-0 border border-divider" />
+                        )}
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] leading-[21px] font-bold text-foreground">
                             {board.name}

@@ -18,6 +18,8 @@ export const ELEMENT_TYPES = [
   "svg",
   "chart",
   "frame",
+  "icon",
+  "mindnode",
 ] as const;
 
 export const elementTypeSchema = z.enum(ELEMENT_TYPES);
@@ -68,8 +70,31 @@ export const fontWeightSchema = z.union([
 /** Bounds of a free text size in px. */
 export const FONT_PX_MIN = 6;
 export const FONT_PX_MAX = 400;
+/** Line height as a multiple of the text size (1.25 when unset). */
+export const LINE_HEIGHT_MIN = 0.5;
+export const LINE_HEIGHT_MAX = 3;
+/** Letter spacing in ems: a fraction of the text size added after each character (0 when unset). */
+export const LETTER_SPACING_MIN = -0.2;
+export const LETTER_SPACING_MAX = 1;
 export const textAlignSchema = z.enum(["left", "center", "right"]);
 export const chartKindSchema = z.enum(["bar", "line", "pie", "donut"]);
+/** A drop shadow preset: sm (subtle, e.g. inputs), md (cards), lg (menus, modals). */
+export const shadowSchema = z.enum(["sm", "md", "lg"]);
+/** The element types that draw a shadow; others ignore it. */
+export const SHADOW_TYPES: readonly ElementType[] = [
+  "rect",
+  "ellipse",
+  "diamond",
+  "frame",
+  "image",
+  "svg",
+  "chart",
+];
+/** A Lucide icon name in kebab case, e.g. "search" or "arrow-right" (https://lucide.dev/icons). */
+export const iconNameSchema = z
+  .string()
+  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+  .max(64);
 
 export const listItemSchema = z.object({
   text: z.string().max(2_000),
@@ -121,6 +146,8 @@ const propFields = {
   fontSizePx: z.number().min(FONT_PX_MIN).max(FONT_PX_MAX).nullable().optional(),
   fontWeight: fontWeightSchema.optional(),
   textAlign: textAlignSchema.optional(),
+  lineHeight: z.number().min(LINE_HEIGHT_MIN).max(LINE_HEIGHT_MAX).nullable().optional(),
+  letterSpacing: z.number().min(LETTER_SPACING_MIN).max(LETTER_SPACING_MAX).nullable().optional(),
   /** Text and lists grow to fit their longest line until the user resizes them. */
   autoWidth: z.boolean().optional(),
   // list
@@ -134,8 +161,17 @@ const propFields = {
   assetKey: z.string().max(200).optional(),
   // rect, frame: corner radius in px (capped at half the shorter side when drawn)
   radius: z.number().min(0).max(10_000).nullable().optional(),
+  // shapes, frames, images, SVGs and charts: a drop shadow
+  shadow: shadowSchema.nullable().optional(),
   // chart
   chart: chartDataSchema.optional(),
+  // mindnode: the node it branches from (none for a central topic), whether its branch is
+  // folded away, and its text color (stroke is its branch color, fill its background)
+  parentId: elementRef.nullable().optional(),
+  collapsed: z.boolean().optional(),
+  textColor: color.optional(),
+  // icon: the Lucide icon drawn; stroke is its color, strokeWidth its line weight (in 24px units)
+  icon: iconNameSchema.optional(),
 };
 
 export const ELEMENT_COLUMNS = Object.keys(columnFields) as (keyof typeof columnFields)[];
@@ -191,6 +227,7 @@ export type FontSize = z.infer<typeof fontSizeSchema>;
 export type FontWeight = z.infer<typeof fontWeightSchema>;
 export type TextAlign = z.infer<typeof textAlignSchema>;
 export type ChartKind = z.infer<typeof chartKindSchema>;
+export type Shadow = z.infer<typeof shadowSchema>;
 export type ChartData = z.infer<typeof chartDataSchema>;
 export type ListItem = z.infer<typeof listItemSchema>;
 export type BoardElement = z.infer<typeof boardElementSchema>;

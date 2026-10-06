@@ -1,15 +1,27 @@
-import type { BoardElement, ChartData, StrokeStyle } from "@prism/shared";
+import {
+  type BoardElement,
+  type ChartData,
+  MIND_PAD_X,
+  MIND_TEXT_COLOR,
+  type Shadow,
+  SHADOW_TYPES,
+  type StrokeStyle,
+} from "@prism/shared";
+import { Fragment, useId } from "react";
 import { cn } from "@/lib/utils";
 import { assetUrl } from "./assets";
 import { displayColor, STICKY_DEFAULT } from "./board-model";
 import { fontStack, weightOf } from "./fonts";
 import { center, type Point, strokePoints } from "./geometry";
+import { IconGlyph } from "./icon-glyph";
 import { sketchEllipse, sketchLine, sketchPolygon, smoothPath } from "./sketch";
 import {
   BULLETS,
   layoutList,
+  layoutMind,
   layoutSticky,
   layoutText,
+  letterSpacingOf,
   LIST_BULLET_EM,
   LIST_INDENT_EM,
   STICKY_PADDING,
@@ -35,16 +47,71 @@ function dashArray(style: StrokeStyle, width: number) {
   return undefined;
 }
 
+/** A shadow preset's layers, largest first: offset down, blur (standard deviation), opacity. */
+const SHADOWS: Record<Shadow, { dy: number; blur: number; opacity: number }[]> = {
+  sm: [{ dy: 1, blur: 1.5, opacity: 0.14 }],
+  md: [
+    { dy: 4, blur: 6, opacity: 0.12 },
+    { dy: 1, blur: 1.5, opacity: 0.08 },
+  ],
+  lg: [
+    { dy: 12, blur: 14, opacity: 0.16 },
+    { dy: 3, blur: 4, opacity: 0.08 },
+  ],
+};
+
 /** One element, drawn in world coordinates and turned around its center. */
 export function ElementShape({ el, hidden = false }: { el: BoardElement; hidden?: boolean }) {
   const c = center(el);
+  // Unique per rendered copy, so the board and a dashboard preview never share a filter.
+  const filterId = `shadow${useId().replace(/[^\w-]/g, "")}`;
+  const shadow = el.shadow && SHADOW_TYPES.includes(el.type) ? el.shadow : null;
   return (
     <g
       opacity={hidden ? 0 : el.opacity}
       transform={el.rotation ? `rotate(${el.rotation} ${c.x} ${c.y})` : undefined}
     >
-      <Shape el={el} />
+      {shadow && <ShadowFilter id={filterId} el={el} shadow={shadow} />}
+      <g filter={shadow ? `url(#${filterId})` : undefined}>
+        <Shape el={el} />
+      </g>
     </g>
+  );
+}
+
+/**
+ * A drop shadow as plain SVG filter primitives: each layer blurs the shape's alpha, moves it down
+ * and tints it black; the layers merge under the shape. The filter region is the element's box
+ * plus room for the blur, in board units, so small elements don't clip their shadow.
+ */
+function ShadowFilter({ id, el, shadow }: { id: string; el: BoardElement; shadow: Shadow }) {
+  const layers = SHADOWS[shadow];
+  const margin = Math.max(...layers.map((layer) => layer.dy + layer.blur * 3)) + el.strokeWidth;
+  return (
+    <filter
+      id={id}
+      filterUnits="userSpaceOnUse"
+      x={Math.min(el.x, el.x + el.width) - margin}
+      y={Math.min(el.y, el.y + el.height) - margin}
+      width={Math.abs(el.width) + margin * 2}
+      height={Math.abs(el.height) + margin * 2}
+      colorInterpolationFilters="sRGB"
+    >
+      {layers.map((layer, i) => (
+        <Fragment key={i}>
+          <feGaussianBlur in="SourceAlpha" stdDeviation={layer.blur} />
+          <feOffset dy={layer.dy} result={`offset${i}`} />
+          <feFlood floodColor="#000" floodOpacity={layer.opacity} />
+          <feComposite in2={`offset${i}`} operator="in" result={`shadow${i}`} />
+        </Fragment>
+      ))}
+      <feMerge>
+        {layers.map((_, i) => (
+          <feMergeNode key={i} in={`shadow${i}`} />
+        ))}
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
   );
 }
 
@@ -231,7 +298,11 @@ function Shape({ el }: { el: BoardElement }) {
         <>
           <rect x={x} y={y} width={width} height={height} fill="transparent" />
           <text
-            style={{ fill: ink, fontFamily: fontStack(el.font ?? "sans") }}
+            style={{
+              fill: ink,
+              fontFamily: fontStack(el.font ?? "sans"),
+              letterSpacing: letterSpacingOf(el) * layout.px,
+            }}
             fontSize={layout.px}
             fontWeight={weightOf(el)}
             dominantBaseline="central"
@@ -291,6 +362,67 @@ function Shape({ el }: { el: BoardElement }) {
     case "chart":
       return <Chart el={el} data={el.chart} />;
 
+    case "mindnode": {
+      const layout = layoutMind(el);
+      const top = y + height / 2 - (layout.lines.length * layout.lineHeight) / 2;
+      const textColor = el.textColor ?? MIND_TEXT_COLOR;
+      return (
+        <>
+          {el.fill ? (
+            // Filled nodes keep their colors in both themes, like sticky notes.
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={Math.min(12, height / 2)}
+              fill={el.fill}
+            />
+          ) : (
+            <>
+              <rect x={x} y={y} width={width} height={height} fill="transparent" />
+              <line
+                x1={x}
+                y1={y + height}
+                x2={x + width}
+                y2={y + height}
+                strokeWidth={el.strokeWidth}
+                strokeLinecap="round"
+                style={{ stroke: ink }}
+              />
+            </>
+          )}
+          <TextLines
+            el={{ ...el, textAlign: "center" }}
+            lines={layout.lines}
+            px={layout.px}
+            lineHeight={layout.lineHeight}
+            top={top}
+            left={x + MIND_PAD_X}
+            width={width - 2 * MIND_PAD_X}
+            color={el.fill ? textColor : displayColor(textColor)}
+          />
+        </>
+      );
+    }
+
+    case "icon":
+      return (
+        <>
+          <rect x={x} y={y} width={width} height={height} fill="transparent" />
+          <IconGlyph
+            name={el.icon ?? ""}
+            x={x}
+            y={y}
+            width={width}
+            height={height}
+            color={ink}
+            fill={el.fill ? displayColor(el.fill) : undefined}
+            strokeWidth={el.strokeWidth}
+          />
+        </>
+      );
+
     case "frame":
       return (
         <rect
@@ -330,7 +462,11 @@ function TextLines({
   const anchorX = { left, center: left + width / 2, right: left + width }[align];
   return (
     <text
-      style={{ fill: color, fontFamily: fontStack(el.font ?? "sans") }}
+      style={{
+        fill: color,
+        fontFamily: fontStack(el.font ?? "sans"),
+        letterSpacing: letterSpacingOf(el) * px,
+      }}
       fontSize={px}
       fontWeight={weightOf(el)}
       textAnchor={ANCHOR[align]}

@@ -1,7 +1,17 @@
 // Board elements and the editor reducer. Field names follow tools.md §7 (the schema lives in
 // @prism/shared); history keeps whole snapshots, one per user action.
 
-import type { BoardElement, ElementOp, ElementType } from "@prism/shared";
+import {
+  type BoardElement,
+  type ElementOp,
+  type ElementType,
+  mindChildren,
+  mindDepth,
+  mindDescendants,
+  mindRoot,
+  mindStyle,
+  tidyMindMap,
+} from "@prism/shared";
 import { isHandwriting } from "./fonts";
 import { updateBindings } from "./geometry";
 import { fitTextBox } from "./text-layout";
@@ -121,6 +131,8 @@ export interface BoardState {
   elements: BoardElement[];
   future: BoardElement[][];
   selectedIds: string[];
+  /** A node the reducer just made and wants typed into (Tab / Enter on a mind map). */
+  editRequest?: { id: string; before: BoardElement[] } | undefined;
 }
 
 export type LayerMove = "back" | "down" | "up" | "front";
@@ -145,6 +157,12 @@ export type BoardAction =
   | { type: "layer"; ids: string[]; move: LayerMove }
   /** Ops saved by another tab or an AI editor: one history step per batch. */
   | { type: "remote"; ops: ElementOp[] }
+  /** Adds a mind map node under `from` (or beside it) and asks for it to be typed into. */
+  | { type: "mindAdd"; from: string; sibling: boolean }
+  /** Folds a mind map branch away, or opens it again. */
+  | { type: "mindToggle"; id: string }
+  /** Lays out the mind map that `id` belongs to again. */
+  | { type: "mindTidy"; id: string }
   | { type: "undo" }
   | { type: "redo" };
 
@@ -175,7 +193,30 @@ function keepSelection(state: BoardState): BoardState {
   return selectedIds.length === state.selectedIds.length ? state : { ...state, selectedIds };
 }
 
-/** Removes `ids` (unlocked ones) and the arrows attached to them. */
+/**
+ * The mind maps that `ids` belong to, laid out tidy again (each central topic stays put). Arrows
+ * attached to nodes that moved follow them.
+ */
+export function tidyMindMaps(elements: BoardElement[], ids: Iterable<string>) {
+  const roots = new Set<string>();
+  const byId = new Map(elements.map((el) => [el.id, el]));
+  for (const id of ids) {
+    if (byId.get(id)?.type === "mindnode") roots.add(mindRoot(elements, id));
+  }
+  if (roots.size === 0) return elements;
+  let next = elements;
+  for (const root of roots) {
+    const moves = tidyMindMap(next, root);
+    if (moves.size === 0) continue;
+    next = next.map((el) => {
+      const to = moves.get(el.id);
+      return to && (to.x !== el.x || to.y !== el.y) ? { ...el, ...to } : el;
+    });
+  }
+  return next === elements ? elements : updateBindings(next);
+}
+
+/** Removes `ids` (unlocked ones), the mind map branches under them and attached arrows. */
 export function deleteElements(elements: BoardElement[], ids: Iterable<string>) {
   const doomed = new Set<string>();
   for (const id of ids) {
@@ -183,6 +224,7 @@ export function deleteElements(elements: BoardElement[], ids: Iterable<string>) 
     if (el && !el.locked) doomed.add(id);
   }
   if (doomed.size === 0) return elements;
+  for (const id of mindDescendants(elements, doomed)) doomed.add(id);
   return elements.filter(
     (el) =>
       !doomed.has(el.id) &&
@@ -195,6 +237,7 @@ export function deleteElements(elements: BoardElement[], ids: Iterable<string>) 
 function isEmpty(el: BoardElement) {
   if (el.type === "text") return !el.text?.trim();
   if (el.type === "list") return !el.items?.some((item) => item.text.trim());
+  if (el.type === "mindnode") return !el.text?.trim();
   return false;
 }
 
@@ -228,6 +271,45 @@ export function applyOps(elements: BoardElement[], ops: ElementOp[]): BoardEleme
   return [...byId.values()];
 }
 
+/**
+ * A new mind map node under `parent`, styled for its level, roughly placed (the tidy layout puts
+ * it exactly): after `after` among its siblings, else last. A main branch goes to the emptier side.
+ */
+function newMindNode(elements: BoardElement[], parent: BoardElement, after?: BoardElement) {
+  const siblings = mindChildren(elements).get(parent.id) ?? [];
+  const depth = mindDepth(elements, parent.id) + 1;
+  const parentCenter = parent.x + parent.width / 2;
+  const onRight = (el: BoardElement) => el.x + el.width / 2 >= parentCenter;
+  let side: 1 | -1;
+  if (after) side = onRight(after) ? 1 : -1;
+  else if (depth === 1) {
+    const right = siblings.filter(onRight).length;
+    side = right <= siblings.length - right ? 1 : -1;
+  } else {
+    const grand = elements.find((el) => el.id === parent.parentId);
+    side = !grand || parent.x + parent.width / 2 >= grand.x + grand.width / 2 ? 1 : -1;
+  }
+  const style = mindStyle(depth, siblings.length, parent.stroke);
+  const bottom = Math.max(parent.y, ...siblings.map((el) => el.y + el.height));
+  const node = fitTextBox(
+    newElement("mindnode", elements, {
+      x: side === 1 ? parent.x + parent.width + 1 : parent.x - 200,
+      // Just below `after`, so it sorts right after it.
+      y: after ? after.y + after.height / 2 + 0.5 : bottom + 1,
+      width: 0,
+      height: 0,
+      text: "",
+      font: parent.font ?? "sans",
+      parentId: parent.id,
+      ...style,
+      // A sub-topic shares its branch's color.
+      ...(depth > 1 && { stroke: parent.stroke }),
+      strokeWidth: 2,
+    }),
+  );
+  return { ...node, y: after ? after.y + after.height / 2 + 0.5 - node.height / 2 : node.y };
+}
+
 export function boardReducer(state: BoardState, action: BoardAction): BoardState {
   switch (action.type) {
     case "select":
@@ -240,11 +322,19 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
         selectedIds: action.select ?? state.selectedIds,
       };
 
-    case "previewElement":
+    case "previewElement": {
+      const elements = state.elements.map((el) =>
+        el.id === action.element.id ? action.element : el,
+      );
+      // A mind map node growing as it's typed into makes room for itself.
       return {
         ...state,
-        elements: state.elements.map((el) => (el.id === action.element.id ? action.element : el)),
+        elements:
+          action.element.type === "mindnode"
+            ? tidyMindMaps(elements, [action.element.id])
+            : elements,
       };
+    }
 
     case "commit":
       return commit(state, action.before, state.elements);
@@ -276,20 +366,69 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
         return fitTextBox({ ...el, ...changes });
       });
       if (!changed) return state;
-      return commit(state, state.elements, updateBindings(next));
+      // A mind map node whose text size changed makes room for itself.
+      return commit(
+        state,
+        state.elements,
+        tidyMindMaps(updateBindings(next), Object.keys(action.patches)),
+      );
     }
 
     case "finishEdit": {
       const el = state.elements.find((e) => e.id === action.id);
-      const elements =
+      let elements =
         el && isEmpty(el) ? state.elements.filter((e) => e.id !== action.id) : state.elements;
+      // A mind map node left empty closes the gap it opened.
+      if (el?.type === "mindnode" && el.parentId) elements = tidyMindMaps(elements, [el.parentId]);
       return keepSelection(commit({ ...state, elements }, action.before, elements));
     }
 
     case "delete": {
       const next = deleteElements(state.elements, action.ids);
       if (next === state.elements) return state;
-      return keepSelection(commit(state, state.elements, next));
+      // Branches that lost a node close up.
+      const parents = state.elements
+        .filter((el) => action.ids.includes(el.id) && el.parentId)
+        .map((el) => el.parentId ?? "");
+      return keepSelection(commit(state, state.elements, tidyMindMaps(next, parents)));
+    }
+
+    case "mindAdd": {
+      const from = state.elements.find((el) => el.id === action.from);
+      if (from?.type !== "mindnode") return state;
+      const parentId = action.sibling && from.parentId ? from.parentId : from.id;
+      const parent = state.elements.find((el) => el.id === parentId);
+      if (!parent) return state;
+      const node = newMindNode(state.elements, parent, parentId === from.id ? undefined : from);
+      // Adding under a folded branch opens it.
+      const opened = state.elements.map((el) =>
+        el.id === parent.id && el.collapsed ? { ...el, collapsed: false } : el,
+      );
+      return {
+        ...state,
+        elements: tidyMindMaps([...opened, node], [node.id]),
+        selectedIds: [node.id],
+        editRequest: { id: node.id, before: state.elements },
+      };
+    }
+
+    case "mindToggle": {
+      const node = state.elements.find((el) => el.id === action.id);
+      if (node?.type !== "mindnode") return state;
+      const next = state.elements.map((el) =>
+        el.id === node.id ? { ...el, collapsed: !el.collapsed } : el,
+      );
+      // Selected nodes inside a branch being folded can't stay selected.
+      const hidden = node.collapsed ? new Set<string>() : mindDescendants(next, [node.id]);
+      return {
+        ...commit(state, state.elements, tidyMindMaps(next, [node.id])),
+        selectedIds: state.selectedIds.filter((id) => !hidden.has(id)),
+      };
+    }
+
+    case "mindTidy": {
+      const next = tidyMindMaps(state.elements, [action.id]);
+      return next === state.elements ? state : commit(state, state.elements, next);
     }
 
     case "layer": {
@@ -370,6 +509,8 @@ const LABELS: Record<ElementType, string> = {
   svg: "SVG",
   chart: "Chart",
   frame: "Frame",
+  icon: "Icon",
+  mindnode: "Mind map node",
 };
 
 /** The display name the properties panel uses as its title. */

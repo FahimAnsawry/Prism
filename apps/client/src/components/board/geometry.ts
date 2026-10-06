@@ -22,9 +22,9 @@ export type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "rotate
 /** Lines and arrows: (x, y) is the start point and (width, height) the vector to the end. */
 export const isLinear = (el: BoardElement) => el.type === "line" || el.type === "arrow";
 
-/** Images, SVGs and emoji keep their aspect ratio on resize. */
+/** Images, SVGs, emoji and icons keep their aspect ratio on resize. */
 export const keepsRatio = (el: BoardElement) =>
-  el.type === "image" || el.type === "svg" || el.type === "emoji";
+  el.type === "image" || el.type === "svg" || el.type === "emoji" || el.type === "icon";
 
 /**
  * Text and lists scale their text when dragged by a corner or the top / bottom handle; the

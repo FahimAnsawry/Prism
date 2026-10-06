@@ -89,13 +89,20 @@ export function useDeleteProject() {
   });
 }
 
+const tileOf = ({ id, name, itemCount, editedAt }: BoardSummary) => ({
+  id,
+  name,
+  itemCount,
+  editedAt,
+});
+
 /** A board joined `projectId`: count it and show it first among the tiles. */
 function addToProject(workspace: Workspace, board: BoardSummary) {
   const project = workspace.projects.find((p) => p.id === board.projectId);
   if (!project) return workspace;
   return withProject(workspace, project.id, {
     boardCount: project.boardCount + 1,
-    boards: [{ id: board.id, name: board.name }, ...project.boards].slice(0, PROJECT_TILES),
+    boards: [tileOf(board), ...project.boards].slice(0, PROJECT_TILES),
     editedAt: board.editedAt,
   });
 }
@@ -146,9 +153,7 @@ export function useUpdateBoard() {
           const project = next.projects.find((p) => p.id === board.projectId);
           if (project) {
             next = withProject(next, project.id, {
-              boards: project.boards.map((t) =>
-                t.id === board.id ? { id: t.id, name: board.name } : t,
-              ),
+              boards: project.boards.map((t) => (t.id === board.id ? tileOf(board) : t)),
               editedAt: board.editedAt,
             });
           }

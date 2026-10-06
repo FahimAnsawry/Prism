@@ -8,6 +8,11 @@ import {
   boardElementsSchema,
   type EditRequest,
   type ElementOp,
+  type ExportImageReply,
+  type ExportImageRequest,
+  type LayoutMindmapRequest,
+  type LayoutScreenReply,
+  type LayoutScreenRequest,
   saveElementsResultSchema,
   SOCKET_ID_HEADER,
 } from "@prism/shared";
@@ -16,6 +21,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { getSocket } from "@/lib/realtime";
 import { applyOps } from "./board-model";
+import { exportBoardImage } from "./export-image";
+import { layoutMindmapOnTab, layoutScreenOnTab } from "./screen-layout";
 
 const elementsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}/elements`;
 
@@ -266,14 +273,37 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
     const onEdit = (request: EditRequest) => {
       if (request.boardId === boardId) latest.current.onEdit(request);
     };
+    // An AI editor's export_image: this tab draws the board and replies with the picture.
+    const onExportImage = (request: ExportImageRequest, ack: (reply: ExportImageReply) => void) => {
+      if (request.boardId === boardId) void exportBoardImage(request).then(ack);
+    };
     socket.on("connect", join);
     socket.on("element:ops", onOps);
     socket.on("edit:update", onEdit);
+    socket.on("export:image", onExportImage);
+    // An AI editor's create_screen: this tab measures the text and lays the screen out.
+    const onLayoutScreen = (
+      request: LayoutScreenRequest,
+      ack: (reply: LayoutScreenReply) => void,
+    ) => {
+      if (request.boardId === boardId) void layoutScreenOnTab(request).then(ack);
+    };
+    socket.on("layout:screen", onLayoutScreen);
+    const onLayoutMindmap = (
+      request: LayoutMindmapRequest,
+      ack: (reply: LayoutScreenReply) => void,
+    ) => {
+      if (request.boardId === boardId) void layoutMindmapOnTab(request).then(ack);
+    };
+    socket.on("layout:mindmap", onLayoutMindmap);
     if (socket.connected) join();
     return () => {
       socket.off("connect", join);
       socket.off("element:ops", onOps);
       socket.off("edit:update", onEdit);
+      socket.off("export:image", onExportImage);
+      socket.off("layout:screen", onLayoutScreen);
+      socket.off("layout:mindmap", onLayoutMindmap);
       socket.emit("board:leave", boardId);
     };
   }, [boardId]);

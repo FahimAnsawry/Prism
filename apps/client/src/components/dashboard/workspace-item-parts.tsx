@@ -1,24 +1,27 @@
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { exactTime, shownDate, timeAgo, type SortKey, type WorkspaceItem } from "./workspace-data";
 
 // Pieces shared by the grid card and the list row.
 
 /**
- * Stand-in for a board preview until boards have real thumbnails: the board's dotted canvas,
- * marked "EMPTY" when nothing is on it yet.
+ * A board's dotted canvas, marked "EMPTY" when nothing is on it yet. `children` (the drawn
+ * preview) sit on top of the dots.
  */
 export function CanvasPreview({
   empty = false,
   className,
+  children,
 }: {
   empty?: boolean;
   className?: string;
+  children?: ReactNode;
 }) {
   return (
     <div
       aria-hidden="true"
       className={cn(
-        "flex items-center justify-center bg-background bg-[radial-gradient(var(--color-divider)_1.2px,transparent_1.2px)] bg-size-[14px_14px]",
+        "relative flex items-center justify-center overflow-hidden bg-background bg-[radial-gradient(var(--color-divider)_1.2px,transparent_1.2px)] bg-size-[14px_14px]",
         className,
       )}
     >
@@ -27,6 +30,7 @@ export function CanvasPreview({
           EMPTY
         </span>
       )}
+      {children}
     </div>
   );
 }

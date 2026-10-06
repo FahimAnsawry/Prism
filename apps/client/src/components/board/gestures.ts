@@ -3,7 +3,7 @@
 // started, shows its progress with "preview" (no history) and ends with one "commit", so a whole
 // drag or stroke is a single undo step.
 
-import type { BoardElement, ElementType } from "@prism/shared";
+import { type BoardElement, type ElementType, mindDescendants, mindStyle } from "@prism/shared";
 import type { Dispatch } from "react";
 import { type BoardAction, type BoardState, byZ, deleteElements, newElement } from "./board-model";
 import {
@@ -34,7 +34,8 @@ import {
   topHit,
   updateBindings,
 } from "./geometry";
-import { fitTextBox, fontPx, LINE_HEIGHT } from "./text-layout";
+import { type MindToggle, TOGGLE_RADIUS } from "./mind-branches";
+import { fitTextBox, fontPx, lineHeightOf } from "./text-layout";
 import type { ToolId } from "./tools";
 
 /** Live drawing the canvas shows on top of the elements while a gesture runs. */
@@ -59,6 +60,12 @@ export interface GestureContext {
   /** Converts a pointer event's position (used for coalesced events). */
   toWorld: (event: { clientX: number; clientY: number }) => Point;
   emoji: string | null;
+  /** The Lucide icon the Icon tool places. */
+  icon: string | null;
+  /** Mind map nodes inside folded branches: not shown, so not hit either. */
+  hidden: ReadonlySet<string>;
+  /** The mind map collapse toggles on screen. */
+  toggles: MindToggle[];
 }
 
 export interface Gesture {
@@ -102,8 +109,14 @@ export function startGesture(
     case "emoji":
       if (ctx.emoji) place(ctx, "emoji", p, 72, 72, { text: ctx.emoji });
       return null;
+    case "icon":
+      if (ctx.icon) place(ctx, "icon", p, 48, 48, { icon: ctx.icon });
+      return null;
     case "chart":
       place(ctx, "chart", p, 360, 240);
+      return null;
+    case "mindmap":
+      placeMindRoot(ctx, p);
       return null;
     default:
       return null;
@@ -111,6 +124,7 @@ export function startGesture(
 }
 
 const tolerance = (ctx: GestureContext) => HIT_TOLERANCE / ctx.zoom;
+const shown = (ctx: GestureContext) => (el: BoardElement) => !ctx.hidden.has(el.id);
 
 /** Adds a `width` × `height` element centered on `p`, selects it and returns to Select. */
 function place(
@@ -137,12 +151,19 @@ function place(
 
 function selectGesture(ctx: GestureContext, p: Point, event: PointerEvent): Gesture | null {
   const { elements, selectedIds } = ctx.state;
+
+  // A mind map toggle folds or opens its branch.
+  const toggle = ctx.toggles.find((t) => distance(t, p) <= TOGGLE_RADIUS / ctx.zoom);
+  if (toggle) {
+    ctx.dispatch({ type: "mindToggle", id: toggle.id });
+    return null;
+  }
   const selected = elements.filter((el) => selectedIds.includes(el.id));
 
   const handle = handleAt(selectionFrame(selected, ctx.zoom), p, ctx.zoom);
   if (handle) return transformGesture(ctx, selected, handle, p);
 
-  const hit = topHit(byZ(elements), p, tolerance(ctx));
+  const hit = topHit(byZ(elements), p, tolerance(ctx), shown(ctx));
   if (!hit) {
     // Empty canvas: marquee, adding to the selection with Shift.
     const base = event.shiftKey ? selectedIds : [];
@@ -167,6 +188,10 @@ function moveGesture(ctx: GestureContext, start: Point, ids: string[]): Gesture 
   const moving = new Set(
     before.filter((el) => ids.includes(el.id) && !el.locked).map((el) => el.id),
   );
+  // A mind map node carries its whole branch along.
+  for (const id of mindDescendants(before, moving)) {
+    if (!before.find((el) => el.id === id)?.locked) moving.add(id);
+  }
   let dragging = false;
   return {
     move(p) {
@@ -195,7 +220,7 @@ function moveGesture(ctx: GestureContext, start: Point, ids: string[]): Gesture 
 }
 
 function marqueeGesture(ctx: GestureContext, start: Point, base: string[]): Gesture {
-  const ordered = byZ(ctx.state.elements);
+  const ordered = byZ(ctx.state.elements).filter(shown(ctx));
   return {
     move(p) {
       const box = boxFromPoints(start, p);
@@ -450,7 +475,7 @@ function pencilGesture(ctx: GestureContext, start: Point): Gesture {
 /** Drag across elements to delete them; all of one drag is one undo step. */
 function eraserGesture(ctx: GestureContext, start: Point): Gesture {
   const before = ctx.state.elements;
-  const ordered = byZ(before).filter((el) => !el.locked);
+  const ordered = byZ(before).filter((el) => !el.locked && !ctx.hidden.has(el.id));
   const erasing = new Set<string>();
   const radius = ERASER_RADIUS / ctx.zoom;
   let last = start;
@@ -513,7 +538,7 @@ export function placeText(
   } else {
     const font = tool === "handwriting" ? "caveat" : "sans";
     const draft = newElement(type, before, { x: p.x, y: p.y, width: 0, height: 0, font });
-    const lineHeight = fontPx(draft) * LINE_HEIGHT;
+    const lineHeight = fontPx(draft) * lineHeightOf(draft);
     // The click lands in the middle of the first line.
     el = fitTextBox({ ...draft, y: p.y - lineHeight / 2 });
   }
@@ -523,6 +548,30 @@ export function placeText(
 }
 
 export const isTextual = (el: BoardElement) =>
-  el.type === "text" || el.type === "sticky" || el.type === "list";
+  el.type === "text" || el.type === "sticky" || el.type === "list" || el.type === "mindnode";
+
+// ── Mind map ──────────────────────────────────────────────────────────────
+
+/** The Mind map tool: a central topic centered on `p`, opened for typing. */
+function placeMindRoot(ctx: GestureContext, p: Point) {
+  const before = ctx.state.elements;
+  const draft = fitTextBox(
+    newElement("mindnode", before, {
+      x: p.x,
+      y: p.y,
+      width: 0,
+      height: 0,
+      text: "",
+      font: "sans",
+      parentId: null,
+      ...mindStyle(0, 0),
+      strokeWidth: 2,
+    }),
+  );
+  const el = { ...draft, x: p.x - draft.width / 2, y: p.y - draft.height / 2 };
+  ctx.dispatch({ type: "preview", elements: [...before, el], select: [el.id] });
+  ctx.startEditing(el.id, before);
+  ctx.finishTool();
+}
 
 export { isLinear };

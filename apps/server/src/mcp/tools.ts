@@ -1,6 +1,21 @@
 import {
+  buildMindMap,
+  countMindNodes,
+  countNodes,
+  mindChildren,
+  mindDepth,
+  mindDescendants,
+  mindmapInputSchema,
+  MINDMAP_NODES_MAX,
+  mindRoot,
+  tidyMindMap,
   createBoardSchema,
   EDIT_NOTE_MAX,
+  estimateText,
+  fontFamilySchema,
+  LAYOUT_NODES_MAX,
+  layoutNodeSchema,
+  layoutScreen,
   elementChangesSchema,
   WAIT_EDITS_MAX_SECONDS,
   type BoardElement,
@@ -16,7 +31,12 @@ import {
   waitForEdits,
 } from "../ai-actions.js";
 import { HttpError } from "../errors.js";
-import { broadcastOps } from "../realtime.js";
+import {
+  broadcastOps,
+  requestBoardImage,
+  requestMindmapLayout,
+  requestScreenLayout,
+} from "../realtime.js";
 import { applyOps, ownedBoard } from "../routes/elements.js";
 import { createBoard, getBoardSummary, loadWorkspace } from "../routes/workspace.js";
 import {
@@ -25,12 +45,15 @@ import {
   compact,
   createElementInput,
   insideFrame,
+  layoutElementInput,
   updateChangesInput,
 } from "./elements.js";
 
 // The Prism tools AI editors call, acting as one signed-in user on that user's boards.
 
-type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+type ToolContent =
+  { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+type ToolResult = { content: ToolContent[]; isError?: boolean };
 
 const json = (value: unknown): ToolResult => ({
   content: [{ type: "text", text: JSON.stringify(value) }],
@@ -181,6 +204,71 @@ export function registerTools(server: McpServer, userId: string) {
       }),
   );
 
+  server.registerTool(
+    "export_image",
+    {
+      title: "See the board",
+      description: [
+        "Render a frame, some elements or the whole board as an image and look at it.",
+        "Use it after drawing to check layout, alignment, spacing, overlaps and text wrapping, then fix what's off with update_elements.",
+        "The user's open board tab draws it (open_board gives the URL to open), showing what's saved, in the user's current theme.",
+      ].join(" "),
+      inputSchema: z.object({
+        boardId,
+        frameId: z
+          .uuid()
+          .optional()
+          .describe("Show this frame edge to edge, with everything on it. Usually what you want."),
+        ids: z
+          .array(z.uuid())
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Show only these elements (ignored when frameId is given)."),
+        scale: z
+          .number()
+          .min(0.1)
+          .max(4)
+          .optional()
+          .describe(
+            "Image px per board px. Default: fits within 1568px, at most 2x. Raise it to read small text in a large area.",
+          ),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ boardId: id, frameId, ids, scale }) =>
+      run(async () => {
+        const board = await ownedBoard(id, userId);
+        const elements = await loadElements(board.id);
+        const image = await requestBoardImage(userId, {
+          boardId: board.id,
+          elements,
+          ...(frameId ? { frameId } : ids ? { ids } : {}),
+          ...(scale !== undefined && { scale }),
+        });
+        const round = (n: number) => Math.round(n * 10) / 10;
+        return {
+          content: [
+            { type: "image", data: image.data, mimeType: image.mimeType },
+            {
+              type: "text",
+              text: JSON.stringify({
+                width: image.width,
+                height: image.height,
+                scale: round(image.width / image.region.width),
+                region: {
+                  x: round(image.region.x),
+                  y: round(image.region.y),
+                  width: round(image.region.width),
+                  height: round(image.region.height),
+                },
+              }),
+            },
+          ],
+        };
+      }),
+  );
+
   // ── Elements ─────────────────────────────────────────────────────────────
 
   server.registerTool(
@@ -189,7 +277,7 @@ export function registerTools(server: McpServer, userId: string) {
       title: "Create elements",
       description: [
         "Create elements on a board. They appear live in open browser tabs, and the whole call is one undo step for the user.",
-        "Types: rect (boxes, buttons, cards, inputs), ellipse, diamond, text, sticky, list, line, arrow, emoji, chart, frame (a screen/artboard background), freehand.",
+        "Types: rect (boxes, buttons, cards, inputs), ellipse, diamond, text, sticky, list, line, arrow, mindnode (a mind map node; create_mindmap is easier), icon (a Lucide icon by name: set icon, stroke for its color, 16-24px for UI), emoji, chart, frame (a screen/artboard background), freehand.",
         "Coordinates are board px; x grows right, y grows down. List elements back to front: frames and backgrounds first, then content on top.",
         "For UI mockups use sketch: false, a radius on buttons/cards, groupId per component and a role (button, input, card, …).",
         "Text sizes itself when width is left out. Arrows: set startBinding/endBinding to element ids or to keys from this call.",
@@ -215,6 +303,262 @@ export function registerTools(server: McpServer, userId: string) {
             ...(inputs[i]?.key && { key: inputs[i]?.key }),
             type: el.type,
           })),
+        });
+      }),
+  );
+
+  server.registerTool(
+    "create_screen",
+    {
+      title: "Create a screen from a layout",
+      description: [
+        "The main way to draw UI: describe a screen as a layout tree and Prism positions everything, flexbox-style, so spacing and alignment come out exact.",
+        'Containers: stack (top to bottom), row (left to right), grid (equal columns), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow).',
+        "Leaves: text, icon (Lucide), box (placeholder rect/ellipse: images, avatars), spacer (fixed, or flexible to push things apart), divider.",
+        "A button is a row with padding, fill, radius, justify/align center and a text child; a card is a stack with padding, fill, radius and shadow. Give components a name (one groupId) and a role.",
+        "With frame, a frame of that size is drawn behind it (a fixed frame height lets a flexible spacer pin a bottom bar). Without x/y it goes to the right of the board's content.",
+        "The whole screen is one undo step. Check it afterwards with export_image (frameId).",
+      ].join(" "),
+      inputSchema: z.object({
+        boardId,
+        root: layoutNodeSchema.describe(
+          "The screen's content, usually a stack. It fills the screen's width.",
+        ),
+        frame: z
+          .object({
+            width: z.number().min(40).max(4_000).describe("e.g. 390 mobile, 1440 desktop."),
+            height: z
+              .number()
+              .min(40)
+              .max(20_000)
+              .optional()
+              .describe("e.g. 844 mobile, 900 desktop. Left out: the content's height."),
+          })
+          .optional()
+          .describe("Draw a device frame behind the screen (recommended)."),
+        width: z
+          .number()
+          .min(40)
+          .max(4_000)
+          .optional()
+          .describe("Without a frame: the screen's width. Default 390."),
+        x: z
+          .number()
+          .optional()
+          .describe("Left edge on the board. Default: right of existing content."),
+        y: z
+          .number()
+          .optional()
+          .describe("Top edge on the board. Default: top of existing content."),
+        font: fontFamilySchema
+          .optional()
+          .describe(
+            `Font for text nodes that don't set one. Default "sans" (DM Sans); "inter" suits UI.`,
+          ),
+      }),
+    },
+    (input) =>
+      run(async () => {
+        const nodes = countNodes(input.root);
+        if (nodes > LAYOUT_NODES_MAX) {
+          throw new HttpError(
+            400,
+            `Use at most ${LAYOUT_NODES_MAX} nodes per screen (got ${nodes}).`,
+          );
+        }
+        const board = await ownedBoard(input.boardId, userId);
+        const existing = await loadElements(board.id);
+        const content = boundsOf(existing);
+        const width = input.frame?.width ?? input.width ?? 390;
+        const options = {
+          x: input.x ?? (content ? content.x + content.width + 120 : 0),
+          y: input.y ?? (content ? content.y : 0),
+          width,
+          height: input.frame?.height,
+          font: input.font ?? "sans",
+        };
+        // An open tab measures text with the board's fonts; otherwise the server estimates.
+        const measured = await requestScreenLayout(userId, {
+          boardId: board.id,
+          root: input.root,
+          options,
+        });
+        const laidOut = measured ?? layoutScreen(input.root, options, estimateText);
+        const parts = laidOut.map((el) => layoutElementInput.parse(el));
+        const bottom = Math.max(options.y, ...parts.map((el) => el.y + (el.height ?? 0)));
+        const frame = input.frame && {
+          type: "frame" as const,
+          x: options.x,
+          y: options.y,
+          width,
+          height: input.frame.height ?? Math.max(40, Math.ceil(bottom - options.y)),
+        };
+        const elements = buildElements(frame ? [frame, ...parts] : parts, existing);
+        await save(
+          userId,
+          board.id,
+          elements.map((element) => ({ op: "create", element })),
+        );
+        return json({
+          frameId: frame ? elements[0]?.id : null,
+          bounds: boundsOf(elements),
+          measured: measured ? "browser" : "estimated (no board tab open; text sizes may be off)",
+          elements: elements.map((el) => ({
+            id: el.id,
+            type: el.type,
+            ...(el.role && { role: el.role }),
+            ...(el.groupId && { groupId: el.groupId }),
+            ...(el.text && { text: el.text.slice(0, 60) }),
+          })),
+          next: "Check it with export_image (frameId), then fix anything off with update_elements.",
+        });
+      }),
+  );
+
+  server.registerTool(
+    "create_mindmap",
+    {
+      title: "Create a mind map",
+      description: [
+        "Draw a mind map from an outline: a central topic with nested children. Prism styles each level (central topic, colored main branches, underlined sub-topics), sizes the nodes to their text and lays the tree out; branches are curves drawn from each node to its parent.",
+        "Or add branches to an existing map: give parentId (a mindnode id from get_board) and children; the whole map is tidied again.",
+        "New main branches start folded, so the map opens as the central topic and its main branches and the user opens each with its toggle; pass collapsed: false to show everything.",
+        "Keep labels to a few words. The user can keep going on the board: Tab adds a child, Enter a sibling, the toggle folds a branch.",
+      ].join(" "),
+      inputSchema: z.object({
+        boardId,
+        root: mindmapInputSchema
+          .optional()
+          .describe("A new map: the central topic's text and its children, nested."),
+        parentId: z.uuid().optional().describe("Add to an existing map: the node to branch from."),
+        children: z
+          .array(mindmapInputSchema)
+          .min(1)
+          .max(40)
+          .optional()
+          .describe("With parentId: the new branches, nested."),
+        sides: z
+          .enum(["right", "both"])
+          .optional()
+          .describe("Main branches to the right only, or both sides (default both)."),
+        x: z
+          .number()
+          .optional()
+          .describe(
+            "New map: left edge of the central topic. Default: right of the board's content.",
+          ),
+        y: z
+          .number()
+          .optional()
+          .describe("New map: top edge. Default: top of the board's content."),
+        font: fontFamilySchema.optional().describe('Default "sans".'),
+        collapsed: z
+          .boolean()
+          .optional()
+          .describe("Fold the new main branches that have children (default true)."),
+      }),
+    },
+    (input) =>
+      run(async () => {
+        const nodes = input.parentId ? (input.children ?? []) : input.root ? [input.root] : [];
+        if (nodes.length === 0) {
+          throw new HttpError(400, "Give root (a new map), or parentId with children.");
+        }
+        const total = nodes.reduce((sum, node) => sum + countMindNodes(node), 0);
+        if (total > MINDMAP_NODES_MAX) {
+          throw new HttpError(
+            400,
+            `Use at most ${MINDMAP_NODES_MAX} nodes per call (got ${total}).`,
+          );
+        }
+        const board = await ownedBoard(input.boardId, userId);
+        const existing = await loadElements(board.id);
+        const content = boundsOf(existing);
+
+        let under;
+        let font = input.font ?? "sans";
+        if (input.parentId) {
+          const parent = existing.find((el) => el.id === input.parentId);
+          if (parent?.type !== "mindnode") {
+            throw new HttpError(404, "parentId must be a mind map node on this board.");
+          }
+          font = input.font ?? parent.font ?? "sans";
+          const siblings = mindChildren(existing).get(parent.id) ?? [];
+          const depth = mindDepth(existing, parent.id);
+          const parentCenter = parent.x + parent.width / 2;
+          const right = siblings.filter((el) => el.x + el.width / 2 >= parentCenter).length;
+          const grand = existing.find((el) => el.id === parent.parentId);
+          const side: 1 | -1 =
+            depth === 0
+              ? right <= siblings.length - right
+                ? 1
+                : -1
+              : !grand || parentCenter >= grand.x + grand.width / 2
+                ? 1
+                : -1;
+          under = {
+            parentId: parent.id,
+            depth,
+            stroke: parent.stroke,
+            x: parentCenter,
+            y: Math.max(parent.y, ...siblings.map((el) => el.y + el.height)) + 1,
+            side,
+            branches: siblings.length,
+          };
+        }
+        const options = {
+          x: input.x ?? (content ? content.x + content.width + 160 : 0),
+          y: input.y ?? (content ? content.y : 0),
+          font,
+          sides: input.sides ?? ("both" as const),
+          under,
+        };
+        // An open tab sizes the nodes with the board's fonts; otherwise the server estimates.
+        const measured = await requestMindmapLayout(userId, { boardId: board.id, nodes, options });
+        const built = measured ?? buildMindMap(nodes, options, estimateText);
+        let created = buildElements(
+          built.map((el) => layoutElementInput.parse(el)),
+          existing,
+        );
+        const rootId = mindRoot(
+          [...existing, ...created],
+          created[0]?.parentId ?? created[0]?.id ?? "",
+        );
+
+        // New main branches start folded: the map opens as the central topic and its branches.
+        if (input.collapsed ?? true) {
+          const children = mindChildren([...existing, ...created]);
+          created = created.map((el) =>
+            el.parentId === rootId && children.has(el.id) ? { ...el, collapsed: true } : el,
+          );
+        }
+
+        // Lay the whole map out again, new branches included.
+        const moves = tidyMindMap([...existing, ...created], rootId);
+        const placed = created.map((el) => ({ ...el, ...moves.get(el.id) }));
+        const ops: ElementOp[] = placed.map((element) => ({ op: "create", element }));
+        for (const el of existing) {
+          const to = moves.get(el.id);
+          if (!to || (to.x === el.x && to.y === el.y)) continue;
+          ops.push({
+            op: "update",
+            id: el.id,
+            version: el.version + 1,
+            changes: { x: to.x, y: to.y, updatedBy: "ai_agent" },
+          });
+        }
+        await save(userId, board.id, ops);
+        return json({
+          rootId,
+          measured: measured ? "browser" : "estimated (no board tab open; node sizes may be off)",
+          bounds: boundsOf([...placed, ...existing.filter((el) => moves.has(el.id))]),
+          nodes: placed.map((el) => ({
+            id: el.id,
+            text: el.text,
+            parentId: el.parentId,
+            ...(el.collapsed && { collapsed: true }),
+          })),
+          next: "Check it with export_image (ids: the map's node ids, or the whole board).",
         });
       }),
   );
@@ -268,6 +612,8 @@ export function registerTools(server: McpServer, userId: string) {
         const doomed = new Set(
           ids.filter((elementId) => elements.some((el) => el.id === elementId)),
         );
+        // A mind map node takes its branch with it.
+        for (const elementId of mindDescendants(elements, doomed)) doomed.add(elementId);
         for (const el of elements) {
           const bound =
             (el.startBinding && doomed.has(el.startBinding)) ||
@@ -455,8 +801,8 @@ export function registerPrompts(server: McpServer) {
               `Design this in Prism: ${idea}`,
               `1. open_board with the name "${board ?? idea}" and give me its URL.`,
               "2. If a Mobbin MCP is available, search it for 3 strong references. Add each with add_image (its image_url) in a row at the top, with a sticky note beside each saying what to take from it.",
-              "3. Below the references, create a frame at a real device size (390x844 mobile or 1440x900 desktop) and build the new design inside it with create_elements: clean look (sketch: false), real copy, consistent spacing, radius on buttons and cards, one groupId and a role per component.",
-              "4. Read it back with get_board, fix anything that overlaps or is misaligned, then summarize what you made.",
+              "3. Below the references, build the new design with create_screen (a layout tree, inside a frame at a real device size: 390x844 mobile or 1440x900 desktop), using create_elements only for extras that don't fit a layout: clean look (sketch: false), real copy, consistent spacing, radius on buttons and cards, a shadow on raised surfaces (md cards, lg modals), Lucide icons (type icon) for nav, actions and inputs, one groupId and a role per component.",
+              "4. Look at it with export_image (the frame's id), fix anything that overlaps, is misaligned or wraps badly, check again, then summarize what you made.",
               "5. Finish by watching for my Ask AI requests (wait_for_edits, handle each, complete_edit, repeat).",
             ].join("\n"),
           },

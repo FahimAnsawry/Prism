@@ -78,7 +78,15 @@ export const projectSummarySchema = z.object({
   description: z.string().nullable(),
   boardCount: z.number().int(),
   /** The most recently edited boards, for the card tiles. */
-  boards: z.array(z.object({ id: z.uuid(), name: z.string() })),
+  boards: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      /** Live elements on the board; the tile previews them unless there are none. */
+      itemCount: z.number().int(),
+      editedAt: z.iso.datetime(),
+    }),
+  ),
   ...timestamps,
 });
 

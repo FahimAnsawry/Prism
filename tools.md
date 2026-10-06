@@ -27,6 +27,8 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | 15 | Image | `I` | Upload, paste or drag-drop an image | `image` | `<input type="file">`, `paste` and `drop` events; upload to the Node server (`/uploads`), render with SVG `<image href>`; keep aspect ratio on resize | Easy |
 | 16 | Chart | `C` | Insert a bar, line, pie or donut chart, then edit its data in a side panel | `chart` | Scale data to the box yourself: bars = `<rect>`, line = `<polyline>`, pie/donut = `<path>` arcs (`A` command) from cumulative angles; data editor = a plain editable HTML table | Medium |
 | 17 | SVG | `S` | Upload, paste or drag-drop an `.svg` file; it stays sharp at any zoom | `svg` | Read the file as text, parse it with `DOMParser` and sanitize it: drop `<script>`, `<foreignObject>`, `on*` attributes and external `href`s. Upload the cleaned file to the Node server (`/uploads`, which sanitizes again and serves it with `Content-Security-Policy: script-src 'none'`), then render with SVG `<image href>` so nothing inside it can run; size it from its `viewBox` and keep aspect ratio on resize. Later: "Convert to shapes" turns its `rect`/`ellipse`/`line`/`path` nodes into editable elements | Medium |
+| 18 | Icon | `K` | Opens a searchable picker of Lucide icons; click to place one. Color, fill and line weight come from the properties panel | `icon` | Store the Lucide name (`icon: "search"`). Lucide's name → loader catalog and each icon's shapes load lazily (`lucide-react/dynamic`) and are cached; render the icon node as a nested `<svg viewBox="0 0 24 24">` in the element's box, keeping aspect ratio on resize | Easy |
+| 19 | Mind map | `G` | Click to place a central topic and type. With a node selected: Tab adds a child, Enter a sibling, F2 edits; typing, Enter finishes (Shift+Enter breaks the line) and Tab finishes and adds a child. Dragging a node takes its branch along, deleting it deletes the branch, the toggle at a branch end folds it away | `mindnode` | Nodes store `parentId` (and `collapsed`); branches aren't stored but drawn as cubic curves from each node to its parent, so they follow every move. Levels are styled like XMind (dark central topic, tinted main branches, underlined sub-topics). A tidy layout (`packages/shared/src/mindmap.ts`) spreads branches right and left, keeping each on its side and in its order; it reruns when nodes are added, resized by typing, folded or deleted, and from the panel's "Tidy up" | Medium |
 
 ---
 
@@ -55,12 +57,15 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | Fill color | rect, ellipse, diamond, sticky | Palette + the board's saved colors + "+" + none |
 | Stroke width | shapes, lines, arrows, freehand | Thin / medium / thick |
 | Stroke style | shapes, lines, arrows | Solid / dashed / dotted (`stroke-dasharray`) |
+| Shadow | rect, ellipse, diamond, frame, image, SVG, chart | None / small / medium / large (`shadow: "sm" \| "md" \| "lg"`): an SVG `<filter>` per element that blurs the shape's alpha, offsets it down and tints it, one or two layers per preset |
 | **Sketch mode** | rect, ellipse, diamond, line, arrow | On / off: hand-drawn look from the sketch renderer (section 2) |
 | Font | text, sticky, list | Dropdown grouped Sans (DM Sans, Inter, Roboto, Open Sans, Montserrat, Poppins, Lato) / Serif (Playfair Display, Merriweather) / Mono (Space Mono) / Handwriting (Caveat, Nanum Pen, Kalam, Patrick Hand, Indie Flower), all self-hosted; plus Google fonts added to the board by name (stored as `font: "gf:<Family>"`) |
 | Font weight | text, sticky, list | The weights the chosen font ships (Light 300 to Black 900), each previewed as "Aa" in itself; stored as a number in `fontWeight` (older `"normal"` / `"bold"` still read as 400 / 700). Switching fonts moves the weight to the new font's closest one. Added Google fonts offer Regular / Bold |
 | Handwriting style | text, sticky, list using a handwriting font | The five handwriting fonts, each previewed in itself |
 | Font size | text, sticky, list | S / M / L / XL presets, or a free size in px (6–400, stored as `fontSizePx`, which wins over the preset). Dragging a text or list by a corner or the top / bottom handle scales its text freely (the opposite corner stays put); the left / right handles change the wrap width. Group resizes from a corner scale text too |
 | Text align | text, sticky, list | Left / center / right (`text-anchor`) |
+| Line height | text, sticky, list | 50–300% of the text size (default 125%), stored as a multiple in `lineHeight`; sets the gap between `<tspan>` lines and the editor's `line-height` |
+| Letter spacing | text, sticky, list | −20% to 100% of the text size (default 0), stored in ems in `letterSpacing`; drawn with CSS `letter-spacing` and added per character to the `measureText()` width so wrapping still matches |
 | Opacity | all | 0–100% |
 
 **Custom colors.** "+" opens a hand-built picker (saturation/brightness square, hue strip, editable hex accepting `#RGB`/`#RRGGBB`). "Add" applies the color and saves it to the board (`board.customColors`, newest first, max 16, removable), so everyone editing the board sees the same swatches. Added Google fonts are saved the same way (`board.customFonts`, max 20) via `PATCH /api/boards/:id/style`. Fonts load (`document.fonts.load`) before text using them is measured.
@@ -110,14 +115,15 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | `open_board` | Create or open a board and open it in the browser |
 | `list_boards` | List saved boards |
 | `get_board` | Read a board or one frame as simplified JSON |
-| `create_screen` | Main drawing tool: send a layout tree (row, stack, grid, gap, padding); the server computes positions |
+| `create_mindmap` | A mind map from a nested outline (or new branches under an existing node via `parentId`): nodes styled by level, sized by an open board tab's text measuring (`layout:mindmap`) or estimated, the whole map tidied, one undo step |
+| `create_screen` | Main drawing tool: send a layout tree and get positioned elements. Containers `stack` / `row` / `grid` (gap, padding, align, justify, width/height as px, `"fill"` or hug, optional background with fill, stroke, radius, shadow); leaves `text`, `icon`, `box`, `spacer` (fixed or flexible), `divider`. The engine (`packages/shared/src/layout.ts`) is a small flexbox; an open board tab runs it with the canvas's own text measuring (`layout:screen` over Socket.IO), else the server estimates text widths. Optional device frame; the screen is one undo step |
 | `create_elements` | Low-level: create elements with exact x/y |
 | `update_elements` | Change props, text, size or position by id |
 | `delete_elements` | Remove elements by id |
 | `get_selection` | What the user currently has selected |
 | `get_pending_edits` | Read queued "Ask Claude" requests from the AI box |
 | `complete_edit` | Mark a request done or failed, with a short note shown in the browser |
-| `export_image` | PNG of a frame, the selection or given ids (Claude sees it inline) |
+| `export_image` | PNG of a frame, given ids or the whole board (Claude sees it inline). The user's open board tab draws it over Socket.IO (`export:image` with an ack): the canvas's own `ElementShape` into an offscreen SVG, computed colors inlined, images and the used `@font-face` subsets embedded as data URLs, then drawn on a `<canvas>`. PNG, or JPEG when large |
 | `export_reference` | Write `reference.json`, PNGs and `REFERENCE.md` for building the real UI |
 
 ---
@@ -127,7 +133,8 @@ Shortcuts are suggestions based on common whiteboard conventions.
 ```ts
 type ElementType =
   | "text" | "sticky" | "list" | "rect" | "ellipse" | "diamond"
-  | "line" | "arrow" | "freehand" | "emoji" | "image" | "svg" | "chart" | "frame";
+  | "line" | "arrow" | "freehand" | "emoji" | "image" | "svg" | "chart" | "frame" | "icon"
+  | "mindnode";
 
 interface BaseElement {
   id: string;          // crypto.randomUUID()

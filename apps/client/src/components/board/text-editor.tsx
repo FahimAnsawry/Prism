@@ -1,4 +1,10 @@
-import type { BoardElement } from "@prism/shared";
+import {
+  type BoardElement,
+  MIND_LINE_HEIGHT,
+  MIND_PAD_X,
+  MIND_PAD_Y,
+  MIND_TEXT_COLOR,
+} from "@prism/shared";
 import { type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { displayColor, STICKY_DEFAULT } from "./board-model";
@@ -8,8 +14,9 @@ import { center } from "./geometry";
 import {
   fitTextBox,
   layoutSticky,
-  LINE_HEIGHT,
   fontPx,
+  letterSpacingOf,
+  lineHeightOf,
   listToText,
   STICKY_PADDING,
   textToList,
@@ -28,15 +35,19 @@ export function TextEditor({
   viewport,
   onChange,
   onDone,
+  onAddChild,
 }: {
   el: BoardElement;
   camera: Camera;
   viewport: { width: number; height: number };
   onChange: (el: BoardElement) => void;
   onDone: () => void;
+  /** Mind map nodes: Tab finishes and adds a child to type into next. */
+  onAddChild?: () => void;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const isList = el.type === "list";
+  const mind = el.type === "mindnode";
   const [value, setValue] = useState(() =>
     isList ? listToText(el.items ?? [{ text: "", indent: 0 }]) : (el.text ?? ""),
   );
@@ -69,6 +80,13 @@ export function TextEditor({
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       onDone();
+      return;
+    }
+    // A mind map node finishes on Enter (Shift+Enter breaks the line); Tab also adds a child.
+    if (mind && ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab")) {
+      event.preventDefault();
+      onDone();
+      if (event.key === "Tab") onAddChild?.();
       return;
     }
     if (!isList) return;
@@ -106,7 +124,8 @@ export function TextEditor({
   const sticky = el.type === "sticky";
   const px = sticky ? layoutSticky(el).px : fontPx(el);
   const width = Math.max(el.width, px);
-  const height = Math.max(el.height, px * LINE_HEIGHT);
+  const height = Math.max(el.height, px * (mind ? MIND_LINE_HEIGHT : lineHeightOf(el)));
+  const mindText = el.textColor ?? MIND_TEXT_COLOR;
 
   return (
     <div
@@ -119,7 +138,12 @@ export function TextEditor({
         transform: `scale(${camera.zoom}) rotate(${el.rotation}deg)`,
         transformOrigin: "center",
         opacity: el.opacity,
-        background: sticky ? (el.fill ?? STICKY_DEFAULT) : undefined,
+        background: sticky
+          ? (el.fill ?? STICKY_DEFAULT)
+          : mind
+            ? (el.fill ?? undefined)
+            : undefined,
+        borderRadius: mind && el.fill ? Math.min(12, height / 2) : undefined,
       }}
     >
       <textarea
@@ -132,22 +156,29 @@ export function TextEditor({
         onBlur={onDone}
         // Pointer presses inside the editor must not reach the canvas (that would close it).
         onPointerDown={(event) => event.stopPropagation()}
-        wrap={el.autoWidth ? "off" : "soft"}
+        wrap={el.autoWidth && !mind ? "off" : "soft"}
         className={cn(
           "block size-full resize-none overflow-hidden border-0 bg-transparent p-0 outline-none",
           { left: "text-left", center: "text-center", right: "text-right" }[
-            isList ? "left" : (el.textAlign ?? "left")
+            isList ? "left" : mind ? "center" : (el.textAlign ?? "left")
           ],
         )}
         style={{
           fontFamily: fontStack(el.font ?? "sans"),
           fontSize: px,
-          lineHeight: LINE_HEIGHT,
+          lineHeight: mind ? MIND_LINE_HEIGHT : lineHeightOf(el),
+          letterSpacing: `${letterSpacingOf(el)}em`,
           fontWeight: weightOf(el),
-          color: sticky ? "#3d3b4f" : displayColor(el.stroke),
+          color: sticky
+            ? "#3d3b4f"
+            : mind
+              ? el.fill
+                ? mindText
+                : displayColor(mindText)
+              : displayColor(el.stroke),
           caretColor: "#5882ff",
-          padding: sticky ? STICKY_PADDING : 0,
-          whiteSpace: el.autoWidth ? "pre" : "pre-wrap",
+          padding: sticky ? STICKY_PADDING : mind ? `${MIND_PAD_Y}px ${MIND_PAD_X}px` : 0,
+          whiteSpace: el.autoWidth && !mind ? "pre" : "pre-wrap",
           tabSize: 4,
         }}
       />

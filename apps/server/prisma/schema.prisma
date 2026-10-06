@@ -120,6 +120,8 @@ enum ElementType {
   svg
   chart
   frame
+  icon
+  mindnode
 }
 
 enum StrokeStyle {

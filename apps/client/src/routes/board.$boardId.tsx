@@ -1,7 +1,15 @@
 import { type BoardElement, type BoardSummary, type ElementOp, SVG_TYPE } from "@prism/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { type RefObject, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   fitSize,
   imageSize,
@@ -30,13 +38,14 @@ import {
   serializeElements,
 } from "@/components/board/clipboard";
 import { EmojiPicker } from "@/components/board/emoji-picker";
-import { googleFontId, loadFont, loadFonts, weightOf } from "@/components/board/fonts";
+import { IconPicker } from "@/components/board/icon-picker";
+import { googleFontId, loadFont } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
 import { isTextual } from "@/components/board/gestures";
 import { applicableChanges, PropertiesPanel } from "@/components/board/properties-panel";
 import { ShortcutsDialog } from "@/components/board/shortcuts-dialog";
 import { TextEditor } from "@/components/board/text-editor";
-import { fitTextBox, resetMeasurements } from "@/components/board/text-layout";
+import { fitTextBox, loadBoardFonts } from "@/components/board/text-layout";
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
 import { ErrorScreen } from "@/components/feedback/error-page";
 import { NotFoundPage } from "@/components/feedback/not-found-page";
@@ -55,20 +64,6 @@ export const Route = createFileRoute("/board/$boardId")({
 
 /** Top-bar buttons and keys zoom around the middle of the view; the wheel zooms toward the pointer. */
 const CENTER = { x: 0, y: 0 };
-
-/**
- * Text is measured on a canvas, which doesn't load web fonts by itself; load the fonts the
- * board's elements use first so the first layout is right. Gives up after 3s and measures with
- * what's there.
- */
-async function loadBoardFonts(elements: BoardElement[]) {
-  const used = elements.flatMap((el) =>
-    el.font || el.fontWeight ? [[el.font ?? "sans", weightOf(el)] as const] : [],
-  );
-  await loadFonts(["sans", "caveat", "mono", ...used]);
-  resetMeasurements();
-  return true;
-}
 
 function BoardPage() {
   const { boardId } = Route.useParams();
@@ -137,6 +132,7 @@ function BoardEditor({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [editing, setEditing] = useState<{ id: string; before: BoardElement[] } | null>(null);
   const [emoji, setEmoji] = useState<string | null>(null);
+  const [icon, setIcon] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const viewport = useRef<HTMLElement>(null);
   const size = useElementSize(viewport);
@@ -202,6 +198,15 @@ function BoardEditor({
     return () => clearTimeout(timer);
   }, [boardId, state.selectedIds]);
 
+  // The board opens framed on its content (an empty one with the origin, where new content goes,
+  // in the middle). That needs the viewport's size, known once it's measured before first paint.
+  const framed = useRef(false);
+  useLayoutEffect(() => {
+    if (framed.current || size.width <= 0 || size.height <= 0) return;
+    framed.current = true;
+    setCamera(fitCamera(state.elements, size.width, size.height));
+  }, [size.width, size.height, state.elements]);
+
   const zoomIn = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
   const zoomOut = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
   const zoomReset = () => setCamera((c) => zoomAt(c, 1, CENTER));
@@ -229,6 +234,15 @@ function BoardEditor({
   const startEditing = useCallback((id: string, before: BoardElement[]) => {
     setEditing({ id, before });
   }, []);
+
+  // A mind map node just added with Tab / Enter opens for typing (once per request).
+  const [editRequest, setEditRequest] = useState(state.editRequest);
+  if (state.editRequest !== editRequest) {
+    setEditRequest(state.editRequest);
+    if (state.editRequest) {
+      setEditing({ id: state.editRequest.id, before: state.editRequest.before });
+    }
+  }
 
   const finishEditing = useCallback(() => {
     const current = latest.current.editing;
@@ -318,8 +332,9 @@ function BoardEditor({
         return;
       }
       if (latest.current.editing) finishEditing();
-      // Opening the Emoji tool starts with a fresh pick.
+      // Opening the Emoji or Icon tool starts with a fresh pick.
       if (next === "emoji") setEmoji(null);
+      if (next === "icon") setIcon(null);
       setTool(next);
     },
     [finishEditing],
@@ -438,9 +453,14 @@ function BoardEditor({
       } else if (key === "escape") {
         dispatch({ type: "select", ids: [] });
         setTool("select");
-      } else if (key === "enter" && ids.length === 1 && !mod) {
+      } else if ((key === "enter" || key === "tab" || key === "f2") && ids.length === 1 && !mod) {
         const el = state.elements.find((e) => e.id === ids[0]);
-        if (el && isTextual(el) && !el.locked) {
+        if (!el || el.locked) return;
+        if (el.type === "mindnode" && key !== "f2") {
+          // Mind map: Tab adds a child, Enter a sibling (a child of a central topic).
+          event.preventDefault();
+          dispatch({ type: "mindAdd", from: el.id, sibling: key === "enter" });
+        } else if (isTextual(el) && key !== "tab") {
           event.preventDefault();
           startEditing(el.id, state.elements);
         }
@@ -491,6 +511,7 @@ function BoardEditor({
           camera={camera}
           editingId={editing?.id ?? null}
           emoji={emoji}
+          icon={icon}
           onCameraChange={setCamera}
           onBorrowHand={setBorrowingHand}
           onStartEditing={startEditing}
@@ -510,6 +531,7 @@ function BoardEditor({
             viewport={size}
             onChange={(element) => dispatch({ type: "previewElement", element })}
             onDone={finishEditing}
+            onAddChild={() => dispatch({ type: "mindAdd", from: editingEl.id, sibling: false })}
           />
         )}
 
@@ -522,10 +544,12 @@ function BoardEditor({
         <BoardToolbar active={borrowingHand ? "hand" : tool} onSelect={chooseTool} />
 
         {tool === "emoji" && <EmojiPicker value={emoji} onPick={setEmoji} />}
+        {tool === "icon" && <IconPicker value={icon} onPick={setIcon} />}
 
         {selected.length > 0 && !editing && (
           <PropertiesPanel
             elements={selected}
+            onTidy={(id) => dispatch({ type: "mindTidy", id })}
             customColors={board?.customColors ?? []}
             customFonts={customFonts ?? []}
             onStyleChange={(style) =>
@@ -580,10 +604,10 @@ function BoardEditor({
   );
 }
 
-/** The element's size, kept up to date as it resizes. */
+/** The element's size, kept up to date as it resizes. Measured before the first paint. */
 function useElementSize(ref: RefObject<HTMLElement | null>) {
   const [size, setSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const update = () => setSize({ width: el.clientWidth, height: el.clientHeight });
