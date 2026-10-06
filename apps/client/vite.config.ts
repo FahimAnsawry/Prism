@@ -19,6 +19,12 @@ export default defineConfig({
     // Resolve workspace packages (e.g. @prism/shared) to their TypeScript source
     conditions: ["source", ...defaultClientConditions],
   },
+  optimizeDeps: {
+    // Pre-bundling lucide-react/dynamic (one lazy import per icon) alongside lucide-react splits
+    // every icon into its own chunk, and the main lucide-react entry then pulls in all ~1,900 of
+    // them on every page load. Served unbundled, its icons load only when a board shows one.
+    exclude: ["lucide-react/dynamic"],
+  },
   server: {
     port: 5173,
     strictPort: true,

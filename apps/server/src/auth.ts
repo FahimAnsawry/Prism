@@ -41,7 +41,18 @@ export const auth = betterAuth({
   trustedOrigins: [clientUrl],
   database: prismaAdapter(authPrisma, { provider: "postgresql" }),
 
-  emailAndPassword: { enabled: true },
+  emailAndPassword: {
+    enabled: true,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url, token }, _request) => {
+      // In development or until an email provider (Resend, SES) is attached, log the reset URL.
+      console.info(
+        `[auth] Password reset requested for ${user.email}:\n` +
+          `  Reset URL: ${url}\n` +
+          `  Token: ${token}`,
+      );
+    },
+  },
   socialProviders: {
     google: {
       clientId: requireEnv("GOOGLE_CLIENT_ID"),

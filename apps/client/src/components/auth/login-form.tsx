@@ -80,13 +80,12 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
           autoComplete="current-password"
           className="mt-[18px]"
           labelAside={
-            // TODO: route to the password reset flow once it exists.
-            <button
-              type="button"
+            <Link
+              to="/forgot-password"
               className="font-mono text-xs tracking-[0.08em] text-foreground uppercase underline-offset-4 transition-colors hover:text-ink hover:underline"
             >
               Forgot?
-            </button>
+            </Link>
           }
           error={errors.password?.message}
           {...register("password")}

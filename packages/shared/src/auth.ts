@@ -29,5 +29,28 @@ export const signupSchema = z
     path: ["confirmPassword"],
   });
 
+export const forgotPasswordSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, "Enter your email.")
+    .pipe(z.email("Enter a valid email address, like fahim@studio.dev.")),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(1, "Create a password.")
+      .min(PASSWORD_MIN_LENGTH, `Use ${PASSWORD_MIN_LENGTH} or more characters.`),
+    confirmPassword: z.string().min(1, "Confirm your password."),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match.",
+    path: ["confirmPassword"],
+  });
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type SignupInput = z.infer<typeof signupSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

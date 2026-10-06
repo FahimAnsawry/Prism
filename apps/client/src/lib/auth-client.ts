@@ -45,6 +45,7 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
     "GitHub didn't share an email address. Make your primary email verified and try again.",
   email_not_verified: "Verify your email with the provider first, then try again.",
   access_denied: "Sign-in was cancelled.",
+  INVALID_TOKEN: "This reset link is invalid or has expired. Please request a new one.",
 };
 
 export function authErrorMessage(code: string | undefined) {
