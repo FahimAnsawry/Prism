@@ -22,8 +22,11 @@ coverage/
 .vite/
 .tanstack/
 
-# Temporary files
+# Temporary and local credential files
 Screenshot *.png
+s3.txt
+*.pem
+*.key
 
 # OS / editor
 .DS_Store

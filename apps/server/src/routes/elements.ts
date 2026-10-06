@@ -76,7 +76,27 @@ export async function ownedBoard(boardIdParam: string | string[] | undefined, ow
 
 type Existing = Pick<ElementRow, "id" | "version" | "deletedAt"> & { props: unknown };
 
-/** The write for one op, or null when it lost to a newer version (or has nothing to change). */
+type CreateOp = Extract<ElementOp, { op: "create" }>;
+
+/** The row a create op writes. */
+function createData(boardId: string, op: CreateOp): Prisma.ElementCreateManyInput {
+  const { id, version, ...fields } = op.element;
+  const { columns, props } = split(fields);
+  return {
+    ...columnDefaults,
+    ...columns,
+    props: props as Prisma.InputJsonObject,
+    version,
+    deletedAt: null,
+    boardId,
+    id,
+  } as Prisma.ElementCreateManyInput;
+}
+
+/**
+ * The write for one op, or null when it lost to a newer version (or has nothing to change).
+ * Creates of new ids don't come here: applyOps inserts them all in one createMany.
+ */
 function writeFor(
   boardId: string,
   op: ElementOp,
@@ -88,21 +108,10 @@ function writeFor(
 
   switch (op.op) {
     case "create": {
-      const { id: _id, version, ...fields } = op.element;
-      const { columns, props } = split(fields);
-      const data = {
-        ...columnDefaults,
-        ...columns,
-        props: props as Prisma.InputJsonObject,
-        version,
-        deletedAt: null,
-      } as Prisma.ElementUncheckedCreateInput;
       // An undo can bring back a deleted element under its old id: revive the tombstone.
-      if (existing) {
-        if (version <= existing.version) return null;
-        return prisma.element.update({ where, data });
-      }
-      return prisma.element.create({ data: { ...data, boardId, id } });
+      if (!existing || op.element.version <= existing.version) return null;
+      const { boardId: _board, id: _id, ...data } = createData(boardId, op);
+      return prisma.element.update({ where, data });
     }
 
     case "update": {
@@ -128,8 +137,15 @@ function writeFor(
 }
 
 /**
+ * A batch transaction sends its queries one after another, so its time grows with the number of
+ * updates (~50 ms each to Neon). Prisma's default of 5 s fails a save of ~100 updated elements.
+ */
+const SAVE_TIMEOUT_MS = 30_000;
+
+/**
  * Applies a batch of create/update/delete ops in one transaction. Each op carries the element's
  * next version; an op whose version isn't higher than the stored one is stale and skipped.
+ * New elements go in with one createMany (a screen from create_screen is hundreds of them).
  * Returns the ops that were applied (for broadcasting) and the ids of the stale ones.
  */
 export async function applyOps(board: { id: string; projectId: string | null }, ops: ElementOp[]) {
@@ -141,18 +157,24 @@ export async function applyOps(board: { id: string; projectId: string | null }, 
   const existing = new Map<string, Existing>(rows.map((row) => [row.id, row]));
 
   const now = new Date();
+  // New rows depend on nothing else in the batch, so they're inserted first, in one query.
+  const inserts: Prisma.ElementCreateManyInput[] = [];
   const writes: Prisma.PrismaPromise<unknown>[] = [];
   const applied: ElementOp[] = [];
   const stale: string[] = [];
   for (const op of ops) {
     const id = op.op === "create" ? op.element.id : op.id;
     const before = existing.get(id);
-    const write = writeFor(board.id, op, before, now);
-    if (!write) {
-      stale.push(id);
-      continue;
+    if (op.op === "create" && !before) {
+      inserts.push(createData(board.id, op));
+    } else {
+      const write = writeFor(board.id, op, before, now);
+      if (!write) {
+        stale.push(id);
+        continue;
+      }
+      writes.push(write);
     }
-    writes.push(write);
     applied.push(op);
     // Later ops in the same batch see this one's result.
     const version = op.op === "create" ? op.element.version : op.version;
@@ -165,14 +187,18 @@ export async function applyOps(board: { id: string; projectId: string | null }, 
     existing.set(id, { id, version, deletedAt: op.op === "delete" ? now : null, props });
   }
 
-  if (writes.length > 0) {
-    await prisma.$transaction([
-      ...writes,
-      prisma.board.update({ where: { id: board.id }, data: { editedAt: now } }),
-      ...(board.projectId
-        ? [prisma.project.update({ where: { id: board.projectId }, data: { editedAt: now } })]
-        : []),
-    ]);
+  if (inserts.length > 0 || writes.length > 0) {
+    await prisma.$transaction(
+      [
+        ...(inserts.length > 0 ? [prisma.element.createMany({ data: inserts })] : []),
+        ...writes,
+        prisma.board.update({ where: { id: board.id }, data: { editedAt: now } }),
+        ...(board.projectId
+          ? [prisma.project.update({ where: { id: board.projectId }, data: { editedAt: now } })]
+          : []),
+      ],
+      { timeout: SAVE_TIMEOUT_MS },
+    );
   }
   return { applied, stale };
 }
