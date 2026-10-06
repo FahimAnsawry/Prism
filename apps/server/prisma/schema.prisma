@@ -147,6 +147,10 @@ model Project {
   editedAt    DateTime  @default(now())
   // Set = in the trash; hides the project and its boards.
   archivedAt  DateTime?
+  // The project's theme (themeSchema in packages/shared/src/theme.ts); null = the default theme.
+  theme       Json?
+  // Its components (componentsSchema in packages/shared/src/components.ts) by name; null = none.
+  components  Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

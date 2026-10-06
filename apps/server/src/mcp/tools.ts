@@ -1,4 +1,10 @@
 import {
+  checkComponent,
+  COMPONENTS_MAX,
+  componentNameSchema,
+  componentSchema,
+  expandComponents,
+  usedComponents,
   buildMindMap,
   countMindNodes,
   countNodes,
@@ -10,6 +16,8 @@ import {
   mindRoot,
   tidyMindMap,
   createBoardSchema,
+  createProjectSchema,
+  DEFAULT_THEME,
   EDIT_NOTE_MAX,
   estimateText,
   fontFamilySchema,
@@ -17,9 +25,27 @@ import {
   layoutNodeSchema,
   layoutScreen,
   elementChangesSchema,
+  fontFamilyName,
+  mergeTheme,
+  parseThemeCss,
+  RADIUS_SCALE,
+  resolveElementTokens,
+  resolveLayoutTokens,
+  strictMessage,
+  strictViolations,
+  TEXT_STYLES,
+  THEME_COLORS,
+  THEME_MODES,
+  themeColorHex,
+  themePatchSchema,
+  themeTokenNames,
+  unknownTokensMessage,
   WAIT_EDITS_MAX_SECONDS,
   type BoardElement,
   type ElementOp,
+  type ElementTokens,
+  type Theme,
+  type ThemeMode,
 } from "@prism/shared";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
@@ -38,12 +64,24 @@ import {
   requestScreenLayout,
 } from "../realtime.js";
 import { applyOps, ownedBoard } from "../routes/elements.js";
-import { createBoard, getBoardSummary, loadWorkspace } from "../routes/workspace.js";
+import {
+  boardComponents,
+  boardTheme,
+  createBoard,
+  createProject,
+  getBoardSummary,
+  getProjectComponents,
+  getProjectTheme,
+  loadWorkspace,
+  saveProjectComponents,
+  saveProjectTheme,
+} from "../routes/workspace.js";
 import {
   boundsOf,
   buildElements,
   compact,
   createElementInput,
+  type CreateElementInput,
   insideFrame,
   layoutElementInput,
   updateChangesInput,
@@ -79,9 +117,115 @@ const serverUrl = () => process.env["SERVER_URL"] ?? process.env["BETTER_AUTH_UR
 const clientUrl = () => process.env["CLIENT_URL"] ?? "";
 const fileUrl = (assetKey: string) => new URL(`/uploads/${assetKey}`, serverUrl()).toString();
 const boardUrl = (boardId: string) => new URL(`/board/${boardId}`, clientUrl()).toString();
-const view = (el: BoardElement) => compact(el, fileUrl);
+const view = (el: BoardElement, theme?: Theme) => compact(el, fileUrl, theme);
 
 const boardId = z.uuid().describe("The board's id (from list_boards or open_board).");
+const projectId = z.uuid().describe("The project's id (from list_boards or create_project).");
+const modeInput = z
+  .enum(THEME_MODES)
+  .optional()
+  .describe('Which theme colors the $tokens take: "light" (default) or "dark" for a dark screen.');
+
+/** Told with any read that shows theme tokens. */
+const TOKENS_NOTE =
+  "Values starting with $ come from the project theme (get_theme): code them as Tailwind classes (fill $primary → bg-primary, text $muted-foreground → text-muted-foreground, stroke $border → border-border, $radius-lg → rounded-lg, textStyle $h1 → text-h1, font $heading → font-heading), never as hex or px.";
+const hasTokens = (elements: BoardElement[]) => elements.some((el) => el.tokens);
+
+/** Told with any read that shows component instances. */
+const COMPONENTS_NOTE =
+  'Elements with the same groupId and a component ("Button:primary", "Sidebar > NavItem") are one instance of a project component (list_components): build each component once (at its code path if it has one) and reuse it, passing the instance\'s text as props.';
+const hasComponents = (elements: BoardElement[]) => elements.some((el) => el.component);
+
+/** How to place a component, for an AI editor. */
+function componentUsage(name: string, component: z.infer<typeof componentSchema>) {
+  const variants = Object.keys(component.variants);
+  const required = Object.entries(component.props)
+    .filter(
+      ([key, prop]) =>
+        prop.default === undefined && !variants.some((v) => key in (component.variants[v] ?? {})),
+    )
+    .map(([key]) => key);
+  return {
+    type: "use",
+    component: name,
+    ...(variants.length > 0 && { variant: component.defaultVariant ?? variants[0] }),
+    ...(required.length > 0 && { props: Object.fromEntries(required.map((key) => [key, "…"])) }),
+  };
+}
+
+/** Element fields with their $tokens resolved, or a 400 that lists the valid tokens. */
+function themed<T extends Record<string, unknown>>(
+  fields: T,
+  theme: Theme,
+  mode: ThemeMode,
+  current?: ElementTokens | null,
+) {
+  const result = resolveElementTokens(fields, theme, mode, current);
+  if (result.unknown.length > 0) throw new HttpError(400, unknownTokensMessage(result.unknown));
+  return {
+    ...result.fields,
+    ...(result.tokens !== undefined && { tokens: result.tokens }),
+  } as T & { tokens?: ElementTokens | null };
+}
+
+/** create_elements values that come from the theme unless given. */
+function themedDefaults(input: CreateElementInput): Partial<CreateElementInput> {
+  if (input.type === "icon") return { stroke: "$foreground" };
+  if (input.type === "frame") return { fill: "$background" };
+  if (input.type !== "text" && input.type !== "list") return {};
+  // Text without a style or size of its own gets the body style (which sets its font too).
+  const sized = input.textStyle != null || input.fontSizePx != null || input.fontSize != null;
+  return { stroke: "$foreground", ...(sized ? { font: "$sans" } : { textStyle: "$body" }) };
+}
+
+/** Refuses plain UI values when the theme is strict. */
+function checkStrict(
+  theme: Theme,
+  items: { fields: Record<string, unknown>; type: BoardElement["type"] }[],
+) {
+  if (!theme.strict) return;
+  const violations = items.flatMap(({ fields, type }) => strictViolations(fields, type));
+  if (violations.length > 0) throw new HttpError(400, strictMessage(violations));
+}
+
+/** A theme for an AI editor: each token's hex per mode, the radius scale and the fonts. */
+function describeTheme(theme: Theme) {
+  return {
+    name: theme.name ?? null,
+    colors: Object.fromEntries(
+      THEME_COLORS.map((name) => [
+        `$${name}`,
+        { light: themeColorHex(theme, "light", name), dark: themeColorHex(theme, "dark", name) },
+      ]),
+    ),
+    radius: {
+      ...Object.fromEntries(
+        Object.entries(RADIUS_SCALE).map(([name, scale]) => [
+          `$${name}`,
+          Math.round(theme.radius * scale * 10) / 10,
+        ]),
+      ),
+      "$radius-full": 9999,
+    },
+    fonts: {
+      $sans: fontFamilyName(theme.fonts.sans),
+      $heading: fontFamilyName(theme.fonts.heading),
+      $mono: fontFamilyName(theme.fonts.mono),
+    },
+    textStyles: Object.fromEntries(
+      TEXT_STYLES.map((name) => {
+        const style = theme.text[name];
+        const font = style.font === "sans" ? "" : `font-${style.font} `;
+        return [`$${name}`, { ...style, font: `$${style.font}`, tailwind: `${font}text-${name}` }];
+      }),
+    ),
+    spacing: {
+      base: theme.spacing,
+      note: `Tailwind spacing: p-4 = ${theme.spacing * 4}px. Gaps and padding go in ${theme.spacing / 2}px steps.`,
+    },
+    strict: theme.strict,
+  };
+}
 
 /** Saves AI-made ops (one undo step for the user) and sends them to open board tabs. */
 async function save(userId: string, id: string, ops: ElementOp[]) {
@@ -167,6 +311,286 @@ export function registerTools(server: McpServer, userId: string) {
       }),
   );
 
+  // ── Projects and themes ──────────────────────────────────────────────────
+
+  server.registerTool(
+    "create_project",
+    {
+      title: "Create a project",
+      description:
+        "Create a Prism project: a folder of boards for one app, with one theme (colors, radius, fonts) that all its screens share. Set the theme next with set_theme, then make boards in it with open_board (projectId).",
+      inputSchema: createProjectSchema.extend({
+        name: createProjectSchema.shape.name.describe('The app\'s name, e.g. "ClientFlow".'),
+      }),
+      annotations: { openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        const project = await createProject(userId, input);
+        return json({
+          project: { id: project.id, name: project.name },
+          theme: "default (neutral) until set_theme",
+          next: "Set the theme with set_theme: css from the app's global CSS if it has one, else brand colors. Then open_board with this projectId.",
+        });
+      }),
+  );
+
+  server.registerTool(
+    "get_theme",
+    {
+      title: "Read a project's theme",
+      description: [
+        "Read the theme a project's boards use: shadcn/ui color tokens (light and dark), radius and fonts, plus css, the Tailwind v4 + shadcn/ui CSS to put in the app's global CSS.",
+        "Read it before designing (use the $tokens in create_screen) and before coding screens (put css in app/globals.css or src/index.css, then code $tokens as Tailwind classes).",
+        "saved: false means the project still has the default theme.",
+      ].join(" "),
+      inputSchema: z.object({
+        projectId: projectId.optional(),
+        boardId: boardId.optional().describe("Or a board: its project's theme."),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        let id = input.projectId;
+        if (!id && input.boardId) {
+          const board = await ownedBoard(input.boardId, userId);
+          if (!board.projectId) {
+            return json({
+              projectId: null,
+              saved: false,
+              note: "This board isn't in a project, so it uses the default theme. Move it into a project to give it one.",
+              ...describeTheme(DEFAULT_THEME),
+              tokens: themeTokenNames(),
+            });
+          }
+          id = board.projectId;
+        }
+        if (!id) throw new HttpError(400, "Give a projectId or a boardId.");
+        const { projectId: pid, saved, theme, css } = await getProjectTheme(userId, id);
+        const { components } = await getProjectComponents(userId, pid);
+        return json({
+          projectId: pid,
+          saved,
+          ...describeTheme(theme),
+          components: Object.keys(components),
+          css,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "set_theme",
+    {
+      title: "Set a project's theme",
+      description: [
+        "Set the theme every board in a project draws with, and that its app's code uses.",
+        "css: an app's global CSS (shadcn/ui :root and .dark variables, --radius, --font-*); Prism reads it, following var() references. Use this when the app already has a theme, so designs match it exactly.",
+        'theme: values to change, e.g. { light: { primary: "#4f46e5", "primary-foreground": "#ffffff" }, radius: 12, fonts: { heading: "gf:Sora" }, text: { h1: { size: 40, weight: 800 } } }. Colors take any CSS color (hex, oklch, hsl). Give both light and dark when the app has a dark mode.',
+        "text is the type scale ($display, $h1–$h4, $body-lg, $body, $body-sm, $caption, $label: font sans|heading|mono, size px, weight, lineHeight, letterSpacing in em).",
+        "A project's theme is strict (strict: true): drawing tools then refuse plain colors, radius, fonts and text sizes on UI elements, so screens can't drift. Turn it off with strict: false.",
+        "Both can be given: css first, then theme on top. Screens drawn before keep their colors.",
+      ].join(" "),
+      inputSchema: z.object({
+        projectId,
+        css: z.string().max(200_000).optional().describe("The app's global CSS, to import."),
+        theme: themePatchSchema.optional().describe("Values to change on top."),
+      }),
+      annotations: { openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        if (!input.css && !input.theme) throw new HttpError(400, "Give css, theme or both.");
+        const current = await getProjectTheme(userId, input.projectId);
+        // The default theme is free-form; a project's own theme starts strict.
+        let theme = current.saved ? current.theme : { ...current.theme, strict: true };
+        let imported: { found: number; skipped: string[] } | undefined;
+        if (input.css) {
+          const parsed = parseThemeCss(input.css, theme);
+          if (parsed.found.length === 0) {
+            throw new HttpError(
+              400,
+              "No theme variables found in that CSS. Expected shadcn/ui variables such as --primary, --background and --radius in :root and .dark.",
+            );
+          }
+          theme = { ...parsed.theme, name: "Imported" };
+          imported = { found: parsed.found.length, skipped: parsed.skipped };
+        }
+        if (input.theme) theme = mergeTheme(theme, input.theme);
+        const saved = await saveProjectTheme(userId, input.projectId, theme);
+        return json({
+          projectId: saved.projectId,
+          ...(imported && {
+            imported: {
+              ...imported,
+              ...(imported.skipped.length > 0 && {
+                note: "Skipped variables Prism can't read (e.g. color-mix()) keep their previous value.",
+              }),
+            },
+          }),
+          ...describeTheme(saved.theme),
+          next: "Design with these $tokens (create_screen). The app's CSS for this theme is in get_theme's css.",
+        });
+      }),
+  );
+
+  server.registerTool(
+    "list_components",
+    {
+      title: "List a project's components",
+      description:
+        "The project's components (Button, Input, Card, Sidebar, …): their props, variants, layout tree and how to place one in create_screen. Read before designing so screens reuse them, and before coding so each becomes one React component.",
+      inputSchema: z.object({
+        projectId: projectId.optional(),
+        boardId: boardId.optional().describe("Or a board: its project's components."),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        let id = input.projectId;
+        if (!id && input.boardId) {
+          const board = await ownedBoard(input.boardId, userId);
+          if (!board.projectId) {
+            return json({
+              projectId: null,
+              components: {},
+              note: "Components belong to a project; this board isn't in one.",
+            });
+          }
+          id = board.projectId;
+        }
+        if (!id) throw new HttpError(400, "Give a projectId or a boardId.");
+        const { projectId: pid, components } = await getProjectComponents(userId, id);
+        const names = Object.keys(components);
+        return json({
+          projectId: pid,
+          components: Object.fromEntries(
+            names.map((name) => {
+              const component = components[name]!;
+              return [name, { ...component, use: componentUsage(name, component) }];
+            }),
+          ),
+          ...(names.length === 0 && {
+            next: "None yet. Define the shared parts with define_component: Button (variants primary, secondary, ghost, destructive), Input, Card, PageHeader and the app's navigation.",
+          }),
+        });
+      }),
+  );
+
+  server.registerTool(
+    "define_component",
+    {
+      title: "Define a project component",
+      description: [
+        "Create or replace a reusable component (Button, Input, Card, Sidebar, PageHeader, …) that every screen in the project places with a use node, so each looks the same everywhere and the code builds it once.",
+        'root is a create_screen layout tree. Strings can hold {{prop}} placeholders: { type: "text", text: "{{label}}" }; a whole-string placeholder can carry a token or a number (fill: "{{bg}}") and a null value leaves the field out.',
+        'variants are named prop sets, e.g. primary: { bg: "$primary", fg: "$primary-foreground" }, ghost: { bg: null, fg: "$foreground" }. A { type: "slot" } node marks where a use\'s children go (a Card\'s content, a page shell\'s body). Components can use other components.',
+        "Every variant is checked: it must lay out and, in a strict project, use the theme's tokens. Screens drawn before keep their old look.",
+      ].join(" "),
+      inputSchema: z.object({
+        projectId,
+        name: componentNameSchema.describe('PascalCase, e.g. "Button", "PageHeader".'),
+        description: z.string().max(500).optional().describe("What it is and when to use it."),
+        props: componentSchema.shape.props
+          .optional()
+          .describe(
+            'Its {{placeholders}}: { label: {}, icon: { default: "plus" } }. Without a default a prop is required.',
+          ),
+        variants: componentSchema.shape.variants.optional(),
+        defaultVariant: componentSchema.shape.defaultVariant,
+        root: z
+          .record(z.string(), z.unknown())
+          .describe(
+            "The layout tree, as in create_screen, with {{prop}} placeholders and slot nodes.",
+          ),
+        code: componentSchema.shape.code.describe(
+          'Where the app has it, e.g. "@/components/ui/button" (shadcn), so the code reuses it.',
+        ),
+      }),
+      annotations: { openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        const [{ components }, { theme }] = await Promise.all([
+          getProjectComponents(userId, input.projectId),
+          getProjectTheme(userId, input.projectId),
+        ]);
+        const replacing = input.name in components;
+        if (!replacing && Object.keys(components).length >= COMPONENTS_MAX) {
+          throw new HttpError(400, `A project has at most ${COMPONENTS_MAX} components.`);
+        }
+        const component = componentSchema.parse({
+          description: input.description,
+          props: input.props,
+          variants: input.variants,
+          defaultVariant: input.defaultVariant,
+          root: input.root,
+          code: input.code,
+        });
+        const next = { ...components, [input.name]: component };
+
+        // It and every component that uses it must still lay out, on the theme.
+        const dependents = Object.keys(components).filter(
+          (name) => name !== input.name && usedComponents(components[name]?.root).has(input.name),
+        );
+        const errors: string[] = [];
+        for (const name of [input.name, ...dependents]) {
+          const checked = checkComponent(name, next[name]!, next);
+          const prefix = name === input.name ? "" : `${name} (which uses it): `;
+          errors.push(...checked.errors.map((e) => prefix + e));
+          for (const tree of checked.trees) {
+            const resolved = resolveLayoutTokens(tree, theme, "light", undefined, theme.strict);
+            if (resolved.unknown.length > 0)
+              errors.push(prefix + unknownTokensMessage(resolved.unknown));
+            if (resolved.violations.length > 0)
+              errors.push(prefix + strictMessage(resolved.violations));
+          }
+        }
+        if (errors.length > 0) throw new HttpError(400, [...new Set(errors)].join("\n"));
+
+        await saveProjectComponents(userId, input.projectId, next);
+        return json({
+          component: input.name,
+          replaced: replacing,
+          variants: Object.keys(component.variants),
+          use: componentUsage(input.name, component),
+          ...(dependents.length > 0 && { usedBy: dependents }),
+          next: "Place it in create_screen with the use node above. Check one with export_image.",
+        });
+      }),
+  );
+
+  server.registerTool(
+    "delete_component",
+    {
+      title: "Delete a project component",
+      description:
+        "Remove a component from the project. Screens already drawn keep their elements. Refused while another component uses it.",
+      inputSchema: z.object({ projectId, name: componentNameSchema }),
+      annotations: { destructiveHint: true, openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        const { components } = await getProjectComponents(userId, input.projectId);
+        if (!(input.name in components)) {
+          throw new HttpError(404, `No component "${input.name}" in this project.`);
+        }
+        const users = Object.keys(components).filter(
+          (name) => name !== input.name && usedComponents(components[name]?.root).has(input.name),
+        );
+        if (users.length > 0) {
+          throw new HttpError(
+            400,
+            `${users.join(", ")} use${users.length === 1 ? "s" : ""} it; change ${users.length === 1 ? "that" : "those"} first.`,
+          );
+        }
+        const { [input.name]: _removed, ...rest } = components;
+        await saveProjectComponents(userId, input.projectId, rest);
+        return json({ deleted: input.name, remaining: Object.keys(rest) });
+      }),
+  );
+
   server.registerTool(
     "get_board",
     {
@@ -185,6 +609,7 @@ export function registerTools(server: McpServer, userId: string) {
     ({ boardId: id, frameId }) =>
       run(async () => {
         const board = await ownedBoard(id, userId);
+        const theme = await boardTheme(board);
         let elements = await loadElements(board.id);
         if (frameId) {
           const frame = elements.find((el) => el.id === frameId);
@@ -199,7 +624,9 @@ export function registerTools(server: McpServer, userId: string) {
           frames: elements
             .filter((el) => el.type === "frame")
             .map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height })),
-          elements: elements.map(view),
+          elements: elements.map((el) => view(el, theme)),
+          ...(hasTokens(elements) && { tokens: TOKENS_NOTE }),
+          ...(hasComponents(elements) && { components: COMPONENTS_NOTE }),
         });
       }),
   );
@@ -281,17 +708,27 @@ export function registerTools(server: McpServer, userId: string) {
         "Coordinates are board px; x grows right, y grows down. List elements back to front: frames and backgrounds first, then content on top.",
         "For UI mockups use sketch: false, a radius on buttons/cards, groupId per component and a role (button, input, card, …).",
         "Text sizes itself when width is left out. Arrows: set startBinding/endBinding to element ids or to keys from this call.",
+        "Use the project theme's tokens ($primary, $border, $radius-lg, textStyle $h2; see get_theme). Text, lists and icons default to $foreground, text to textStyle $body, frames to a $background fill. A strict theme refuses plain colors, radius, fonts and text sizes on UI elements (not on stickies, arrows, mind maps or charts).",
       ].join(" "),
       inputSchema: z.object({
         boardId,
         elements: z.array(createElementInput).min(1).max(500),
+        mode: modeInput,
       }),
       annotations: { openWorldHint: false },
     },
-    ({ boardId: id, elements: inputs }) =>
+    ({ boardId: id, elements: inputs, mode }) =>
       run(async () => {
         const board = await ownedBoard(id, userId);
-        const elements = buildElements(inputs, await loadElements(board.id));
+        const theme = await boardTheme(board);
+        checkStrict(
+          theme,
+          inputs.map((input) => ({ fields: input, type: input.type })),
+        );
+        const resolved = inputs.map((input) =>
+          themed({ ...themedDefaults(input), ...input }, theme, mode ?? "light"),
+        );
+        const elements = buildElements(resolved, await loadElements(board.id));
         await save(
           userId,
           board.id,
@@ -316,6 +753,8 @@ export function registerTools(server: McpServer, userId: string) {
         'Containers: stack (top to bottom), row (left to right), grid (equal columns), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow).',
         "Leaves: text, icon (Lucide), box (placeholder rect/ellipse: images, avatars), spacer (fixed, or flexible to push things apart), divider.",
         "A button is a row with padding, fill, radius, justify/align center and a text child; a card is a stack with padding, fill, radius and shadow. Give components a name (one groupId) and a role.",
+        'Use the project\'s components (list_components) wherever they fit: { type: "use", component: "Button", variant: "ghost", props: { label: "Cancel" } }, with children for a component\'s slot (a Card\'s content) and width/height to resize it. Same component, same look on every screen.',
+        "Colors, radius and text come from the project theme (get_theme): textStyle $h1/$h2/$body/$caption/… for every text (size, weight and font together), fill $primary with color $primary-foreground, $card, $muted-foreground, stroke $border, radius $radius-md/$radius-lg, so every screen matches and the code uses the same classes. Text defaults to $body and $foreground, icons to $foreground, dividers to $border, the frame to $background. A strict theme refuses plain colors, radius, fonts and text sizes.",
         "With frame, a frame of that size is drawn behind it (a fixed frame height lets a flexible spacer pin a bottom bar). Without x/y it goes to the right of the board's content.",
         "The whole screen is one undo step. Check it afterwards with export_image (frameId).",
       ].join(" "),
@@ -352,21 +791,33 @@ export function registerTools(server: McpServer, userId: string) {
           .describe("Top edge on the board. Default: top of existing content."),
         font: fontFamilySchema
           .optional()
-          .describe(
-            `Font for text nodes that don't set one. Default "sans" (DM Sans); "inter" suits UI.`,
-          ),
+          .describe("Font for text nodes that don't set one. Default: the theme's $sans."),
+        mode: modeInput,
       }),
     },
     (input) =>
       run(async () => {
-        const nodes = countNodes(input.root);
+        const board = await ownedBoard(input.boardId, userId);
+        const [theme, components] = await Promise.all([boardTheme(board), boardComponents(board)]);
+        const expanded = expandComponents(input.root, components);
+        if (expanded.errors.length > 0) throw new HttpError(400, expanded.errors.join("\n"));
+        const nodes = countNodes(expanded.root);
         if (nodes > LAYOUT_NODES_MAX) {
           throw new HttpError(
             400,
-            `Use at most ${LAYOUT_NODES_MAX} nodes per screen (got ${nodes}).`,
+            `Use at most ${LAYOUT_NODES_MAX} nodes per screen, components included (got ${nodes}).`,
           );
         }
-        const board = await ownedBoard(input.boardId, userId);
+        const mode = input.mode ?? "light";
+        const { root, unknown, violations } = resolveLayoutTokens(
+          expanded.root,
+          theme,
+          mode,
+          input.font,
+          theme.strict,
+        );
+        if (unknown.length > 0) throw new HttpError(400, unknownTokensMessage(unknown));
+        if (violations.length > 0) throw new HttpError(400, strictMessage(violations));
         const existing = await loadElements(board.id);
         const content = boundsOf(existing);
         const width = input.frame?.width ?? input.width ?? 390;
@@ -375,15 +826,11 @@ export function registerTools(server: McpServer, userId: string) {
           y: input.y ?? (content ? content.y : 0),
           width,
           height: input.frame?.height,
-          font: input.font ?? "sans",
+          font: input.font ?? theme.fonts.sans,
         };
         // An open tab measures text with the board's fonts; otherwise the server estimates.
-        const measured = await requestScreenLayout(userId, {
-          boardId: board.id,
-          root: input.root,
-          options,
-        });
-        const laidOut = measured ?? layoutScreen(input.root, options, estimateText);
+        const measured = await requestScreenLayout(userId, { boardId: board.id, root, options });
+        const laidOut = measured ?? layoutScreen(root, options, estimateText);
         const parts = laidOut.map((el) => layoutElementInput.parse(el));
         const bottom = Math.max(options.y, ...parts.map((el) => el.y + (el.height ?? 0)));
         const frame = input.frame && {
@@ -392,6 +839,8 @@ export function registerTools(server: McpServer, userId: string) {
           y: options.y,
           width,
           height: input.frame.height ?? Math.max(40, Math.ceil(bottom - options.y)),
+          fill: themeColorHex(theme, mode, "background"),
+          tokens: { fill: "background" },
         };
         const elements = buildElements(frame ? [frame, ...parts] : parts, existing);
         await save(
@@ -403,6 +852,7 @@ export function registerTools(server: McpServer, userId: string) {
           frameId: frame ? elements[0]?.id : null,
           bounds: boundsOf(elements),
           measured: measured ? "browser" : "estimated (no board tab open; text sizes may be off)",
+          theme: { name: theme.name ?? null, mode },
           elements: elements.map((el) => ({
             id: el.id,
             type: el.type,
@@ -568,29 +1018,38 @@ export function registerTools(server: McpServer, userId: string) {
     {
       title: "Update elements",
       description:
-        "Change elements by id: position (x, y), size, colors, text, corner radius, font, etc. Only the given fields change; null clears an optional field. The whole call is one undo step.",
+        "Change elements by id: position (x, y), size, colors, text, corner radius, font, etc. Only the given fields change; null clears an optional field. Colors, radius, fonts and text styles take theme tokens ($primary, $radius-lg, textStyle $h2); a strict theme refuses plain ones on UI elements. The whole call is one undo step.",
       inputSchema: z.object({
         boardId,
         updates: z
           .array(z.object({ id: z.uuid(), changes: updateChangesInput }))
           .min(1)
           .max(500),
+        mode: modeInput,
       }),
       annotations: { openWorldHint: false },
     },
-    ({ boardId: id, updates }) =>
+    ({ boardId: id, updates, mode }) =>
       run(async () => {
         const board = await ownedBoard(id, userId);
+        const theme = await boardTheme(board);
         const current = new Map((await loadElements(board.id)).map((el) => [el.id, el]));
         const missing = updates.filter((u) => !current.has(u.id)).map((u) => u.id);
         if (missing.length > 0) {
           throw new HttpError(404, `Not on this board: ${missing.join(", ")}`);
         }
+        checkStrict(
+          theme,
+          updates.map((u) => ({ fields: u.changes, type: current.get(u.id)?.type ?? "rect" })),
+        );
         const ops: ElementOp[] = updates.map(({ id: elementId, changes }) => ({
           op: "update",
           id: elementId,
           version: (current.get(elementId)?.version ?? 0) + 1,
-          changes: elementChangesSchema.parse({ ...changes, updatedBy: "ai_agent" }),
+          changes: elementChangesSchema.parse({
+            ...themed(changes, theme, mode ?? "light", current.get(elementId)?.tokens),
+            updatedBy: "ai_agent",
+          }),
         }));
         const result = await save(userId, board.id, ops);
         return json({ updated: result.applied.length, conflicts: result.stale });
@@ -673,7 +1132,15 @@ export function registerTools(server: McpServer, userId: string) {
     ({ boardId: id }) =>
       run(async () => {
         const selection = await selectionFor(userId, id);
-        return json({ boardId: selection.boardId, elements: selection.elements.map(view) });
+        const theme =
+          selection.elements.length > 0 && selection.boardId
+            ? await boardTheme(await ownedBoard(selection.boardId, userId))
+            : undefined;
+        return json({
+          boardId: selection.boardId,
+          elements: selection.elements.map((el) => view(el, theme)),
+          ...(hasTokens(selection.elements) && { tokens: TOKENS_NOTE }),
+        });
       }),
   );
 
@@ -710,14 +1177,21 @@ export function registerTools(server: McpServer, userId: string) {
             hint: "No requests yet. Call wait_for_edits again to keep watching.",
           });
         }
+        const themes = new Map<string, Theme>();
+        for (const r of requests) {
+          if (!themes.has(r.boardId)) {
+            themes.set(r.boardId, await boardTheme(await ownedBoard(r.boardId, userId)));
+          }
+        }
         return json({
           requests: requests.map((r) => ({
             requestId: r.id,
             boardId: r.boardId,
             board: r.boardName,
             prompt: r.prompt,
-            selectedElements: r.elements.map(view),
+            selectedElements: r.elements.map((el) => view(el, themes.get(r.boardId))),
           })),
+          ...(requests.some((r) => hasTokens(r.elements)) && { tokens: TOKENS_NOTE }),
           next: "Make each change on its boardId, then call complete_edit for each requestId.",
         });
       }),
@@ -785,13 +1259,17 @@ export function registerPrompts(server: McpServer) {
         "Gather references (e.g. from Mobbin), put them on a Prism board and design a new screen inspired by them.",
       argsSchema: z.object({
         idea: z.string().describe('What to design, e.g. "landing page for a budgeting app".'),
+        project: z
+          .string()
+          .optional()
+          .describe("The app's Prism project (name or id). Created if it doesn't exist."),
         board: z
           .string()
           .optional()
           .describe("Board name to use. Default: one named after the idea."),
       }),
     },
-    ({ idea, board }) => ({
+    ({ idea, project, board }) => ({
       messages: [
         {
           role: "user" as const,
@@ -799,11 +1277,48 @@ export function registerPrompts(server: McpServer) {
             type: "text" as const,
             text: [
               `Design this in Prism: ${idea}`,
-              `1. open_board with the name "${board ?? idea}" and give me its URL.`,
-              "2. If a Mobbin MCP is available, search it for 3 strong references. Add each with add_image (its image_url) in a row at the top, with a sticky note beside each saying what to take from it.",
-              "3. Below the references, build the new design with create_screen (a layout tree, inside a frame at a real device size: 390x844 mobile or 1440x900 desktop), using create_elements only for extras that don't fit a layout: clean look (sketch: false), real copy, consistent spacing, radius on buttons and cards, a shadow on raised surfaces (md cards, lg modals), Lucide icons (type icon) for nav, actions and inputs, one groupId and a role per component.",
-              "4. Look at it with export_image (the frame's id), fix anything that overlaps, is misaligned or wraps badly, check again, then summarize what you made.",
-              "5. Finish by watching for my Ask AI requests (wait_for_edits, handle each, complete_edit, repeat).",
+              project
+                ? `1. Find the project "${project}" with list_boards (create_project if it doesn't exist), then open_board with the name "${board ?? idea}" and its projectId, and give me the board's URL.`
+                : `1. open_board with the name "${board ?? idea}" and give me its URL.`,
+              "2. Theme: get_theme (boardId). If saved is false and this folder is the app's repo with a global CSS file (app/globals.css, src/index.css) defining shadcn/ui variables, import it with set_theme (css) so the design matches the app. Otherwise keep the theme, or ask me for brand colors and set them with set_theme.",
+              "3. Components: list_components. If the project has none, define its shared parts first with define_component, using the theme's tokens: Button (variants primary, secondary, outline, ghost, destructive), Input (label, placeholder), Card (a slot for content), PageHeader (title, description, a slot for actions) and the app's navigation (Sidebar or TopBar with its items). Add a component whenever a part repeats across screens.",
+              "4. If a Mobbin MCP is available, search it for 3 strong references. Add each with add_image (its image_url) in a row at the top, with a sticky note beside each saying what to take from it.",
+              '5. Below the references, build the new design with create_screen (a layout tree, inside a frame at a real device size: 390x844 mobile or 1440x900 desktop), using create_elements only for extras that don\'t fit a layout. Put a small text above each frame naming its route and state, e.g. "/reset-password · desktop · link sent". Use theme tokens for every color, radius and text: textStyle $h1–$h4 for headings, $body / $body-sm for copy, $label for buttons and form labels, $caption for hints; fill $primary with $primary-foreground text, $card, $muted-foreground, stroke $border, $radius-md on buttons and inputs, $radius-lg on cards. Never hex or px sizes. Place the project components with use nodes wherever they fit instead of drawing buttons, inputs, cards and navigation again. Keep spacing on the scale (gaps and padding 4, 8, 12, 16, 24, 32). Clean look (sketch: false), real copy, consistent spacing, a shadow on raised surfaces (md cards, lg modals), Lucide icons (type icon) for nav, actions and inputs, one groupId and a role per component.',
+              "6. Look at it with export_image (the frame's id), fix anything that overlaps, is misaligned or wraps badly, check again, then summarize what you made.",
+              "7. Finish by watching for my Ask AI requests (wait_for_edits, handle each, complete_edit, repeat).",
+            ].join("\n"),
+          },
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    "build_pages",
+    {
+      title: "Build pages from Prism designs",
+      description:
+        "Code the screens designed in a Prism project as pages of this app (React + Tailwind CSS), using the project's theme.",
+      argsSchema: z.object({
+        project: z.string().describe("The Prism project (name or id)."),
+        board: z.string().optional().describe("Only this board (name). Default: every board."),
+      }),
+    },
+    ({ project, board }) => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: [
+              `Build the screens designed in the Prism project "${project}" as pages of this app.`,
+              "1. Find the project and its boards with list_boards, then call get_theme and list_components with its projectId.",
+              "2. Theme: open the app's global CSS (app/globals.css or src/index.css). If it doesn't already define these shadcn/ui variables with the same values, write get_theme's css there, replacing the old :root, .dark and @theme inline variables and keeping @import \"tailwindcss\" and other rules. Load the theme's fonts (next/font/google in Next.js, else @fontsource or a Google Fonts link) and wire them to --font-sans, --font-heading and --font-mono.",
+              "3. Components: build each project component once as a React component (components/<name>.tsx; reuse the app's own when its code path exists, e.g. @/components/ui/button with the matching variant), with its props and variants. Navigation and page shells go in a shared layout (app/(app)/layout.tsx).",
+              `4. For ${board ? `the board "${board}"` : "each board in the project"}: get_board. Every frame is a screen; the text above it names its route and state. Look at each frame with export_image.`,
+              "5. Build each screen as a page (Next.js app router: app/<route>/page.tsx; else the app's router), React + Tailwind CSS. Elements tagged with a component are instances: render that component with the instance's text as props, never redraw it. Reuse the app's components where a role matches, lay out with flex and grid following the design's groups, and use real links between screens. Different states of one route are one page with that state logic.",
+              "6. Code theme values as Tailwind classes, never hex: fill $primary → bg-primary, text color $muted-foreground → text-muted-foreground, a rect's stroke $border → border border-border, $radius-lg → rounded-lg ($radius-full → rounded-full), textStyle $h1 → text-h1 (with font-heading when its font is $heading; get_theme's textStyles gives each class). Use arbitrary values (bg-[#…], text-[15px]) only for the rare plain values.",
+              "7. Make each page responsive, run the app, compare each page with its frame's image and fix differences. Then list the routes you made.",
             ].join("\n"),
           },
         },

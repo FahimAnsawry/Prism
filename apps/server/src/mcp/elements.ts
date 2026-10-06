@@ -4,7 +4,9 @@
 import { randomUUID } from "node:crypto";
 import {
   boardElementSchema,
+  boundTokens,
   chartDataSchema,
+  elementTokensSchema,
   elementTypeSchema,
   fontFamilySchema,
   fontSizeSchema,
@@ -17,10 +19,12 @@ import {
   shadowSchema,
   strokeStyleSchema,
   textAlignSchema,
+  themeRefSchema,
   type BoardElement,
   type ElementType,
   type FontFamily,
   type FontSize,
+  type Theme,
   estimateText as estimateGlyphs,
   mindNodeSize,
   mindStyle,
@@ -46,14 +50,14 @@ export const fieldShape = {
     .string()
     .max(64)
     .describe(
-      "Outline color, the TEXT color on text and list elements, or the icon color. Hex, e.g. #1f2937.",
+      "Outline color, the TEXT color on text and list elements, or the icon color: a theme token ($foreground, $muted-foreground, $border, $primary, …) or hex.",
     ),
   fill: z
     .string()
     .max(64)
     .nullable()
     .describe(
-      "Fill color for rect, ellipse, diamond, sticky and icon (hex; a filled icon, e.g. a solid star), or null for none.",
+      "Fill color for rect, ellipse, diamond, sticky, frame and icon (a filled icon, e.g. a solid star): a theme token ($primary, $card, $muted, …) or hex, or null for none.",
     ),
   strokeWidth: z
     .number()
@@ -66,11 +70,11 @@ export const fieldShape = {
   sketch: z.boolean().describe("Hand-drawn look. Default false (clean UI look)."),
   opacity: z.number().min(0).max(1).describe("0 to 1. Default 1."),
   radius: z
-    .number()
-    .min(0)
-    .max(10_000)
+    .union([z.number().min(0).max(10_000), themeRefSchema])
     .nullable()
-    .describe("Corner radius in px for rect and frame (e.g. 8 for a button, 9999 for a pill)."),
+    .describe(
+      "Corner radius for rect and frame: a theme token ($radius-md for buttons and inputs, $radius-lg or $radius-xl for cards, $radius-full for pills) or px.",
+    ),
   shadow: shadowSchema
     .nullable()
     .describe(
@@ -97,8 +101,13 @@ export const fieldShape = {
     .describe(
       "The text of a text or sticky element (\\n for new lines), or the emoji of an emoji element.",
     ),
-  font: fontFamilySchema.describe(
-    'Font: "sans" (DM Sans, default), "inter", "roboto", "open-sans", "montserrat", "poppins", "lato", "playfair", "merriweather", "mono", "caveat" (handwriting), or "gf:<Google Font name>".',
+  font: z
+    .union([fontFamilySchema, themeRefSchema])
+    .describe(
+      'Font: the theme\'s "$sans", "$heading" or "$mono", or a board font: "sans" (DM Sans), "inter", "roboto", "open-sans", "montserrat", "poppins", "lato", "playfair", "merriweather", "mono", "caveat" (handwriting), or "gf:<Google Font name>".',
+    ),
+  textStyle: themeRefSchema.describe(
+    "Text, sticky and list: the theme's text style ($display, $h1–$h4, $body-lg, $body, $body-sm, $caption, $label), which sets size, weight, line height, spacing and font together. Prefer it to fontSizePx/fontWeight.",
   ),
   fontSize: fontSizeSchema.describe("Preset size: S=16px, M=22px (default), L=30px, XL=40px."),
   fontSizePx: z
@@ -154,7 +163,7 @@ export const fieldShape = {
       "Mind map node only: id (or key from the same call) of its parent node; null for a central topic.",
     ),
   collapsed: z.boolean().describe("Mind map node only: its branch is folded away."),
-  textColor: z.string().max(64).describe("Mind map node only: text color (hex)."),
+  textColor: z.string().max(64).describe("Mind map node only: text color (theme token or hex)."),
   chart: chartDataSchema.describe(
     "Chart only: { kind: bar|line|pie|donut, rows: [{ label, value }] }.",
   ),
@@ -184,7 +193,11 @@ export const createElementInput = optionalFields.extend({
 export const updateChangesInput = optionalFields;
 
 /** An element from create_screen's layout: create input plus whether text hugs its content. */
-export const layoutElementInput = createElementInput.extend({ autoWidth: z.boolean().optional() });
+export const layoutElementInput = createElementInput.extend({
+  autoWidth: z.boolean().optional(),
+  tokens: elementTokensSchema.optional(),
+  component: z.string().max(120).optional(),
+});
 
 export type CreateElementInput = z.infer<typeof createElementInput>;
 
@@ -250,7 +263,10 @@ function estimateText(el: Partial<BoardElement>) {
  * Turns AI input into full elements, on top of the board's existing ones. Keys from the batch
  * become ids in arrow bindings.
  */
-export function buildElements(inputs: CreateElementInput[], existing: BoardElement[]) {
+export function buildElements(
+  inputs: (CreateElementInput & Pick<BoardElement, "tokens" | "component">)[],
+  existing: BoardElement[],
+) {
   const ids = new Map<string, string>();
   for (const input of inputs) {
     if (input.key) ids.set(input.key, randomUUID());
@@ -315,13 +331,26 @@ const HIDDEN = new Set(["version", "updatedBy", "z", "assetKey", "points"]);
 
 const round = (n: number) => Math.round(n * 10) / 10;
 
-/** A compact element for the model: defaults and sync bookkeeping left out, numbers rounded. */
-export function compact(el: BoardElement, fileUrl: (assetKey: string) => string) {
+/**
+ * A compact element for the model: defaults and sync bookkeeping left out, numbers rounded.
+ * With the board's theme, values that came from a theme token read as the token ($primary).
+ */
+export function compact(el: BoardElement, fileUrl: (assetKey: string) => string, theme?: Theme) {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(el)) {
     if (value === undefined || (value === null && key !== "fill") || HIDDEN.has(key)) continue;
-    if (DEFAULT_VALUES[key] === value) continue;
+    if (DEFAULT_VALUES[key] === value || key === "tokens") continue;
     out[key] = typeof value === "number" ? round(value) : value;
+  }
+  if (theme) {
+    const bound = boundTokens(el, theme);
+    Object.assign(out, bound);
+    // The text style stands for these.
+    if (bound.textStyle) {
+      for (const key of ["fontSize", "fontSizePx", "fontWeight", "lineHeight", "letterSpacing"]) {
+        delete out[key];
+      }
+    }
   }
   if (el.assetKey) out["url"] = fileUrl(el.assetKey);
   if (el.points) out["pointCount"] = el.points.length / 2;

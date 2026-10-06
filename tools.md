@@ -113,10 +113,15 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | Tool | Purpose |
 |------|---------|
 | `open_board` | Create or open a board and open it in the browser |
+| `create_project` | Create a project: the boards of one app, sharing one theme |
+| `get_theme` | A project's theme: shadcn/ui color tokens (light and dark), radius, fonts and the type scale (`$display`, `$h1`–`$h4`, `$body-lg`, `$body`, `$body-sm`, `$caption`, `$label`; exported as Tailwind `--text-*` so `$h1` codes as `text-h1`) as `$tokens` with their values, plus the Tailwind v4 CSS for the app's global CSS |
+| `set_theme` | Set a project's theme from the app's global CSS (`:root` / `.dark` variables, `var()` followed) and/or changed values. Colors, radius and fonts in `create_screen`, `create_elements` and `update_elements` take `$tokens` (`$primary`, `$radius-lg`, `$heading`); text takes `textStyle: "$h2"`; elements remember them (`tokens`), so `get_board` reads `$primary` back for the code (`bg-primary`). A saved theme is strict by default: the drawing tools refuse plain colors, radius, fonts and text sizes on UI elements (not stickies, arrows, mind maps or charts); `set_theme { strict: false }` turns it off |
 | `list_boards` | List saved boards |
+| `define_component` | Define a project component (Button, Input, Card, Sidebar, …): a layout tree with `{{prop}}` placeholders, named variants (prop sets) and `slot` nodes for content. Every variant is checked to lay out and, in a strict project, to use the theme's tokens |
+| `list_components` / `delete_component` | Read a project's components (with a ready `use` node for each) / remove one no other component uses |
 | `get_board` | Read a board or one frame as simplified JSON |
 | `create_mindmap` | A mind map from a nested outline (or new branches under an existing node via `parentId`): nodes styled by level, sized by an open board tab's text measuring (`layout:mindmap`) or estimated, the whole map tidied, one undo step |
-| `create_screen` | Main drawing tool: send a layout tree and get positioned elements. Containers `stack` / `row` / `grid` (gap, padding, align, justify, width/height as px, `"fill"` or hug, optional background with fill, stroke, radius, shadow); leaves `text`, `icon`, `box`, `spacer` (fixed or flexible), `divider`. The engine (`packages/shared/src/layout.ts`) is a small flexbox; an open board tab runs it with the canvas's own text measuring (`layout:screen` over Socket.IO), else the server estimates text widths. Optional device frame; the screen is one undo step |
+| `create_screen` | Main drawing tool: send a layout tree and get positioned elements. `{ type: "use", component, variant, props, children }` places a project component (expanded server-side; each instance is one group and its elements carry `component`, e.g. `Sidebar > NavItem:active`). Containers `stack` / `row` / `grid` (gap, padding, align, justify, width/height as px, `"fill"` or hug, optional background with fill, stroke, radius, shadow); leaves `text`, `icon`, `box`, `spacer` (fixed or flexible), `divider`. The engine (`packages/shared/src/layout.ts`) is a small flexbox; an open board tab runs it with the canvas's own text measuring (`layout:screen` over Socket.IO), else the server estimates text widths. Optional device frame; the screen is one undo step |
 | `create_elements` | Low-level: create elements with exact x/y |
 | `update_elements` | Change props, text, size or position by id |
 | `delete_elements` | Remove elements by id |
@@ -148,6 +153,8 @@ interface BaseElement {
   opacity: number;
   groupId?: string; locked?: boolean;
   role?: string;       // wireframe meaning: "button", "input", "card", ...
+  tokens?: { stroke?, fill?, textColor?, radius?, font?, textStyle? }; // theme tokens behind those values (packages/shared/src/theme.ts)
+  component?: string;  // the project component instance that drew it (packages/shared/src/components.ts)
   updatedBy: "user" | "ai_agent";
   version: number;     // for conflict checks during sync
 }

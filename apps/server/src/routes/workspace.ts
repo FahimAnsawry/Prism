@@ -1,15 +1,24 @@
 import {
+  componentsSchema,
   createBoardSchema,
   createProjectSchema,
+  DEFAULT_THEME,
+  themeSchema,
+  themeToCss,
   updateBoardSchema,
   updateBoardStyleSchema,
   updateProjectSchema,
   type BoardSummary,
+  type Components,
   type CreateBoardInput,
+  type CreateProjectInput,
   type ProjectSummary,
+  type ProjectTheme,
+  type Theme,
   type Workspace,
 } from "@prism/shared";
 import { Router } from "express";
+import type { Prisma } from "../db/generated/client.js";
 import { prisma } from "../db/client.js";
 import { notFound, orNotFound, parseBody } from "../errors.js";
 import { requireUser } from "../session.js";
@@ -182,22 +191,128 @@ export async function getBoardSummary(
   return toBoardSummary(board);
 }
 
+/** A new project. */
+export async function createProject(ownerId: string, input: CreateProjectInput) {
+  const project = await prisma.project.create({
+    data: { ownerId, name: input.name, description: input.description || null },
+    select: projectSelect,
+  });
+  return toProjectSummary(project);
+}
+
+// ── Themes (packages/shared/src/theme.ts) ──────────────────────────────────
+
+/** A stored theme, or null for none (or one that no longer parses). */
+function storedTheme(value: unknown): Theme | null {
+  const result = themeSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
+const projectTheme = (projectId: string, stored: Theme | null): ProjectTheme => {
+  const theme = stored ?? DEFAULT_THEME;
+  return { projectId, saved: stored !== null, theme, css: themeToCss(theme) };
+};
+
+/** The user's live project's theme: its own, or the default while it has none. */
+export async function getProjectTheme(ownerId: string, projectIdParam: string | undefined) {
+  const projectId = uuidParam(projectIdParam);
+  const project = projectId
+    ? await prisma.project.findFirst({
+        where: { id: projectId, ...liveProjectWhere(ownerId) },
+        select: { id: true, theme: true },
+      })
+    : null;
+  if (!project) throw notFound(PROJECT_NOT_FOUND);
+  return projectTheme(project.id, storedTheme(project.theme));
+}
+
+/** Replaces the project's theme. Not a content edit, so editedAt stays. */
+export async function saveProjectTheme(
+  ownerId: string,
+  projectIdParam: string | undefined,
+  theme: Theme,
+) {
+  const projectId = uuidParam(projectIdParam);
+  const { count } = projectId
+    ? await prisma.project.updateMany({
+        where: { id: projectId, ...liveProjectWhere(ownerId) },
+        data: { theme: theme as Prisma.InputJsonObject },
+      })
+    : { count: 0 };
+  if (!projectId || count === 0) throw notFound(PROJECT_NOT_FOUND);
+  return projectTheme(projectId, theme);
+}
+
+// ── Components (packages/shared/src/components.ts) ─────────────────────────
+
+/** Stored components, or none when there are none (or they no longer parse). */
+function storedComponents(value: unknown): Components {
+  const result = componentsSchema.safeParse(value ?? {});
+  return result.success ? result.data : {};
+}
+
+/** The user's live project's components, by name. */
+export async function getProjectComponents(ownerId: string, projectIdParam: string | undefined) {
+  const projectId = uuidParam(projectIdParam);
+  const project = projectId
+    ? await prisma.project.findFirst({
+        where: { id: projectId, ...liveProjectWhere(ownerId) },
+        select: { id: true, components: true },
+      })
+    : null;
+  if (!project) throw notFound(PROJECT_NOT_FOUND);
+  return { projectId: project.id, components: storedComponents(project.components) };
+}
+
+/** Replaces the project's components. Not a content edit, so editedAt stays. */
+export async function saveProjectComponents(
+  ownerId: string,
+  projectId: string,
+  components: Components,
+) {
+  const { count } = await prisma.project.updateMany({
+    where: { id: projectId, ...liveProjectWhere(ownerId) },
+    data: { components: components as Prisma.InputJsonObject },
+  });
+  if (count === 0) throw notFound(PROJECT_NOT_FOUND);
+}
+
+/** The components a board's screens can use: its project's (none outside a project). */
+export async function boardComponents(board: { projectId: string | null }): Promise<Components> {
+  if (!board.projectId) return {};
+  const project = await prisma.project.findUnique({
+    where: { id: board.projectId },
+    select: { components: true },
+  });
+  return storedComponents(project?.components);
+}
+
+/** The theme a board draws with: its project's, else the default. */
+export async function boardTheme(board: { projectId: string | null }): Promise<Theme> {
+  if (!board.projectId) return DEFAULT_THEME;
+  const project = await prisma.project.findUnique({
+    where: { id: board.projectId },
+    select: { theme: true },
+  });
+  return storedTheme(project?.theme) ?? DEFAULT_THEME;
+}
+
 workspaceRouter.get("/workspace", async (_req, res) => {
   res.json(await loadWorkspace(res.locals.userId));
 });
 
 workspaceRouter.post("/projects", async (req, res) => {
   const input = parseBody(createProjectSchema, req.body);
+  res.status(201).json(await createProject(res.locals.userId, input));
+});
 
-  const project = await prisma.project.create({
-    data: {
-      ownerId: res.locals.userId,
-      name: input.name,
-      description: input.description || null,
-    },
-    select: projectSelect,
-  });
-  res.status(201).json(toProjectSummary(project));
+workspaceRouter.get("/projects/:projectId/theme", async (req, res) => {
+  res.json(await getProjectTheme(res.locals.userId, req.params.projectId));
+});
+
+workspaceRouter.put("/projects/:projectId/theme", async (req, res) => {
+  const theme = parseBody(themeSchema, req.body);
+  res.json(await saveProjectTheme(res.locals.userId, req.params.projectId, theme));
 });
 
 workspaceRouter.patch("/projects/:projectId", async (req, res) => {

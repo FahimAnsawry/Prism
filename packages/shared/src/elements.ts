@@ -112,6 +112,30 @@ export const chartDataSchema = z.object({
 const color = z.string().max(64);
 const elementRef = z.string().max(64);
 
+/** A project theme token in place of a value: "$primary", "$radius-lg", "$heading" (theme.ts). */
+export const themeRefSchema = z.templateLiteral(["$", z.string().regex(/^[a-z0-9-]{1,40}$/)]);
+export type ThemeRef = z.infer<typeof themeRefSchema>;
+export const isThemeRef = (value: unknown): value is ThemeRef =>
+  typeof value === "string" && value.startsWith("$");
+
+/**
+ * The element fields a project theme token can set (theme.ts). textStyle isn't a field: it stands
+ * for the text's size, weight, line height and letter spacing together.
+ */
+export const TOKEN_FIELDS = ["stroke", "fill", "textColor", "radius", "font", "textStyle"] as const;
+/**
+ * Which theme token set each field, e.g. { fill: "primary", textStyle: "h1" }, so AI editors
+ * read `$primary` back and code it as `bg-primary`. A binding only counts while the field still
+ * holds the token's value: an edit by hand leaves a stale entry that readers ignore.
+ */
+export const elementTokensSchema = z.partialRecord(
+  z.enum(TOKEN_FIELDS),
+  z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .max(40),
+);
+
 /** The columns of the element table (besides id, version and the timestamps). */
 const columnFields = {
   type: elementTypeSchema,
@@ -172,6 +196,10 @@ const propFields = {
   textColor: color.optional(),
   // icon: the Lucide icon drawn; stroke is its color, strokeWidth its line weight (in 24px units)
   icon: iconNameSchema.optional(),
+  // any: the theme tokens its colors, radius and font came from
+  tokens: elementTokensSchema.nullable().optional(),
+  // any: the project component instance that drew it ("Button:primary", "Sidebar > NavItem")
+  component: z.string().max(120).nullable().optional(),
 };
 
 export const ELEMENT_COLUMNS = Object.keys(columnFields) as (keyof typeof columnFields)[];
@@ -230,6 +258,8 @@ export type ChartKind = z.infer<typeof chartKindSchema>;
 export type Shadow = z.infer<typeof shadowSchema>;
 export type ChartData = z.infer<typeof chartDataSchema>;
 export type ListItem = z.infer<typeof listItemSchema>;
+export type TokenField = (typeof TOKEN_FIELDS)[number];
+export type ElementTokens = z.infer<typeof elementTokensSchema>;
 export type BoardElement = z.infer<typeof boardElementSchema>;
 export type ElementChanges = z.infer<typeof elementChangesSchema>;
 export type ElementOp = z.infer<typeof elementOpSchema>;

@@ -1,9 +1,11 @@
 import { z } from "zod";
 import {
   type BoardElement,
+  type ElementTokens,
   type FontFamily,
   fontFamilySchema,
   iconNameSchema,
+  isThemeRef,
   LETTER_SPACING_MAX,
   LETTER_SPACING_MIN,
   LINE_HEIGHT_MAX,
@@ -11,6 +13,8 @@ import {
   shadowSchema,
   type TextAlign,
   textAlignSchema,
+  type ThemeRef,
+  themeRefSchema,
 } from "./elements.js";
 
 // create_screen (tools.md §6): an AI editor describes a screen as a layout tree and this lays it
@@ -31,6 +35,10 @@ interface NodeBase {
   role?: string | undefined;
   /** Groups everything it draws into one component (its groupId). */
   name?: string | undefined;
+  /** The theme tokens behind its values; set by resolveLayoutTokens (theme.ts), not by AI editors. */
+  tokens?: ElementTokens | undefined;
+  /** The project component instance it belongs to; set by expandComponents (components.ts). */
+  component?: string | undefined;
 }
 
 export interface LayoutContainer extends NodeBase {
@@ -47,14 +55,16 @@ export interface LayoutContainer extends NodeBase {
   fill?: string | undefined;
   stroke?: string | undefined;
   strokeWidth?: number | undefined;
-  radius?: number | undefined;
+  radius?: number | ThemeRef | undefined;
   shadow?: z.infer<typeof shadowSchema> | undefined;
 }
 
 export interface LayoutText extends NodeBase {
   type: "text";
   text: string;
-  font?: FontFamily | undefined;
+  /** A theme text style ($h1, $body, …): size, weight, line height, spacing and font. */
+  textStyle?: ThemeRef | undefined;
+  font?: FontFamily | ThemeRef | undefined;
   fontSizePx?: number | undefined;
   fontWeight?: number | undefined;
   color?: string | undefined;
@@ -80,7 +90,7 @@ export interface LayoutBox extends NodeBase {
   fill?: string | undefined;
   stroke?: string | undefined;
   strokeWidth?: number | undefined;
-  radius?: number | undefined;
+  radius?: number | ThemeRef | undefined;
   shadow?: z.infer<typeof shadowSchema> | undefined;
 }
 
@@ -93,13 +103,47 @@ export interface LayoutDivider {
   type: "divider";
   color?: string | undefined;
   thickness?: number | undefined;
+  tokens?: ElementTokens | undefined;
+  component?: string | undefined;
+}
+
+/** A project component placed in the tree (components.ts expands it before layout). */
+export interface LayoutUse {
+  type: "use";
+  component: string;
+  variant?: string | undefined;
+  props?: Record<string, string | number | null> | undefined;
+  /** Fill the component's slot. */
+  children?: LayoutNode[] | undefined;
+  width?: LayoutSize | undefined;
+  height?: LayoutSize | undefined;
+  role?: string | undefined;
+  name?: string | undefined;
+}
+
+/** Inside a component definition: where a use's children go. */
+export interface LayoutSlot {
+  type: "slot";
 }
 
 export type LayoutNode =
-  LayoutContainer | LayoutText | LayoutIcon | LayoutBox | LayoutSpacer | LayoutDivider;
+  | LayoutContainer
+  | LayoutText
+  | LayoutIcon
+  | LayoutBox
+  | LayoutSpacer
+  | LayoutDivider
+  | LayoutUse
+  | LayoutSlot;
 
 const px = z.number().min(0).max(10_000);
-const color = z.string().max(64);
+const color = z
+  .string()
+  .max(64)
+  .describe("A theme token ($primary, $muted-foreground, $border, …) or a hex color.");
+const radius = z
+  .union([px, themeRefSchema])
+  .describe("Corner radius: a theme token ($radius-md, $radius-lg, $radius-full) or px.");
 const sizeSchema = z.union([px, z.literal("fill")]);
 const base = {
   role: z.string().max(60).optional().describe('What it is: "button", "card", "nav", "input", …'),
@@ -139,10 +183,10 @@ const containerSchema = z.object({
     .describe('px, "fill" (share a fixed-height parent\'s leftover), or left out to hug.'),
   fill: color
     .optional()
-    .describe("Background color; with any of fill/stroke/shadow it draws a rect."),
-  stroke: color.optional().describe("Border color (1px unless strokeWidth)."),
+    .describe("Background color ($token or hex); with any of fill/stroke/shadow it draws a rect."),
+  stroke: color.optional().describe("Border color ($border or hex; 1px unless strokeWidth)."),
   strokeWidth: z.number().min(0).max(64).optional(),
-  radius: px.optional().describe("Corner radius of the background."),
+  radius: radius.optional(),
   shadow: shadowSchema.optional().describe("sm, md (cards) or lg (menus, modals)."),
   ...base,
 });
@@ -150,10 +194,25 @@ const containerSchema = z.object({
 const textSchema = z.object({
   type: z.literal("text"),
   text: z.string().max(5_000).describe("The copy; \\n for line breaks."),
-  font: fontFamilySchema.optional().describe("Board font id; default the call's font."),
-  fontSizePx: z.number().min(6).max(400).optional().describe("Default 16."),
+  textStyle: themeRefSchema
+    .optional()
+    .describe(
+      "The theme's text style: $display, $h1–$h4, $body-lg, $body, $body-sm, $caption or $label. Sets size, weight, line height, spacing and font. Default $body.",
+    ),
+  font: z
+    .union([fontFamilySchema, themeRefSchema])
+    .optional()
+    .describe(
+      "$heading, $sans or $mono (the theme's fonts), or a board font id. Default: the call's font, else $sans.",
+    ),
+  fontSizePx: z
+    .number()
+    .min(6)
+    .max(400)
+    .optional()
+    .describe("Overrides the text style's size; avoid it (a strict theme refuses it)."),
   fontWeight: z.number().int().min(100).max(900).multipleOf(100).optional(),
-  color: color.optional().describe("Text color (hex)."),
+  color: color.optional().describe("Text color ($token or hex). Default $foreground."),
   lineHeight: z.number().min(LINE_HEIGHT_MIN).max(LINE_HEIGHT_MAX).optional(),
   letterSpacing: z.number().min(LETTER_SPACING_MIN).max(LETTER_SPACING_MAX).optional(),
   textAlign: textAlignSchema.optional().describe("Within its width; matters with width fill/px."),
@@ -167,7 +226,7 @@ const iconSchema = z.object({
   type: z.literal("icon"),
   icon: iconNameSchema.describe('Lucide name, e.g. "search", "bell", "chevron-right".'),
   size: z.number().min(4).max(512).optional().describe("Default 20."),
-  color: color.optional(),
+  color: color.optional().describe("Icon color ($token or hex). Default $foreground."),
   strokeWidth: z.number().min(0.5).max(4).optional().describe("Default 2."),
   ...base,
 });
@@ -180,7 +239,7 @@ const boxSchema = z.object({
   fill: color.optional(),
   stroke: color.optional(),
   strokeWidth: z.number().min(0).max(64).optional(),
-  radius: px.optional(),
+  radius: radius.optional(),
   shadow: shadowSchema.optional(),
   ...base,
 });
@@ -192,19 +251,58 @@ const spacerSchema = z.object({
 
 const dividerSchema = z.object({
   type: z.literal("divider"),
-  color: color.optional().describe("Default #e5e7eb."),
+  color: color.optional().describe("Default $border."),
   thickness: z.number().min(0.5).max(16).optional().describe("Default 1."),
 });
 
+/** A project component's name: PascalCase. */
+export const componentNameSchema = z
+  .string()
+  .regex(/^[A-Z][A-Za-z0-9]{0,39}$/, "Use PascalCase, e.g. Button or PageHeader.");
+/** A component prop's value: text, a token, a number, or null for "leave the field out". */
+export const componentPropValueSchema = z.union([z.string().max(5_000), z.number(), z.null()]);
+
+const useSchema = z.object({
+  type: z.literal("use"),
+  component: componentNameSchema.describe("A project component (list_components)."),
+  variant: z
+    .string()
+    .max(31)
+    .optional()
+    .describe('One of its variants, e.g. "primary", "ghost". Default: its default variant.'),
+  props: z
+    .record(z.string(), componentPropValueSchema)
+    .optional()
+    .describe('Its props, e.g. { label: "Save", icon: "plus" }.'),
+  get children(): z.ZodOptional<z.ZodArray<z.ZodType<LayoutNode>>> {
+    return z.array(layoutNodeSchema).max(200).optional();
+  },
+  width: sizeSchema.optional().describe('Override its width: px or "fill".'),
+  height: sizeSchema.optional().describe("Override its height."),
+  role: base.role,
+  name: base.name,
+});
+
+const slotSchema = z.object({ type: z.literal("slot") });
+
 export const layoutNodeSchema: z.ZodType<LayoutNode> = z.lazy(() =>
-  z.union([containerSchema, textSchema, iconSchema, boxSchema, spacerSchema, dividerSchema]),
+  z.union([
+    containerSchema,
+    textSchema,
+    iconSchema,
+    boxSchema,
+    spacerSchema,
+    dividerSchema,
+    useSchema,
+    slotSchema,
+  ]),
 );
 
 /** Most nodes one screen can have. */
 export const LAYOUT_NODES_MAX = 800;
 
 export function countNodes(node: LayoutNode): number {
-  return "children" in node
+  return "children" in node && node.children
     ? 1 + node.children.reduce((sum, child) => sum + countNodes(child), 0)
     : 1;
 }
@@ -291,7 +389,11 @@ function paddingOf(node: LayoutContainer): [number, number, number, number] {
   return [a, b, c, d];
 }
 
-const isContainer = (node: LayoutNode): node is LayoutContainer => "children" in node;
+const isContainer = (node: LayoutNode): node is LayoutContainer =>
+  node.type === "stack" || node.type === "row" || node.type === "grid";
+/** A node's font; a theme token left unresolved falls back to the screen's font. */
+const fontOf = (font: FontFamily | ThemeRef | undefined, fallback: FontFamily): FontFamily =>
+  font === undefined || isThemeRef(font) ? fallback : font;
 const hasBackground = (node: LayoutContainer) =>
   node.fill !== undefined || node.stroke !== undefined || node.shadow !== undefined;
 
@@ -305,7 +407,7 @@ export function layoutScreen(
   let groups = 0;
 
   const textStyle = (node: LayoutText): LayoutTextStyle => ({
-    font: node.font ?? options.font,
+    font: fontOf(node.font, options.font),
     px: node.fontSizePx ?? TEXT_PX,
     weight: node.fontWeight ?? 400,
     letterSpacing: node.letterSpacing ?? 0,
@@ -385,6 +487,10 @@ export function layoutScreen(
         const t = node.thickness ?? 1;
         return { width: t, height: t };
       }
+      // Components are expanded before layout (components.ts).
+      case "use":
+      case "slot":
+        return { width: 0, height: 0 };
       default:
         return measureContainer(node, avail);
     }
@@ -443,6 +549,8 @@ export function layoutScreen(
   const meta = (node: LayoutNode, groupId: string | undefined) => ({
     ...("role" in node && node.role && { role: node.role }),
     ...(groupId && { groupId }),
+    ...("tokens" in node && node.tokens && { tokens: node.tokens }),
+    ...("component" in node && node.component && { component: node.component }),
   });
 
   /** Draws `node` into the box at (x, y), `width` × `height`. */
@@ -505,12 +613,15 @@ export function layoutScreen(
           fill: node.fill ?? null,
           stroke: node.stroke ?? TEXT_COLOR,
           strokeWidth: node.stroke ? (node.strokeWidth ?? 1) : 0,
-          ...(node.radius !== undefined && node.shape !== "ellipse" && { radius: node.radius }),
+          ...(typeof node.radius === "number" &&
+            node.shape !== "ellipse" && { radius: node.radius }),
           ...(node.shadow && { shadow: node.shadow }),
           ...meta(node, groupId),
         });
         return;
       case "spacer":
+      case "use":
+      case "slot":
         return;
       case "divider": {
         const t = node.thickness ?? 1;
@@ -550,7 +661,7 @@ export function layoutScreen(
         fill: node.fill ?? null,
         stroke: node.stroke ?? TEXT_COLOR,
         strokeWidth: node.stroke ? (node.strokeWidth ?? 1) : 0,
-        ...(node.radius !== undefined && { radius: node.radius }),
+        ...(typeof node.radius === "number" && { radius: node.radius }),
         ...(node.shadow && { shadow: node.shadow }),
         ...meta(node, groupId),
       });
@@ -656,7 +767,7 @@ export function layoutScreen(
 export function layoutFonts(root: LayoutNode, defaultFont: FontFamily) {
   const fonts: [FontFamily, number][] = [];
   const visit = (node: LayoutNode) => {
-    if (node.type === "text") fonts.push([node.font ?? defaultFont, node.fontWeight ?? 400]);
+    if (node.type === "text") fonts.push([fontOf(node.font, defaultFont), node.fontWeight ?? 400]);
     if (isContainer(node)) node.children.forEach(visit);
   };
   visit(root);
