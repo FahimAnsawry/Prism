@@ -91,7 +91,7 @@ function substitute(
 }
 
 const isContainer = (node: LayoutNode): node is LayoutContainer =>
-  node.type === "stack" || node.type === "row" || node.type === "grid";
+  node.type === "stack" || node.type === "row" || node.type === "grid" || node.type === "overlay";
 /** Nodes that take a name (groupId) and a role. */
 const named = (
   node: LayoutNode,
@@ -191,6 +191,13 @@ export function expandComponents(root: LayoutNode, components: Components) {
     }
     if (named(instance)) {
       if (use.role) instance = { ...instance, role: use.role };
+      // Placed in an overlay where it's used.
+      instance = {
+        ...instance,
+        ...(use.anchor !== undefined && { anchor: use.anchor }),
+        ...(use.x !== undefined && { x: use.x }),
+        ...(use.y !== undefined && { y: use.y }),
+      };
       // On a screen an instance is one group, so it moves as one.
       if (!ctx.inside) instance = { ...instance, name: use.name ?? use.component };
     }

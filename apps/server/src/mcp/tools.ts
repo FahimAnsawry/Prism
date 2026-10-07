@@ -803,7 +803,7 @@ export function registerTools(server: McpServer, userId: string) {
       description: [
         "Call get_design_guide before your first screen.",
         "The main way to draw UI: describe a screen as a layout tree and Prism positions everything, flexbox-style, so spacing and alignment come out exact.",
-        'Containers: stack (top to bottom), row (left to right), grid (equal columns), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow, plus gradient, image (a photo URL), backdropBlur (frosted glass); radius may be per corner).',
+        'Containers: stack (top to bottom), row (left to right), grid (equal columns), overlay (layers on top of each other: the first sets its size, later ones are placed by anchor and x/y and may hang past its edges, for cards floating over a product window or a badge on an avatar), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow, plus gradient, image (a photo URL), backdropBlur (frosted glass); radius may be per corner).',
         "Leaves: text, icon (Lucide), box (placeholder rect/ellipse: images, avatars), spacer (fixed, or flexible to push things apart), divider.",
         "A button is a row with padding, fill, radius, justify/align center and a text child; a card is a stack with padding, fill, radius and shadow. Give components a name (one groupId) and a role.",
         'Use the project\'s components (list_components) wherever they fit: { type: "use", component: "Button", variant: "ghost", props: { label: "Cancel" } }, with children for a component\'s slot (a Card\'s content) and width/height to resize it. Same component, same look on every screen.',
@@ -906,7 +906,14 @@ export function registerTools(server: McpServer, userId: string) {
           board.id,
           elements.map((element) => ({ op: "create", element })),
         );
-        const warnings = lintScreen(elements);
+        // Overlay layers (not stored) by element id; parts follow the frame, if any.
+        const layers = new Map<string, string>();
+        laidOut.forEach((el, i) => {
+          const id = elements[frame ? i + 1 : i]?.id;
+          const layer = (el as { layer?: unknown }).layer;
+          if (id && typeof layer === "string") layers.set(id, layer);
+        });
+        const warnings = lintScreen(elements, layers);
         return json({
           frameId: frame ? elements[0]?.id : null,
           bounds: boundsOf(elements),

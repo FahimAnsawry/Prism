@@ -96,7 +96,14 @@ function accentFamily(color: [number, number, number]) {
   return "pink";
 }
 
-export function lintScreen(elements: BoardElement[]): ScreenWarning[] {
+/**
+ * `layers` gives the overlay layer (create_screen) of elements drawn in one: such an element only
+ * spills out of containers in its own layer, since a layer may hang over what's under it.
+ */
+export function lintScreen(
+  elements: BoardElement[],
+  layers: ReadonlyMap<string, string> = new Map(),
+): ScreenWarning[] {
   const warnings: ScreenWarning[] = [];
   const frame = elements.find((el) => el.type === "frame");
   const grouped = new Map<string, { ids: string[]; texts: string[]; detail: string }>();
@@ -119,7 +126,8 @@ export function lintScreen(elements: BoardElement[]): ScreenWarning[] {
       });
     } else {
       const container = containerOf(elements, index);
-      if (container && container !== frame && spillsOut(el, container)) {
+      const sameLayer = container && layers.get(container.id) === layers.get(el.id);
+      if (container && container !== frame && sameLayer && spillsOut(el, container)) {
         warnings.push({
           kind: "overflow",
           ids: [el.id],

@@ -92,7 +92,7 @@ const BUILD = `## 6. Building it in Prism
 - One create_screen per frame. A whole landing page fits in one call (up to 800 nodes).
 - Stack children stretch to the full width by default. Put badges, pills, icon chips and buttons in a row (or set align: "start" on the stack) so they hug their content.
 - Give big headlines room: put \\n where the line should break and make sure the container is wide enough, or it wraps into extra lines.
-- Layering (a card floating over a product window, decorative shapes): draw the page with create_screen, then add the overlay with a second create_screen or create_elements at explicit x/y; later calls draw on top.
+- Layering (a card floating over a product window, a badge on an avatar, glass over a photo): an overlay container. Its first child is the base and sets its size; later children draw on top, each placed by anchor (top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right) and x/y in px, negative to hang past an edge. A product window with a stat card floating off its bottom-left: { type: "overlay", children: [ { type: "stack", name: "Product window", … }, { type: "stack", name: "Stat card", anchor: "bottom-left", x: -32, y: 32, width: 240, padding: 20, fill: "#ffffff", radius: 16, shadow: "lg", children: [ … ] } ] }.
 - Charts: create_elements type chart. A standalone picture: add_image.
 - Paint, on containers and boxes (and rect/frame elements):
   - image: { url, fit: "cover" } puts a photo inside the shape, clipped to its radius: hero photos, card covers, avatars (a box with shape "ellipse"). Prism downloads it.

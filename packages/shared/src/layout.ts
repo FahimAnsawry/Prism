@@ -44,7 +44,26 @@ export interface LayoutImage {
 export type LayoutRadius =
   number | ThemeRef | [number | ThemeRef, number | ThemeRef, number | ThemeRef, number | ThemeRef];
 
-interface NodeBase {
+/** Where a layer sits in an overlay: a corner, an edge's middle or the center. */
+export type LayoutAnchor =
+  | "top-left"
+  | "top"
+  | "top-right"
+  | "left"
+  | "center"
+  | "right"
+  | "bottom-left"
+  | "bottom"
+  | "bottom-right";
+
+/** A child's place in an overlay (ignored elsewhere): its anchor, then an offset in px. */
+interface Placement {
+  anchor?: LayoutAnchor | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+}
+
+interface NodeBase extends Placement {
   /** What it is in the UI ("button", "card", "nav", …), stored on what it draws. */
   role?: string | undefined;
   /** Groups everything it draws into one component (its groupId). */
@@ -56,7 +75,8 @@ interface NodeBase {
 }
 
 export interface LayoutContainer extends NodeBase {
-  type: "stack" | "row" | "grid";
+  /** overlay: children on top of each other, each placed by its anchor and x/y. */
+  type: "stack" | "row" | "grid" | "overlay";
   children: LayoutNode[];
   gap?: number | undefined;
   padding?: LayoutPadding | undefined;
@@ -134,7 +154,7 @@ export interface LayoutDivider {
 }
 
 /** A project component placed in the tree (components.ts expands it before layout). */
-export interface LayoutUse {
+export interface LayoutUse extends Placement {
   type: "use";
   component: string;
   variant?: string | undefined;
@@ -191,6 +211,29 @@ const GRADIENT_HELP =
   'A gradient background, as in CSS: { type: "linear", angle: 135, stops: [{ color: "$primary", position: 0 }, { color: "#a855f7", position: 100 }] } (angle 0 points up, 90 right, 180 down), or { type: "radial", stops: [...] } from the center out. Colors take $tokens.';
 const SHADOW_HELP =
   'sm, md (cards) or lg (menus, modals); or soft custom layers like CSS box-shadow, first on top: [{ x: 0, y: 24, blur: 48, spread: -12, color: "#0f172a26" }].';
+const offset = z.number().min(-10_000).max(10_000);
+const placement = {
+  anchor: z
+    .enum([
+      "top-left",
+      "top",
+      "top-right",
+      "left",
+      "center",
+      "right",
+      "bottom-left",
+      "bottom",
+      "bottom-right",
+    ])
+    .optional()
+    .describe("Inside an overlay only: where this layer sits. Default top-left."),
+  x: offset
+    .optional()
+    .describe(
+      "Inside an overlay only: px from the anchor, positive to the right (negative hangs out past the left edge).",
+    ),
+  y: offset.optional().describe("Inside an overlay only: px from the anchor, positive down."),
+};
 const base = {
   role: z.string().max(60).optional().describe('What it is: "button", "card", "nav", "input", …'),
   name: z
@@ -198,12 +241,15 @@ const base = {
     .max(40)
     .optional()
     .describe("Names a component: everything it draws gets one groupId, so it moves as one."),
+  ...placement,
 };
 
 const containerSchema = z.object({
   type: z
-    .enum(["stack", "row", "grid"])
-    .describe("stack: children top to bottom. row: left to right. grid: equal-width columns."),
+    .enum(["stack", "row", "grid", "overlay"])
+    .describe(
+      "stack: children top to bottom. row: left to right. grid: equal-width columns. overlay: layers on top of each other (first at the bottom), each placed by its anchor and x/y; it hugs its first layer.",
+    ),
   get children(): z.ZodArray<z.ZodType<LayoutNode>> {
     return z.array(layoutNodeSchema).max(200);
   },
@@ -333,6 +379,7 @@ const useSchema = z.object({
   height: sizeSchema.optional().describe("Override its height."),
   role: base.role,
   name: base.name,
+  ...placement,
 });
 
 const slotSchema = z.object({ type: z.literal("slot") });
@@ -420,7 +467,13 @@ export interface LayoutOptions {
 
 /** One element to create: everything but the id, version and layer, which the server assigns. */
 export type LayoutElement = Partial<Omit<BoardElement, "id" | "version" | "z" | "updatedBy">> &
-  Pick<BoardElement, "type" | "x" | "y" | "width" | "height">;
+  Pick<BoardElement, "type" | "x" | "y" | "width" | "height"> & {
+    /**
+     * The overlay layer it's drawn in (any layer after the base), so checks don't count a layer
+     * meant to hang over what's under it as spilling out. Not stored.
+     */
+    layer?: string;
+  };
 
 const TEXT_COLOR = "#3d3b4f";
 const DIVIDER_COLOR = "#e5e7eb";
@@ -442,7 +495,7 @@ function paddingOf(node: LayoutContainer): [number, number, number, number] {
 }
 
 const isContainer = (node: LayoutNode): node is LayoutContainer =>
-  node.type === "stack" || node.type === "row" || node.type === "grid";
+  node.type === "stack" || node.type === "row" || node.type === "grid" || node.type === "overlay";
 /** A node's font; a theme token left unresolved falls back to the screen's font. */
 const fontOf = (font: FontFamily | ThemeRef | undefined, fallback: FontFamily): FontFamily =>
   font === undefined || isThemeRef(font) ? fallback : font;
@@ -530,6 +583,32 @@ export function layoutScreen(
     return Math.min(measure(child, inner).width, inner);
   }
 
+  /**
+   * A layer's size in an overlay whose content box is `inner` wide and `innerHeight` tall (null
+   * while the overlay is still being measured): px, "fill" (the box), or hug its content.
+   */
+  function layerSize(child: LayoutNode, inner: number, innerHeight: number | null): Size {
+    if (child.type === "divider") {
+      const t = child.thickness ?? 1;
+      return { width: inner, height: t };
+    }
+    const w =
+      "width" in child && typeof child.width === "number"
+        ? child.width
+        : "width" in child && child.width === "fill"
+          ? inner
+          : child.type === "box"
+            ? inner
+            : measure(child, inner).width;
+    const h =
+      "height" in child && typeof child.height === "number"
+        ? child.height
+        : "height" in child && child.height === "fill" && innerHeight !== null
+          ? innerHeight
+          : measure(child, w).height;
+    return { width: w, height: h };
+  }
+
   /** Flexible in a row: takes a share of the leftover width. */
   const flexInRow = (child: LayoutNode) =>
     (child.type === "spacer" && child.size === undefined) ||
@@ -602,6 +681,11 @@ export function layoutScreen(
         contentHeight += h;
       }
       contentHeight += gaps;
+    } else if (node.type === "overlay") {
+      const [first] = node.children;
+      const base = first ? layerSize(first, inner, null) : { width: 0, height: 0 };
+      contentWidth = base.width;
+      contentHeight = base.height;
     } else if (node.type === "row") {
       const { widths, flexible, used } = rowWidths(node, inner);
       node.children.forEach((child, i) => {
@@ -634,7 +718,12 @@ export function layoutScreen(
     return inherited;
   }
 
+  /** The overlay layer being drawn (see LayoutElement.layer). */
+  let layer: string | undefined;
+  let layers = 0;
+
   const meta = (node: LayoutNode, groupId: string | undefined) => ({
+    ...(layer && { layer }),
     ...("role" in node && node.role && { role: node.role }),
     ...(groupId && { groupId }),
     ...("tokens" in node && node.tokens && { tokens: node.tokens }),
@@ -767,6 +856,31 @@ export function layoutScreen(
     const gap = node.gap ?? 0;
     const n = node.children.length;
     const justify = node.justify ?? "start";
+
+    if (node.type === "overlay") {
+      node.children.forEach((child, i) => {
+        const size = layerSize(child, iw, ih);
+        const anchor = ("anchor" in child && child.anchor) || "top-left";
+        const dx = ("x" in child && child.x) || 0;
+        const dy = ("y" in child && child.y) || 0;
+        const ax = anchor.endsWith("left")
+          ? ix
+          : anchor.endsWith("right")
+            ? ix + iw - size.width
+            : ix + (iw - size.width) / 2;
+        const ay = anchor.startsWith("top")
+          ? iy
+          : anchor.startsWith("bottom")
+            ? iy + ih - size.height
+            : iy + (ih - size.height) / 2;
+        // Every layer after the base is its own layer for the checks.
+        const outer = layer;
+        if (i > 0) layer = `layer-${++layers}`;
+        place(child, ax + dx, ay + dy, size.width, size.height, groupId);
+        layer = outer;
+      });
+      return;
+    }
 
     if (node.type === "grid") {
       const columns = node.columns ?? 2;
