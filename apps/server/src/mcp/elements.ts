@@ -90,7 +90,7 @@ export const fieldShape = {
   gradient: gradientSchema
     .nullable()
     .describe(
-      'Gradient fill for rect, ellipse and frame, as in CSS: { type: "linear", angle: 135, stops: [{ color: "$primary", position: 0 }, { color: "#a855f7", position: 100 }] } (angle 0 points up, 90 right, 180 down; position 0-100), or { type: "radial", stops: [...] } from the center to the farthest corner. Colors take $tokens or hex (alpha allowed). Without a fill, the fill becomes the first stop color. null removes it.',
+      'Gradient fill for rect, ellipse and frame (and gradient text on text), as in CSS: { type: "linear", angle: 135, stops: [{ color: "$primary", position: 0 }, { color: "#a855f7", position: 100 }] } (angle 0 points up, 90 right, 180 down; position 0-100), or { type: "radial", stops: [...] } from the center to the farthest corner. Colors take $tokens or hex (alpha allowed). Without a fill, the fill becomes the first stop color. null removes it.',
     ),
   fillImage: z
     .object({

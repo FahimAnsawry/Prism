@@ -7,6 +7,8 @@ import {
   type CompareReferenceRequest,
   exportImageReplySchema,
   type ExportImageRequest,
+  htmlScreenReplySchema,
+  type HtmlScreenRequest,
   type LayoutMindmapRequest,
   type LayoutScreenRequest,
   layoutScreenReplySchema,
@@ -205,6 +207,19 @@ export function requestReferenceComparison(userId: string, request: CompareRefer
     request.boardId,
     (tab) => tab.timeout(EXPORT_TIMEOUT_MS).emitWithAck("compare:reference", request),
     compareReferenceReplySchema,
+  );
+}
+
+/** How long a tab gets to render an HTML screen: Tailwind, fonts and images load first. */
+const HTML_TIMEOUT_MS = 45_000;
+
+/** Has one of the user's open tabs render an HTML screen and read it back (create_screen html). */
+export function requestHtmlScreen(userId: string, request: HtmlScreenRequest) {
+  return drawOnTab(
+    userId,
+    request.boardId,
+    (tab) => tab.timeout(HTML_TIMEOUT_MS).emitWithAck("html:screen", request),
+    htmlScreenReplySchema,
   );
 }
 

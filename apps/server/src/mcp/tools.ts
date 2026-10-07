@@ -21,6 +21,7 @@ import {
   EDIT_NOTE_MAX,
   estimateText,
   fontFamilySchema,
+  HTML_SCREEN_MAX,
   LAYOUT_NODES_MAX,
   layoutNodeSchema,
   layoutScreen,
@@ -28,6 +29,7 @@ import {
   fontFamilyName,
   mergeTheme,
   parseThemeCss,
+  PENDING_ASSET,
   RADIUS_SCALE,
   resolveElementTokens,
   resolveLayoutTokens,
@@ -46,6 +48,7 @@ import {
   type ElementOp,
   type ElementTokens,
   type ImageFill,
+  type LayoutOptions,
   type Theme,
   type ThemeMode,
 } from "@prism/shared";
@@ -66,6 +69,7 @@ import { searchImages } from "../image-search.js";
 import {
   broadcastOps,
   requestBoardImage,
+  requestHtmlScreen,
   requestReferenceComparison,
   requestMindmapLayout,
   requestScreenLayout,
@@ -293,6 +297,122 @@ async function save(userId: string, id: string, ops: ElementOp[]) {
   const result = await applyOps(board, ops);
   broadcastOps(board.id, result.applied);
   return result;
+}
+
+/**
+ * create_screen with html: the user's board tab renders the page and reads it back as elements;
+ * here its images are stored with the board and the elements saved as one screen.
+ */
+async function createHtmlScreen(
+  userId: string,
+  boardIdInput: string,
+  html: string,
+  frame: { width: number; height?: number | undefined } | undefined,
+  place: { width?: number | undefined; x?: number | undefined; y?: number | undefined },
+  font: z.infer<typeof fontFamilySchema> | undefined,
+  mode: ThemeMode,
+) {
+  const board = await ownedBoard(boardIdInput, userId);
+  const [theme, components] = await Promise.all([boardTheme(board), boardComponents(board)]);
+  const existing = await loadElements(board.id);
+  const content = boundsOf(existing);
+  const width = frame?.width ?? place.width ?? 390;
+  const options: LayoutOptions = {
+    x: place.x ?? (content ? content.x + content.width + 120 : 0),
+    y: place.y ?? (content ? content.y : 0),
+    width,
+    height: frame?.height,
+    font: font ?? theme.fonts.sans,
+  };
+  const reply = await requestHtmlScreen(userId, {
+    boardId: board.id,
+    html,
+    options,
+    fontGiven: font !== undefined,
+    mode,
+    theme,
+    components,
+  });
+  if (theme.strict && reply.violations.length > 0) {
+    throw new HttpError(400, strictMessage(reply.violations));
+  }
+
+  // Images the page showed, stored once each; elements point at them as "pending:<index>".
+  const images = imageStore(board.id);
+  const stored = await Promise.all(
+    reply.assets.map((asset) =>
+      asset.kind === "url" ? images.image(asset.url) : images.svg(asset.markup),
+    ),
+  );
+  const layerOf: (string | undefined)[] = [];
+  const parts = reply.elements.map((raw) => {
+    const { fillImage, layer, ...fields } = raw as Record<string, unknown> & {
+      fillImage?: { assetKey?: unknown; fit?: unknown };
+    };
+    layerOf.push(typeof layer === "string" ? layer : undefined);
+    const key = typeof fillImage?.assetKey === "string" ? fillImage.assetKey : "";
+    // Only images this call stored: a tab can't point an element at another board's files.
+    const assetKey = key.startsWith(PENDING_ASSET)
+      ? stored[Number(key.slice(PENDING_ASSET.length))]
+      : undefined;
+    return layoutElementInput.parse({
+      ...fields,
+      ...(assetKey && { fillImage: { assetKey, fit: fillImage?.fit ?? "cover" } }),
+    });
+  });
+
+  const bottom = Math.max(options.y, ...parts.map((el) => el.y + (el.height ?? 0)));
+  const background = reply.background;
+  const frameElement = frame && {
+    type: "frame" as const,
+    x: options.x,
+    y: options.y,
+    width,
+    height: frame.height ?? Math.max(40, Math.ceil(Math.max(reply.height, bottom - options.y))),
+    ...(background
+      ? {
+          fill: background.fill,
+          ...(background.token && { tokens: { fill: background.token } }),
+        }
+      : {
+          fill: themeColorHex(theme, mode, "background"),
+          tokens: { fill: "background" },
+        }),
+  };
+  const elements = buildElements(frameElement ? [frameElement, ...parts] : parts, existing);
+  await save(
+    userId,
+    board.id,
+    elements.map((element) => ({ op: "create", element })),
+  );
+  const layers = new Map<string, string>();
+  layerOf.forEach((layer, i) => {
+    const id = elements[frameElement ? i + 1 : i]?.id;
+    if (id && layer) layers.set(id, layer);
+  });
+  const warnings: ScreenWarning[] = [
+    ...reply.notes.map((message) => ({ kind: "html", ids: [], message })),
+    ...images.warnings,
+    ...lintScreen(elements, layers),
+  ];
+  return json({
+    frameId: frameElement ? elements[0]?.id : null,
+    bounds: boundsOf(elements),
+    measured: "browser (rendered HTML)",
+    theme: { name: theme.name ?? null, mode },
+    ...(warnings.length > 0 && { warnings }),
+    elements: elements.map((el) => ({
+      id: el.id,
+      type: el.type,
+      ...(el.role && { role: el.role }),
+      ...(el.groupId && { groupId: el.groupId }),
+      ...(el.text && { text: el.text.slice(0, 60) }),
+    })),
+    next:
+      warnings.length > 0
+        ? `Fix the ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (in the HTML and draw it again, or with update_elements), then check it with export_image (frameId).`
+        : "Check it with export_image (frameId), then fix anything off with update_elements or by drawing the HTML again.",
+  });
 }
 
 export function registerTools(server: McpServer, userId: string) {
@@ -870,7 +990,8 @@ export function registerTools(server: McpServer, userId: string) {
       title: "Create a screen from a layout",
       description: [
         "Call get_design_guide before your first screen.",
-        "The main way to draw UI: describe a screen as a layout tree and Prism positions everything, flexbox-style, so spacing and alignment come out exact.",
+        "The main way to draw UI: describe a screen as a layout tree (root) and Prism positions everything, flexbox-style, so spacing and alignment come out exact. Or write it as HTML + Tailwind (html): the user's board tab renders it and reads it back as elements.",
+        'HTML: the page body with Tailwind v4 classes (no scripts). The project theme is loaded, so use its classes: bg-primary, text-primary-foreground, text-muted-foreground, border-border, bg-card, rounded-lg, text-h1/text-body/text-caption (the theme sizes), font-heading; they are kept as $tokens. Icons: <i data-icon="search" class="size-5 text-muted-foreground"></i> (Lucide). Photos: <img src> from search_images. Avatars: <img data-avatar="Ana Ruiz" class="size-10 rounded-full">. Logos and illustrations: inline <svg>. Components: <x-use component="Button" variant="ghost" label="Cancel"></x-use> (children fill its slot). data-name="Hero" groups an element and data-role names it. Absolutely positioned elements are overlay layers. Gradient text (bg-clip-text) works; ::before/::after content, video and canvas are not drawn. Needs the board open in the browser.',
         'Containers: stack (top to bottom), row (left to right), grid (equal columns), overlay (layers on top of each other: the first sets its size, later ones are placed by anchor and x/y and may hang past its edges, for cards floating over a product window or a badge on an avatar), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow, plus gradient, image (a photo URL), backdropBlur (frosted glass); radius may be per corner).',
         'Leaves: text, icon (Lucide), box (a rect or ellipse holding a photo with image: { url } from search_images, an avatar with avatar: "Full Name", or an SVG logo or illustration with svg; never a gray placeholder), spacer (fixed, or flexible to push things apart), divider.',
         "A button is a row with padding, fill, radius, justify/align center and a text child; a card is a stack with padding, fill, radius and shadow. Give components a name (one groupId) and a role.",
@@ -881,9 +1002,18 @@ export function registerTools(server: McpServer, userId: string) {
       ].join(" "),
       inputSchema: z.object({
         boardId,
-        root: layoutNodeSchema.describe(
-          "The screen's content, usually a stack. It fills the screen's width.",
-        ),
+        root: layoutNodeSchema
+          .optional()
+          .describe(
+            "The screen's content as a layout tree, usually a stack. It fills the screen's width. Give root or html.",
+          ),
+        html: z
+          .string()
+          .max(HTML_SCREEN_MAX)
+          .optional()
+          .describe(
+            "The screen as HTML + Tailwind (the <body> content, or a whole document), rendered at the frame's width. Give root or html.",
+          ),
         frame: z
           .object({
             width: z.number().min(40).max(4_000).describe("e.g. 390 mobile, 1440 desktop."),
@@ -918,9 +1048,26 @@ export function registerTools(server: McpServer, userId: string) {
     },
     (input) =>
       run(async () => {
+        if ((input.root === undefined) === (input.html === undefined)) {
+          throw new HttpError(400, "Give the screen as root (a layout tree) or as html, not both.");
+        }
+        if (input.html !== undefined) {
+          return createHtmlScreen(
+            userId,
+            input.boardId,
+            input.html,
+            input.frame,
+            input,
+            input.font,
+            input.mode ?? "light",
+          );
+        }
         const board = await ownedBoard(input.boardId, userId);
         const [theme, components] = await Promise.all([boardTheme(board), boardComponents(board)]);
-        const expanded = expandComponents(input.root, components);
+        const expanded = expandComponents(
+          input.root ?? { type: "stack", children: [] },
+          components,
+        );
         if (expanded.errors.length > 0) throw new HttpError(400, expanded.errors.join("\n"));
         const nodes = countNodes(expanded.root);
         if (nodes > LAYOUT_NODES_MAX) {

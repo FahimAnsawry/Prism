@@ -12,6 +12,8 @@ import {
   type CompareReferenceRequest,
   type ExportImageReply,
   type ExportImageRequest,
+  type HtmlScreenReply,
+  type HtmlScreenRequest,
   type LayoutMindmapRequest,
   type LayoutScreenReply,
   type LayoutScreenRequest,
@@ -25,6 +27,7 @@ import { getSocket } from "@/lib/realtime";
 import { applyOps } from "./board-model";
 import { compareReference } from "./compare-reference";
 import { exportBoardImage } from "./export-image";
+import { htmlScreenOnTab } from "./html-screen";
 import { layoutMindmapOnTab, layoutScreenOnTab } from "./screen-layout";
 
 const elementsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}/elements`;
@@ -300,6 +303,11 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
       if (request.boardId === boardId) void layoutScreenOnTab(request).then(ack);
     };
     socket.on("layout:screen", onLayoutScreen);
+    // An AI editor's create_screen with html: this tab renders the page and reads it back.
+    const onHtmlScreen = (request: HtmlScreenRequest, ack: (reply: HtmlScreenReply) => void) => {
+      if (request.boardId === boardId) void htmlScreenOnTab(request).then(ack);
+    };
+    socket.on("html:screen", onHtmlScreen);
     const onLayoutMindmap = (
       request: LayoutMindmapRequest,
       ack: (reply: LayoutScreenReply) => void,
@@ -315,6 +323,7 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
       socket.off("export:image", onExportImage);
       socket.off("compare:reference", onCompareReference);
       socket.off("layout:screen", onLayoutScreen);
+      socket.off("html:screen", onHtmlScreen);
       socket.off("layout:mindmap", onLayoutMindmap);
       socket.emit("board:leave", boardId);
     };

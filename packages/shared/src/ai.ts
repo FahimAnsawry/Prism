@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type { BoardElement, ElementOp } from "./elements.js";
+import type { Components } from "./components.js";
 import type { LayoutNode, LayoutOptions } from "./layout.js";
 import type { MindmapInput, MindmapOptions } from "./mindmap.js";
+import type { Theme, ThemeMode } from "./theme.js";
 
 // AI editors (Claude Code, Codex, … through the MCP endpoint in apps/server/src/mcp): personal
 // access tokens, "Ask AI" edit requests and the Socket.IO events.
@@ -170,6 +172,58 @@ export const layoutScreenReplySchema = z.discriminatedUnion("ok", [
 
 export type LayoutScreenReply = z.infer<typeof layoutScreenReplySchema>;
 
+// ── HTML screens (create_screen with html) ─────────────────────────────────
+
+/** Most characters of HTML one screen can have. */
+export const HTML_SCREEN_MAX = 200_000;
+/**
+ * Asset keys an HTML screen's elements use for images the server still has to store:
+ * `pending:3` is HtmlScreenReply.assets[3].
+ */
+export const PENDING_ASSET = "pending:";
+
+/** An AI editor's HTML + Tailwind for a board tab to render and read back as board elements. */
+export interface HtmlScreenRequest {
+  boardId: string;
+  html: string;
+  /** Where the screen goes, its width, and its height (the viewport) if fixed. */
+  options: LayoutOptions;
+  /** Whether `font` was asked for (else the theme's fonts apply). */
+  fontGiven: boolean;
+  mode: ThemeMode;
+  theme: Theme;
+  components: Components;
+}
+
+const pendingAssetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("url"), url: z.string().max(4_000) }),
+  z.object({ kind: z.literal("svg"), markup: z.string().max(500_000) }),
+]);
+
+export const htmlScreenReplySchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    /** The elements to create, in paint order (checked again by the server before saving). */
+    elements: z.array(z.record(z.string(), z.unknown())).max(5_000),
+    /** Images to store with the board, referred to as `pending:<index>` asset keys. */
+    assets: z.array(pendingAssetSchema).max(300),
+    /** The page's background (body or html), for the frame behind the screen. */
+    background: z
+      .object({ fill: z.string().max(64), token: z.string().max(40).optional() })
+      .nullable(),
+    /** The content's height in px. */
+    height: z.number().min(0),
+    /** What a strict theme refuses (plain colors, sizes, off-grid spacing). */
+    violations: z.array(z.string().max(300)).max(500),
+    /** What couldn't be drawn as written, for the AI editor. */
+    notes: z.array(z.string().max(300)).max(50),
+  }),
+  z.object({ ok: z.literal(false), error: z.string().max(2_000) }),
+]);
+
+export type HtmlScreenReply = z.infer<typeof htmlScreenReplySchema>;
+export type PendingAsset = z.infer<typeof pendingAssetSchema>;
+
 /** Mind map nodes for a board tab to size with the board's fonts (create_mindmap). */
 export interface LayoutMindmapRequest {
   boardId: string;
@@ -191,6 +245,8 @@ export interface ServerToClientEvents {
   ) => void;
   /** An AI editor's create_screen: lay the tree out with real text measurements and reply. */
   "layout:screen": (request: LayoutScreenRequest, ack: (reply: LayoutScreenReply) => void) => void;
+  /** An AI editor's create_screen with html: render it and read it back as elements. */
+  "html:screen": (request: HtmlScreenRequest, ack: (reply: HtmlScreenReply) => void) => void;
   /** An AI editor's create_mindmap: size the nodes with real text measurements and reply. */
   "layout:mindmap": (
     request: LayoutMindmapRequest,

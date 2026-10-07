@@ -135,7 +135,9 @@ function ShapeLayers({
   const filterId = `shadow${uid}`;
   const gradientId = `gradient${uid}`;
   const shadow = el.shadow && SHADOW_TYPES.includes(el.type) ? el.shadow : null;
-  const gradient = el.gradient && GRADIENT_TYPES.includes(el.type) ? el.gradient : null;
+  // Text takes a gradient too (gradient text from HTML's bg-clip-text).
+  const gradient =
+    el.gradient && (GRADIENT_TYPES.includes(el.type) || el.type === "text") ? el.gradient : null;
   const image = el.fillImage && IMAGE_FILL_TYPES.includes(el.type) ? el.fillImage : null;
   return (
     <g opacity={hidden ? 0 : el.opacity} transform={rotate}>
@@ -530,7 +532,7 @@ function Shape({
             top={y}
             left={x}
             width={width}
-            color={ink}
+            color={gradientId ? `url(#${gradientId})` : ink}
           />
         </>
       );
