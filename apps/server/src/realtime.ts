@@ -3,6 +3,8 @@ import {
   type ClientToServerEvents,
   type EditRequest,
   type ElementOp,
+  compareReferenceReplySchema,
+  type CompareReferenceRequest,
   exportImageReplySchema,
   type ExportImageRequest,
   type LayoutMindmapRequest,
@@ -151,12 +153,19 @@ function boardTabs(userId: string, boardId: string) {
     .sort((a, b) => lastActive(b.id) - lastActive(a.id));
 }
 
+type TabReply = { ok: true } | { ok: false; error: string };
+
 /**
- * Has one of the user's open tabs on the board draw the requested image (export_image). The tab
+ * Asks one of the user's open tabs on the board to draw something (`event`) and reply. The tab
  * the user touched most recently is asked first; if it doesn't answer, the next one is.
  */
-export async function requestBoardImage(userId: string, request: ExportImageRequest) {
-  const tabs = boardTabs(userId, request.boardId);
+async function drawOnTab<R extends TabReply>(
+  userId: string,
+  boardId: string,
+  ask: (tab: BoardTab) => Promise<unknown>,
+  schema: { parse: (raw: unknown) => R },
+): Promise<Extract<R, { ok: true }>> {
+  const tabs = boardTabs(userId, boardId);
   if (tabs.length === 0) {
     throw new HttpError(
       409,
@@ -165,11 +174,9 @@ export async function requestBoardImage(userId: string, request: ExportImageRequ
   }
   for (const tab of tabs) {
     try {
-      const reply = exportImageReplySchema.parse(
-        await tab.timeout(EXPORT_TIMEOUT_MS).emitWithAck("export:image", request),
-      );
+      const reply = schema.parse(await ask(tab));
       if (!reply.ok) throw new HttpError(400, reply.error);
-      return reply;
+      return reply as Extract<R, { ok: true }>;
     } catch (error) {
       if (error instanceof HttpError) throw error;
       console.warn("[Prism] A board tab didn't send its image:", error);
@@ -178,6 +185,26 @@ export async function requestBoardImage(userId: string, request: ExportImageRequ
   throw new HttpError(
     504,
     "The open board tab didn't send the image in time. Ask the user to keep the board open, then try again.",
+  );
+}
+
+/** Has one of the user's open tabs on the board draw the requested image (export_image). */
+export function requestBoardImage(userId: string, request: ExportImageRequest) {
+  return drawOnTab(
+    userId,
+    request.boardId,
+    (tab) => tab.timeout(EXPORT_TIMEOUT_MS).emitWithAck("export:image", request),
+    exportImageReplySchema,
+  );
+}
+
+/** Has one of the user's open tabs measure a screen against a reference image (compare_reference). */
+export function requestReferenceComparison(userId: string, request: CompareReferenceRequest) {
+  return drawOnTab(
+    userId,
+    request.boardId,
+    (tab) => tab.timeout(EXPORT_TIMEOUT_MS).emitWithAck("compare:reference", request),
+    compareReferenceReplySchema,
   );
 }
 

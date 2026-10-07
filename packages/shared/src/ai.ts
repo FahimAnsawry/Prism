@@ -100,6 +100,56 @@ export const exportImageReplySchema = z.discriminatedUnion("ok", [
 
 export type ExportImageReply = z.infer<typeof exportImageReplySchema>;
 
+// ── Reference comparison (compare_reference) ──────────────────────────────
+
+/** A screen (frame) for a board tab to measure against a reference image on the board. */
+export interface CompareReferenceRequest {
+  boardId: string;
+  /** The board as the server has it. */
+  elements: BoardElement[];
+  frameId: string;
+  /** An image (or svg) element on the board: the reference. */
+  referenceId: string;
+}
+
+const colorShareSchema = z.object({ color: z.string(), share: z.number() });
+
+export const compareReferenceReplySchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    /** 0 (unrelated) to 100 (the same picture): layout, colors and shape together. */
+    score: z.number().int().min(0).max(100),
+    /**
+     * The score's parts, 0 to 1: where it's light and dark (tones), where the detail is
+     * (structure), the color mix (colors) and the proportions (shape).
+     */
+    breakdown: z.object({
+      tones: z.number(),
+      structure: z.number(),
+      colors: z.number(),
+      shape: z.number(),
+    }),
+    /** Width / height of each. */
+    aspect: z.object({ screen: z.number(), reference: z.number() }),
+    /** A few dominant colors of each, with their share of the image (0-1). */
+    colors: z.object({
+      screen: z.array(colorShareSchema).max(8),
+      reference: z.array(colorShareSchema).max(8),
+    }),
+    /** Mean lightness (0 dark to 1 light) of nine regions, top-left to bottom-right. */
+    regions: z
+      .array(z.object({ region: z.string(), screen: z.number(), reference: z.number() }))
+      .max(9),
+    /** Share of each image that is plain background (its most common color), 0-1. */
+    whitespace: z.object({ screen: z.number(), reference: z.number() }),
+    /** The biggest differences, most important first, as things to change in the screen. */
+    differences: z.array(z.string().max(300)).max(5),
+  }),
+  z.object({ ok: z.literal(false), error: z.string().max(500) }),
+]);
+
+export type CompareReferenceReply = z.infer<typeof compareReferenceReplySchema>;
+
 // ── Screen layout (create_screen) ──────────────────────────────────────────
 
 /** A layout tree for a board tab to lay out, measuring text with the board's own fonts. */
@@ -134,6 +184,11 @@ export interface ServerToClientEvents {
   "edit:update": (request: EditRequest) => void;
   /** An AI editor wants to see part of the board: render it and reply with the image. */
   "export:image": (request: ExportImageRequest, ack: (reply: ExportImageReply) => void) => void;
+  /** An AI editor's compare_reference: measure a screen against a reference image and reply. */
+  "compare:reference": (
+    request: CompareReferenceRequest,
+    ack: (reply: CompareReferenceReply) => void,
+  ) => void;
   /** An AI editor's create_screen: lay the tree out with real text measurements and reply. */
   "layout:screen": (request: LayoutScreenRequest, ack: (reply: LayoutScreenReply) => void) => void;
   /** An AI editor's create_mindmap: size the nodes with real text measurements and reply. */

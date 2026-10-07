@@ -15,6 +15,21 @@ const PRESET_PX = { S: 16, M: 22, L: 30, XL: 40 } as const;
 const MIN_TEXT_PX = 12;
 const TEXT_SIZES_MAX = 8;
 const ACCENT_FAMILIES_MAX = 3;
+/** Status chips and badges: short shapes whose colors (and their text's) mean state, not brand. */
+const STATUS_HEIGHT_MAX = 32;
+const STATUS_WIDTH_MAX = 200;
+/** Icons a row of reads as a rating, which needs the active ones filled. */
+const RATING_ICONS = new Set(["star", "heart", "thumbs-up", "circle"]);
+const RATING_ROW_MIN = 3;
+/** Side-by-side cards: same top and width within this many px; heights may differ this much. */
+const SIBLING_ALIGN_TOLERANCE = 4;
+const SIBLING_HEIGHT_TOLERANCE = 4;
+const SIBLING_SIZE_MIN = 60;
+/** Off the main column: an edge this close to the column's, but not on it. */
+const COLUMN_NEAR_MIN = 4;
+const COLUMN_NEAR_MAX = 24;
+/** A block at least this share of the column's width is checked against it. */
+const COLUMN_BLOCK_SHARE = 0.3;
 /** A gray box this big on both sides, with nothing on it, reads as a missing image. */
 const PLACEHOLDER_SIDE_MIN = 80;
 /** How far apart a gray's channels may be (a slate tint still counts as gray). */
@@ -105,6 +120,131 @@ function accentFamily(color: [number, number, number]) {
  * `layers` gives the overlay layer (create_screen) of elements drawn in one: such an element only
  * spills out of containers in its own layer, since a layer may hang over what's under it.
  */
+/** Filled shapes small enough to be status chips or badges. */
+function statusShapes(elements: BoardElement[]) {
+  return new Set(
+    elements.filter(
+      (el) =>
+        (el.type === "rect" || el.type === "ellipse") &&
+        el.fill !== null &&
+        Math.abs(el.height) <= STATUS_HEIGHT_MAX &&
+        Math.abs(el.width) <= STATUS_WIDTH_MAX,
+    ),
+  );
+}
+
+/** A row of rating-style icons (stars, hearts) with none filled: it reads as an empty rating. */
+function emptyRatings(elements: BoardElement[]): ScreenWarning[] {
+  const rows = new Map<string, BoardElement[]>();
+  for (const el of elements) {
+    if (el.type !== "icon" || !el.icon || !RATING_ICONS.has(el.icon)) continue;
+    const key = `${el.icon}:${Math.round(el.y)}:${Math.round(el.height)}`;
+    rows.set(key, [...(rows.get(key) ?? []), el]);
+  }
+  const warnings: ScreenWarning[] = [];
+  for (const icons of rows.values()) {
+    const run: BoardElement[] = [];
+    const flush = () => {
+      if (run.length >= RATING_ROW_MIN && run.every((el) => !el.fill)) {
+        const icon = run[0]?.icon ?? "star";
+        warnings.push({
+          kind: "outline-rating",
+          ids: run.map((el) => el.id),
+          message: `${run.length} outline ${icon} icons in a row read as an empty rating. Fill the active ones (fill: "#f59e0b" for stars, the accent for hearts) and keep the rest outlined or light.`,
+        });
+      }
+      run.length = 0;
+    };
+    // Neighbors only: icons in one row sit within two icon widths of each other.
+    for (const el of icons.sort((a, b) => a.x - b.x)) {
+      const last = run.at(-1);
+      if (last && el.x - (last.x + last.width) > last.width * 2) flush();
+      run.push(el);
+    }
+    flush();
+  }
+  return warnings;
+}
+
+/** The component a shape belongs to: its role, its component, else its group's name. */
+function kindOf(el: BoardElement) {
+  return el.role ?? el.component ?? el.groupId?.replace(/-\d+-[a-z0-9]+$/, "") ?? null;
+}
+
+/** Cards side by side (same top, same width, same kind) with different heights. */
+function unevenSiblings(elements: BoardElement[]): ScreenWarning[] {
+  const cards = elements.filter(
+    (el) =>
+      (el.type === "rect" || el.type === "ellipse") &&
+      isContainer(el) &&
+      kindOf(el) !== null &&
+      Math.min(Math.abs(el.width), Math.abs(el.height)) >= SIBLING_SIZE_MIN,
+  );
+  const warnings: ScreenWarning[] = [];
+  const seen = new Set<BoardElement>();
+  for (const card of cards) {
+    if (seen.has(card)) continue;
+    const row = cards.filter(
+      (other) =>
+        kindOf(other) === kindOf(card) &&
+        Math.abs(other.y - card.y) <= SIBLING_ALIGN_TOLERANCE &&
+        Math.abs(other.width - card.width) <= SIBLING_ALIGN_TOLERANCE,
+    );
+    for (const other of row) seen.add(other);
+    const heights = row.map((el) => el.height);
+    const spread = Math.max(...heights) - Math.min(...heights);
+    if (row.length < 2 || spread <= SIBLING_HEIGHT_TOLERANCE) continue;
+    warnings.push({
+      kind: "uneven-siblings",
+      ids: row.map((el) => el.id),
+      message: `${row.length} side-by-side "${kindOf(card)}" blocks have different heights (${heights.map((h) => Math.round(h)).join(", ")}px). Make them equal: put them in a grid, or give their row align: "stretch".`,
+    });
+  }
+  return warnings;
+}
+
+/**
+ * Blocks whose left edge is close to the page's main column but not on it. The column is the
+ * left edge the page's top-level blocks share most (weighted by width); blocks inside a card or
+ * panel line up with that instead, and overlay layers may sit anywhere.
+ */
+function offColumn(
+  elements: BoardElement[],
+  frame: BoardElement,
+  layers: ReadonlyMap<string, string>,
+): ScreenWarning[] {
+  const fullBleed = (el: BoardElement) => Math.abs(el.width) >= Math.abs(frame.width) - 2;
+  const topLevel = elements.filter((el, index) => {
+    if (el === frame || fullBleed(el) || layers.has(el.id)) return false;
+    if (el.type === "line" || el.type === "arrow") return false;
+    if (isText(el) && el.textAlign === "center") return false;
+    const holder = containerOf(elements, index);
+    return !holder || holder === frame || fullBleed(holder);
+  });
+  const weight = new Map<number, number>();
+  for (const el of topLevel) {
+    const left = Math.round(el.x);
+    weight.set(left, (weight.get(left) ?? 0) + Math.abs(el.width));
+  }
+  const column = [...weight].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (column === undefined) return [];
+  const columnWidth = Math.max(
+    ...topLevel.filter((el) => Math.round(el.x) === column).map((el) => Math.abs(el.width)),
+  );
+  return topLevel.flatMap((el): ScreenWarning[] => {
+    const off = el.x - column;
+    if (Math.abs(el.width) < columnWidth * COLUMN_BLOCK_SHARE) return [];
+    if (Math.abs(off) < COLUMN_NEAR_MIN || Math.abs(off) > COLUMN_NEAR_MAX) return [];
+    return [
+      {
+        kind: "off-column",
+        ids: [el.id],
+        message: `${isText(el) ? `Text ${quote(el.text)}` : `A ${el.role ?? el.type}`} starts ${Math.round(Math.abs(off))}px ${off > 0 ? "right" : "left"} of the page's main column (${Math.round(column - frame.x)}px from the frame's left edge). Line it up with the other sections: give it the same padding as theirs.`,
+      },
+    ];
+  });
+}
+
 /** A neutral gray between light and dark: not a white or near-white surface, not a dark panel. */
 function isMidGray(color: string | null | undefined) {
   const parsed = rgb(color);
@@ -229,7 +369,12 @@ export function lintScreen(
   }
 
   const families = new Set<string>();
-  for (const el of elements) {
+  const status = statusShapes(elements);
+  elements.forEach((el, index) => {
+    // State colors on chips and badges (and their text and icons) and charts aren't the palette.
+    if (el.type === "chart" || status.has(el)) return;
+    const holder = containerOf(elements, index, true);
+    if (holder && status.has(holder)) return;
     const colors =
       el.type === "text" || el.type === "icon"
         ? [el.stroke]
@@ -241,7 +386,7 @@ export function lintScreen(
       const family = parsed && accentFamily(parsed);
       if (family) families.add(family);
     }
-  }
+  });
   if (families.size > ACCENT_FAMILIES_MAX) {
     warnings.push({
       kind: "palette",
@@ -249,6 +394,9 @@ export function lintScreen(
       message: `The screen uses ${families.size} accent color families (${[...families].join(", ")}). Keep one accent; use the others only for status chips and charts.`,
     });
   }
+
+  warnings.push(...emptyRatings(elements), ...unevenSiblings(elements));
+  if (frame) warnings.push(...offColumn(elements, frame, layers));
 
   const placeholders = elements.filter((el, i) => isPlaceholder(el, elements.slice(i + 1)));
   if (placeholders.length > 0) {

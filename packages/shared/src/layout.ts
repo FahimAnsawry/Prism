@@ -139,6 +139,8 @@ export interface LayoutIcon extends NodeBase {
   icon: string;
   size?: number | undefined;
   color?: string | undefined;
+  /** Fills the icon's shape: a solid star, heart or dot. */
+  fill?: string | undefined;
   strokeWidth?: number | undefined;
 }
 
@@ -347,6 +349,11 @@ const iconSchema = z.object({
   icon: iconNameSchema.describe('Lucide name, e.g. "search", "bell", "chevron-right".'),
   size: z.number().min(4).max(512).optional().describe("Default 20."),
   color: color.optional().describe("Icon color ($token or hex). Default $foreground."),
+  fill: color
+    .optional()
+    .describe(
+      'Fills the icon for a solid look: the active stars of a rating (fill "#f59e0b"), a liked heart, a status dot. Usually the same as color.',
+    ),
   strokeWidth: z.number().min(0.5).max(4).optional().describe("Default 2."),
   ...base,
 });
@@ -840,6 +847,7 @@ export function layoutScreen(
           height,
           icon: node.icon,
           stroke: node.color ?? TEXT_COLOR,
+          ...(node.fill !== undefined && { fill: node.fill }),
           strokeWidth: node.strokeWidth ?? 2,
           ...meta(node, groupId),
         });

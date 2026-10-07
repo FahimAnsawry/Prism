@@ -66,6 +66,7 @@ import { searchImages } from "../image-search.js";
 import {
   broadcastOps,
   requestBoardImage,
+  requestReferenceComparison,
   requestMindmapLayout,
   requestScreenLayout,
 } from "../realtime.js";
@@ -755,6 +756,37 @@ export function registerTools(server: McpServer, userId: string) {
       }),
   );
 
+  server.registerTool(
+    "compare_reference",
+    {
+      title: "Compare a screen with its reference",
+      description: [
+        "Measure how close a screen (a frame) is to a reference image on the board (one added with add_image): no picture comes back, only numbers and the biggest differences.",
+        "Returns a score from 0 (unrelated) to 100 (the same picture), each one's dominant colors, the lightness of nine regions (top-left to bottom-right), how much of each is plain background, and up to three differences phrased as changes to make.",
+        "Use it after export_image when a screen follows a reference: fix the differences that matter, then compare again. A layout taken from a reference but with your own brand and copy scores in the middle; that's expected.",
+        "The user's open board tab measures it, so the board must be open.",
+      ].join(" "),
+      inputSchema: z.object({
+        boardId,
+        frameId: z.uuid().describe("The screen: a frame on the board."),
+        referenceId: z.uuid().describe("The reference: an image element on the board."),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ boardId: id, frameId, referenceId }) =>
+      run(async () => {
+        const board = await ownedBoard(id, userId);
+        const elements = await loadElements(board.id);
+        const { ok: _, ...report } = await requestReferenceComparison(userId, {
+          boardId: board.id,
+          elements,
+          frameId,
+          referenceId,
+        });
+        return json(report);
+      }),
+  );
+
   // ── Elements ─────────────────────────────────────────────────────────────
 
   server.registerTool(
@@ -845,7 +877,7 @@ export function registerTools(server: McpServer, userId: string) {
         'Use the project\'s components (list_components) wherever they fit: { type: "use", component: "Button", variant: "ghost", props: { label: "Cancel" } }, with children for a component\'s slot (a Card\'s content) and width/height to resize it. Same component, same look on every screen.',
         "Colors, radius and text come from the project theme (get_theme): textStyle $h1/$h2/$body/$caption/… for every text (size, weight and font together), fill $primary with color $primary-foreground, $card, $muted-foreground, stroke $border, radius $radius-md/$radius-lg, so every screen matches and the code uses the same classes. Text defaults to $body and $foreground, icons to $foreground, dividers to $border, the frame to $background. A strict theme refuses plain colors, radius, fonts and text sizes.",
         "With frame, a frame of that size is drawn behind it (a fixed frame height lets a flexible spacer pin a bottom bar). Without x/y it goes to the right of the board's content.",
-        "The whole screen is one undo step. The result lists warnings (text wrapping more than written, content spilling out of its container, low contrast, tiny text, too many sizes or accent colors): fix them, then check the screen with export_image (frameId).",
+        "The whole screen is one undo step. The result lists warnings (text wrapping more than written, content spilling out of its container, low contrast, tiny text, too many sizes or accent colors, uneven side-by-side cards, blocks just off the main column, outline-only rating icons, gray placeholder boxes, images that couldn't be downloaded): fix them, then check the screen with export_image (frameId), and with compare_reference when it follows a reference image.",
       ].join(" "),
       inputSchema: z.object({
         boardId,

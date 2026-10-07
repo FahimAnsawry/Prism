@@ -110,9 +110,10 @@ const BUILD = `## 6. Building it in Prism
 
 ## 7. Check it
 
-1. create_screen returns warnings (text that wraps more than written, content spilling out of its container or frame, low contrast, tiny text, too many sizes or accent colors). Fix each with update_elements or redraw the section; ignore one only when it is intended.
+1. create_screen returns warnings (text that wraps more than written, content spilling out of its container or frame, low contrast, tiny text, too many sizes or accent colors, side-by-side cards of different heights, blocks just off the main column, a rating of outline-only stars, gray boxes standing in for images). Fix each with update_elements or redraw the section; ignore one only when it is intended. Status chips and charts may use their own colors.
 2. export_image the frame and critique it against your thesis and the references: one focal point per section, everything on the content column, equal sibling spacing, readable contrast, nothing cramped, nothing orphaned. Fix and look again.
-3. Tell the user the thesis and what you took from each reference.`;
+3. When the screen follows a reference image on the board, run compare_reference (frameId, referenceId) and fix the differences that matter: layout and tone usually, not the reference's brand colors. Compare again after fixing.
+4. Tell the user the thesis and what you took from each reference.`;
 
 const RECIPES: Record<DesignSurface, string> = { landing: LANDING, app: APP, mobile: MOBILE };
 

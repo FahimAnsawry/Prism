@@ -803,6 +803,7 @@ export function resolveLayoutTokens(
         return withTokens({
           ...node,
           color: resolve("stroke", node.color ?? "$foreground", tokens) as string | undefined,
+          fill: resolve("fill", node.fill, tokens) as string | undefined,
         });
       case "divider":
         return withTokens({

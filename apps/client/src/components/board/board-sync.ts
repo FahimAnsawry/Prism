@@ -8,6 +8,8 @@ import {
   boardElementsSchema,
   type EditRequest,
   type ElementOp,
+  type CompareReferenceReply,
+  type CompareReferenceRequest,
   type ExportImageReply,
   type ExportImageRequest,
   type LayoutMindmapRequest,
@@ -21,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { getSocket } from "@/lib/realtime";
 import { applyOps } from "./board-model";
+import { compareReference } from "./compare-reference";
 import { exportBoardImage } from "./export-image";
 import { layoutMindmapOnTab, layoutScreenOnTab } from "./screen-layout";
 
@@ -281,6 +284,14 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
     socket.on("element:ops", onOps);
     socket.on("edit:update", onEdit);
     socket.on("export:image", onExportImage);
+    // An AI editor's compare_reference: this tab measures a screen against a reference image.
+    const onCompareReference = (
+      request: CompareReferenceRequest,
+      ack: (reply: CompareReferenceReply) => void,
+    ) => {
+      if (request.boardId === boardId) void compareReference(request).then(ack);
+    };
+    socket.on("compare:reference", onCompareReference);
     // An AI editor's create_screen: this tab measures the text and lays the screen out.
     const onLayoutScreen = (
       request: LayoutScreenRequest,
@@ -302,6 +313,7 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
       socket.off("element:ops", onOps);
       socket.off("edit:update", onEdit);
       socket.off("export:image", onExportImage);
+      socket.off("compare:reference", onCompareReference);
       socket.off("layout:screen", onLayoutScreen);
       socket.off("layout:mindmap", onLayoutMindmap);
       socket.emit("board:leave", boardId);
