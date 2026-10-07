@@ -15,6 +15,7 @@ import { type Camera, screenToWorld, zoomAt } from "./camera";
 import { ElementShape } from "./element-shape";
 import { MindBranches, mindToggles, MindToggles, TOGGLE_RADIUS } from "./mind-branches";
 import {
+  backdropOf,
   distance,
   elementBounds,
   type Frame,
@@ -327,9 +328,9 @@ export function BoardCanvas({
 
         <MindBranches elements={ordered} />
 
-        {ordered.map((el) => (
+        {ordered.map((el, i) => (
           <g key={el.id} data-id={el.id} opacity={overlay?.erasing?.has(el.id) ? 0.25 : undefined}>
-            <ElementShape el={el} hidden={el.id === editingId} />
+            <ElementShape el={el} hidden={el.id === editingId} below={backdropOf(ordered, i)} />
           </g>
         ))}
 

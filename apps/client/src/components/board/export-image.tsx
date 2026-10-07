@@ -16,7 +16,7 @@ import { createRoot } from "react-dom/client";
 import { byZ } from "./board-model";
 import { ElementShape } from "./element-shape";
 import { blobToDataUrl, embeddedFontCss } from "./embed-fonts";
-import { boundsOf, type Box, elementBounds, intersects } from "./geometry";
+import { backdropOf, boundsOf, type Box, elementBounds, intersects } from "./geometry";
 import { preloadIcons } from "./icons";
 import { MindBranches } from "./mind-branches";
 import { loadBoardFonts } from "./text-layout";
@@ -143,8 +143,8 @@ async function renderSvg(shown: BoardElement[], box: Box, width: number, height:
         >
           <rect x={box.x} y={box.y} width={box.width} height={box.height} fill={background} />
           <MindBranches elements={shown} />
-          {shown.map((el) => (
-            <ElementShape key={el.id} el={el} />
+          {shown.map((el, i) => (
+            <ElementShape key={el.id} el={el} below={backdropOf(shown, i)} />
           ))}
         </svg>,
       ),

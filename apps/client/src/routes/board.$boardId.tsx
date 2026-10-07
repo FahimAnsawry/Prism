@@ -567,6 +567,21 @@ function BoardEditor({
               dispatch({ type: "patch", patches });
             }}
             onLayer={(move) => dispatch({ type: "layer", ids: state.selectedIds, move })}
+            onUploadImage={async (file) => {
+              if (!isImageFile(file)) {
+                showNotice({ text: "Pick a PNG, JPEG, GIF or WebP image.", error: true }, 4_000);
+                return null;
+              }
+              showNotice({ text: "Uploading…" });
+              try {
+                const assetKey = await uploadAsset(boardId, file);
+                showNotice(null);
+                return assetKey;
+              } catch (error) {
+                showNotice({ text: apiErrorMessage(error), error: true }, 5_000);
+                return null;
+              }
+            }}
           />
         )}
 

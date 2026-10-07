@@ -74,6 +74,26 @@ export async function selectionFor(userId: string, boardId?: string) {
 
 // ── Image import ───────────────────────────────────────────────────────────
 
+type DownloadedImage = Awaited<ReturnType<typeof downloadImage>>;
+
+/** Saves a downloaded image with the board's files and returns its asset key. */
+async function storeImage(boardId: string, image: DownloadedImage) {
+  const assetKey = `${boardId}/${randomUUID()}.${image.extension}`;
+  await putObject(assetKey, image.bytes, image.type);
+  return assetKey;
+}
+
+/**
+ * The asset key for an image fill's URL (`board` is an owned board's id): one of the board's own
+ * files (a URL get_board showed) is reused, anything else is downloaded into the board's storage.
+ */
+export async function imageFillAsset(board: string, url: string) {
+  const path = URL.canParse(url) ? new URL(url).pathname : "";
+  const own = /^\/uploads\/([^/]+)\/([^/]+)$/.exec(path);
+  if (own?.[1] === board && own[2]) return `${board}/${own[2]}`;
+  return storeImage(board, await downloadImage(url));
+}
+
 /** Display width for an imported image: phone screenshots narrower than desktop ones. */
 function displayWidth(natural: { width: number; height: number }) {
   const portrait = natural.height > natural.width;
@@ -96,9 +116,7 @@ export async function importImage(
 ) {
   const board = await ownedBoard(boardId, userId);
   const image = await downloadImage(input.url);
-
-  const assetKey = `${board.id}/${randomUUID()}.${image.extension}`;
-  await putObject(assetKey, image.bytes, image.type);
+  const assetKey = await storeImage(board.id, image);
 
   const width = input.width ?? displayWidth(image);
   const height = Math.round((width * image.height) / image.width);

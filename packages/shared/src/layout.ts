@@ -2,6 +2,10 @@ import { z } from "zod";
 import {
   type BoardElement,
   type ElementTokens,
+  BACKDROP_BLUR_MAX,
+  type Gradient,
+  gradientSchema,
+  type ImageFill,
   type FontFamily,
   fontFamilySchema,
   iconNameSchema,
@@ -10,6 +14,7 @@ import {
   LETTER_SPACING_MIN,
   LINE_HEIGHT_MAX,
   LINE_HEIGHT_MIN,
+  type Radius,
   shadowSchema,
   type TextAlign,
   textAlignSchema,
@@ -29,6 +34,15 @@ export type LayoutSize = number | "fill";
 export type LayoutPadding = number | number[];
 export type LayoutAlign = "start" | "center" | "end" | "stretch";
 export type LayoutJustify = "start" | "center" | "end" | "space-between";
+/** An image fill: a URL to download (AI input) or, once stored with the board, its asset key. */
+export interface LayoutImage {
+  url?: string | undefined;
+  assetKey?: string | undefined;
+  fit?: "cover" | "contain" | undefined;
+}
+/** px or a `$radius-*` token, for every corner or [topLeft, topRight, bottomRight, bottomLeft]. */
+export type LayoutRadius =
+  number | ThemeRef | [number | ThemeRef, number | ThemeRef, number | ThemeRef, number | ThemeRef];
 
 interface NodeBase {
   /** What it is in the UI ("button", "card", "nav", …), stored on what it draws. */
@@ -55,8 +69,14 @@ export interface LayoutContainer extends NodeBase {
   fill?: string | undefined;
   stroke?: string | undefined;
   strokeWidth?: number | undefined;
-  radius?: number | ThemeRef | undefined;
+  radius?: LayoutRadius | undefined;
   shadow?: z.infer<typeof shadowSchema> | undefined;
+  /** Drawn instead of the fill; the fill defaults to its first color. */
+  gradient?: Gradient | undefined;
+  /** A photo inside it, clipped to its shape: a URL from AI editors, stored before layout. */
+  image?: LayoutImage | undefined;
+  /** Frosted glass: blurs what's under it by this many px. */
+  backdropBlur?: number | undefined;
 }
 
 export interface LayoutText extends NodeBase {
@@ -90,8 +110,14 @@ export interface LayoutBox extends NodeBase {
   fill?: string | undefined;
   stroke?: string | undefined;
   strokeWidth?: number | undefined;
-  radius?: number | ThemeRef | undefined;
+  radius?: LayoutRadius | undefined;
   shadow?: z.infer<typeof shadowSchema> | undefined;
+  /** Drawn instead of the fill; the fill defaults to its first color. */
+  gradient?: Gradient | undefined;
+  /** A photo inside it, clipped to its shape: a URL from AI editors, stored before layout. */
+  image?: LayoutImage | undefined;
+  /** Frosted glass: blurs what's under it by this many px. */
+  backdropBlur?: number | undefined;
 }
 
 export interface LayoutSpacer {
@@ -141,10 +167,30 @@ const color = z
   .string()
   .max(64)
   .describe("A theme token ($primary, $muted-foreground, $border, …) or a hex color.");
+const corner = z.union([px, themeRefSchema]);
 const radius = z
-  .union([px, themeRefSchema])
-  .describe("Corner radius: a theme token ($radius-md, $radius-lg, $radius-full) or px.");
+  .union([corner, z.tuple([corner, corner, corner, corner])])
+  .describe(
+    'Corner radius: a theme token ($radius-md, $radius-lg, $radius-full) or px, or one per corner [topLeft, topRight, bottomRight, bottomLeft], e.g. ["$radius-lg", "$radius-lg", 0, 0].',
+  );
 const sizeSchema = z.union([px, z.literal("fill")]);
+const imageSchema = z
+  .object({
+    url: z.url().describe("A public PNG, JPEG, GIF or WebP URL (up to 10 MB)."),
+    fit: z
+      .enum(["cover", "contain"])
+      .optional()
+      .describe("cover (default) fills the shape and crops; contain shows the whole image."),
+  })
+  .describe(
+    "A photo inside it (hero photo, avatar, logo, product shot), clipped to its shape and radius. Prism downloads it with the board.",
+  );
+const BLUR_HELP =
+  'Frosted glass: blurs whatever is drawn under it by this many px, like CSS backdrop-filter: blur(16px). Give it a semi-transparent fill (e.g. "#ffffffb3") and a hairline stroke, over a photo or gradient.';
+const GRADIENT_HELP =
+  'A gradient background, as in CSS: { type: "linear", angle: 135, stops: [{ color: "$primary", position: 0 }, { color: "#a855f7", position: 100 }] } (angle 0 points up, 90 right, 180 down), or { type: "radial", stops: [...] } from the center out. Colors take $tokens.';
+const SHADOW_HELP =
+  'sm, md (cards) or lg (menus, modals); or soft custom layers like CSS box-shadow, first on top: [{ x: 0, y: 24, blur: 48, spread: -12, color: "#0f172a26" }].';
 const base = {
   role: z.string().max(60).optional().describe('What it is: "button", "card", "nav", "input", …'),
   name: z
@@ -187,7 +233,10 @@ const containerSchema = z.object({
   stroke: color.optional().describe("Border color ($border or hex; 1px unless strokeWidth)."),
   strokeWidth: z.number().min(0).max(64).optional(),
   radius: radius.optional(),
-  shadow: shadowSchema.optional().describe("sm, md (cards) or lg (menus, modals)."),
+  shadow: shadowSchema.optional().describe(SHADOW_HELP),
+  gradient: gradientSchema.optional().describe(GRADIENT_HELP),
+  image: imageSchema.optional(),
+  backdropBlur: z.number().min(0).max(BACKDROP_BLUR_MAX).optional().describe(BLUR_HELP),
   ...base,
 });
 
@@ -240,7 +289,10 @@ const boxSchema = z.object({
   stroke: color.optional(),
   strokeWidth: z.number().min(0).max(64).optional(),
   radius: radius.optional(),
-  shadow: shadowSchema.optional(),
+  shadow: shadowSchema.optional().describe(SHADOW_HELP),
+  gradient: gradientSchema.optional().describe(GRADIENT_HELP),
+  image: imageSchema.optional(),
+  backdropBlur: z.number().min(0).max(BACKDROP_BLUR_MAX).optional().describe(BLUR_HELP),
   ...base,
 });
 
@@ -394,8 +446,44 @@ const isContainer = (node: LayoutNode): node is LayoutContainer =>
 /** A node's font; a theme token left unresolved falls back to the screen's font. */
 const fontOf = (font: FontFamily | ThemeRef | undefined, fallback: FontFamily): FontFamily =>
   font === undefined || isThemeRef(font) ? fallback : font;
+/** A node's radius once its tokens are resolved, as element fields (nothing while a token is left). */
+function radiusOf(radius: LayoutRadius | undefined): { radius?: Radius } {
+  if (typeof radius === "number") return { radius };
+  if (Array.isArray(radius) && radius.every((r) => typeof r === "number")) {
+    return { radius: radius as Radius };
+  }
+  return {};
+}
+/**
+ * The tree with each image fill's URL replaced by its stored asset key. `store` saves a URL with
+ * the board; run it after components are expanded.
+ */
+export async function storeLayoutImages(
+  node: LayoutNode,
+  store: (url: string) => Promise<string>,
+): Promise<LayoutNode> {
+  if (node.type !== "box" && !isContainer(node)) return node;
+  const image = node.image?.url
+    ? { assetKey: await store(node.image.url), fit: node.image.fit }
+    : node.image;
+  if (!isContainer(node)) return { ...node, image };
+  const children = await Promise.all(node.children.map((child) => storeLayoutImages(child, store)));
+  return { ...node, image, children };
+}
+
+/** A stored image fill as element fields (nothing while it's still only a URL). */
+function imageFillOf(image: LayoutImage | undefined): { fillImage?: ImageFill } {
+  return image?.assetKey
+    ? { fillImage: { assetKey: image.assetKey, fit: image.fit ?? "cover" } }
+    : {};
+}
 const hasBackground = (node: LayoutContainer) =>
-  node.fill !== undefined || node.stroke !== undefined || node.shadow !== undefined;
+  node.fill !== undefined ||
+  node.stroke !== undefined ||
+  node.shadow !== undefined ||
+  node.gradient !== undefined ||
+  node.image !== undefined ||
+  node.backdropBlur !== undefined;
 
 export function layoutScreen(
   root: LayoutNode,
@@ -613,9 +701,11 @@ export function layoutScreen(
           fill: node.fill ?? null,
           stroke: node.stroke ?? TEXT_COLOR,
           strokeWidth: node.stroke ? (node.strokeWidth ?? 1) : 0,
-          ...(typeof node.radius === "number" &&
-            node.shape !== "ellipse" && { radius: node.radius }),
+          ...(node.shape !== "ellipse" && radiusOf(node.radius)),
           ...(node.shadow && { shadow: node.shadow }),
+          ...(node.gradient && { gradient: node.gradient }),
+          ...imageFillOf(node.image),
+          ...(node.backdropBlur && { backdropBlur: node.backdropBlur }),
           ...meta(node, groupId),
         });
         return;
@@ -661,8 +751,11 @@ export function layoutScreen(
         fill: node.fill ?? null,
         stroke: node.stroke ?? TEXT_COLOR,
         strokeWidth: node.stroke ? (node.strokeWidth ?? 1) : 0,
-        ...(typeof node.radius === "number" && { radius: node.radius }),
+        ...radiusOf(node.radius),
         ...(node.shadow && { shadow: node.shadow }),
+        ...(node.gradient && { gradient: node.gradient }),
+        ...imageFillOf(node.image),
+        ...(node.backdropBlur && { backdropBlur: node.backdropBlur }),
         ...meta(node, groupId),
       });
     }

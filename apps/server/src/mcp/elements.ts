@@ -3,6 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
+  BACKDROP_BLUR_MAX,
   boardElementSchema,
   boundTokens,
   chartDataSchema,
@@ -10,7 +11,10 @@ import {
   elementTypeSchema,
   fontFamilySchema,
   fontSizeSchema,
+  gradientSchema,
   iconNameSchema,
+  type ImageFill,
+  imageFillSchema,
   LETTER_SPACING_MAX,
   LETTER_SPACING_MIN,
   LINE_HEIGHT_MAX,
@@ -30,6 +34,9 @@ import {
   mindStyle,
 } from "@prism/shared";
 import { z } from "zod";
+
+/** One corner's radius: px or a `$radius-*` token. */
+const corner = z.union([z.number().min(0).max(10_000), themeRefSchema]);
 
 /** The style and content fields an AI editor can set, described for the model. */
 export const fieldShape = {
@@ -70,15 +77,44 @@ export const fieldShape = {
   sketch: z.boolean().describe("Hand-drawn look. Default false (clean UI look)."),
   opacity: z.number().min(0).max(1).describe("0 to 1. Default 1."),
   radius: z
-    .union([z.number().min(0).max(10_000), themeRefSchema])
+    .union([corner, z.tuple([corner, corner, corner, corner])])
     .nullable()
     .describe(
-      "Corner radius for rect and frame: a theme token ($radius-md for buttons and inputs, $radius-lg or $radius-xl for cards, $radius-full for pills) or px.",
+      'Corner radius for rect and frame: a theme token ($radius-md for buttons and inputs, $radius-lg or $radius-xl for cards, $radius-full for pills) or px. One per corner as [topLeft, topRight, bottomRight, bottomLeft], e.g. ["$radius-lg", "$radius-lg", 0, 0] for a card image on top.',
     ),
   shadow: shadowSchema
     .nullable()
     .describe(
-      "Drop shadow for rect, ellipse, diamond, frame, image, svg and chart: sm (inputs, subtle), md (cards), lg (menus, popovers, modals), or null for none.",
+      'Drop shadow for rect, ellipse, diamond, frame, image, svg and chart: sm (inputs, subtle), md (cards), lg (menus, popovers, modals), or null for none. Or custom layers like CSS box-shadow (first on top), for soft or colored shadows: [{ x: 0, y: 24, blur: 48, spread: -12, color: "#0f172a26" }, { x: 0, y: 2, blur: 6, spread: 0, color: "#0f172a14" }]. color takes hex with alpha, rgba() or a $token.',
+    ),
+  gradient: gradientSchema
+    .nullable()
+    .describe(
+      'Gradient fill for rect, ellipse and frame, as in CSS: { type: "linear", angle: 135, stops: [{ color: "$primary", position: 0 }, { color: "#a855f7", position: 100 }] } (angle 0 points up, 90 right, 180 down; position 0-100), or { type: "radial", stops: [...] } from the center to the farthest corner. Colors take $tokens or hex (alpha allowed). Without a fill, the fill becomes the first stop color. null removes it.',
+    ),
+  fillImage: z
+    .object({
+      url: z
+        .url()
+        .describe(
+          "A public PNG, JPEG, GIF or WebP URL (up to 10 MB), or the url get_board shows for one already on the board.",
+        ),
+      fit: z
+        .enum(["cover", "contain"])
+        .optional()
+        .describe("cover (default) fills the shape and crops; contain shows the whole image."),
+    })
+    .nullable()
+    .describe(
+      "A photo inside a rect, ellipse or frame (hero photo, avatar, product shot, logo), clipped to its shape and radius and drawn over the fill. Prism downloads it with the board. null removes it.",
+    ),
+  backdropBlur: z
+    .number()
+    .min(0)
+    .max(BACKDROP_BLUR_MAX)
+    .nullable()
+    .describe(
+      'Frosted glass on a rect or frame: blurs the elements under it by this many px, like CSS backdrop-filter: blur(16px). Give it a semi-transparent fill (e.g. "#ffffffb3") and a hairline stroke, and put it over a photo or gradient. null removes it.',
     ),
   role: z
     .string()
@@ -194,12 +230,18 @@ export const updateChangesInput = optionalFields;
 
 /** An element from create_screen's layout: create input plus whether text hugs its content. */
 export const layoutElementInput = createElementInput.extend({
+  // Already stored with the board (storeLayoutImages).
+  fillImage: imageFillSchema.optional(),
   autoWidth: z.boolean().optional(),
   tokens: elementTokensSchema.optional(),
   component: z.string().max(120).optional(),
 });
 
 export type CreateElementInput = z.infer<typeof createElementInput>;
+/** AI input once its image fill's URL is stored with the board. */
+export type StoredInput<T extends { fillImage?: unknown }> = Omit<T, "fillImage"> & {
+  fillImage?: ImageFill | null | undefined;
+};
 
 const SIZES: Record<FontSize, number> = { S: 16, M: 22, L: 30, XL: 40 };
 const LINE_HEIGHT = 1.25;
@@ -264,7 +306,7 @@ function estimateText(el: Partial<BoardElement>) {
  * become ids in arrow bindings.
  */
 export function buildElements(
-  inputs: (CreateElementInput & Pick<BoardElement, "tokens" | "component">)[],
+  inputs: (StoredInput<CreateElementInput> & Pick<BoardElement, "tokens" | "component">)[],
   existing: BoardElement[],
 ) {
   const ids = new Map<string, string>();
@@ -329,7 +371,13 @@ const DEFAULT_VALUES: Record<string, unknown> = {
 };
 const HIDDEN = new Set(["version", "updatedBy", "z", "assetKey", "points"]);
 
-const round = (n: number) => Math.round(n * 10) / 10;
+const round = (n: number, decimals = 1) => {
+  const factor = 10 ** decimals;
+  return Math.round(n * factor) / factor;
+};
+
+/** Small ratios that one decimal would erase (letterSpacing -0.02 would read as 0). */
+const PRECISE_DECIMALS: Record<string, number> = { letterSpacing: 3, lineHeight: 2, opacity: 2 };
 
 /**
  * A compact element for the model: defaults and sync bookkeeping left out, numbers rounded.
@@ -340,7 +388,7 @@ export function compact(el: BoardElement, fileUrl: (assetKey: string) => string,
   for (const [key, value] of Object.entries(el)) {
     if (value === undefined || (value === null && key !== "fill") || HIDDEN.has(key)) continue;
     if (DEFAULT_VALUES[key] === value || key === "tokens") continue;
-    out[key] = typeof value === "number" ? round(value) : value;
+    out[key] = typeof value === "number" ? round(value, PRECISE_DECIMALS[key]) : value;
   }
   if (theme) {
     const bound = boundTokens(el, theme);
@@ -353,6 +401,8 @@ export function compact(el: BoardElement, fileUrl: (assetKey: string) => string,
     }
   }
   if (el.assetKey) out["url"] = fileUrl(el.assetKey);
+  if (el.fillImage)
+    out["fillImage"] = { url: fileUrl(el.fillImage.assetKey), fit: el.fillImage.fit };
   if (el.points) out["pointCount"] = el.points.length / 2;
   return out;
 }

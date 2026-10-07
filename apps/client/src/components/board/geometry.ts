@@ -1,7 +1,7 @@
 // Board math (tools.md §2): bounds, hit-testing in each element's rotated local space, arrow
 // bindings and the resize / rotate transforms behind the selection handles.
 
-import type { BoardElement } from "@prism/shared";
+import { type BoardElement, BLUR_TYPES } from "@prism/shared";
 import { clampFontPx, fitTextBox, fontPx } from "./text-layout";
 
 export interface Point {
@@ -119,6 +119,17 @@ export function boundsOf(elements: BoardElement[]): Box | null {
 
 export const intersects = (a: Box, b: Box) =>
   a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height;
+
+/**
+ * What a frosted-glass element blurs: the elements under it (before it in `ordered`, bottom layer
+ * first) that overlap it. Undefined for elements without a background blur.
+ */
+export function backdropOf(ordered: BoardElement[], index: number): BoardElement[] | undefined {
+  const el = ordered[index];
+  if (!el?.backdropBlur || !BLUR_TYPES.includes(el.type)) return undefined;
+  const box = elementBounds(el);
+  return ordered.slice(0, index).filter((other) => intersects(elementBounds(other), box));
+}
 
 export function boxFromPoints(a: Point, b: Point): Box {
   return {

@@ -5,7 +5,7 @@ import { byZ } from "@/components/board/board-model";
 import { fetchBoardElements } from "@/components/board/board-sync";
 import { ElementShape } from "@/components/board/element-shape";
 import { MindBranches } from "@/components/board/mind-branches";
-import { boundsOf } from "@/components/board/geometry";
+import { backdropOf, boundsOf } from "@/components/board/geometry";
 import { loadBoardFonts } from "@/components/board/text-layout";
 import { CanvasPreview } from "./workspace-item-parts";
 
@@ -70,8 +70,8 @@ export function BoardPreview({
             className="pointer-events-none absolute inset-0 size-full select-none"
           >
             <MindBranches elements={elements} />
-            {elements.map((el) => (
-              <ElementShape key={el.id} el={el} />
+            {elements.map((el, i) => (
+              <ElementShape key={el.id} el={el} below={backdropOf(elements, i)} />
             ))}
           </svg>
         )}

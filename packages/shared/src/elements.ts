@@ -78,8 +78,79 @@ export const LETTER_SPACING_MIN = -0.2;
 export const LETTER_SPACING_MAX = 1;
 export const textAlignSchema = z.enum(["left", "center", "right"]);
 export const chartKindSchema = z.enum(["bar", "line", "pie", "donut"]);
+const radiusPx = z.number().min(0).max(10_000);
+/** Corner radius in px: one for every corner, or [topLeft, topRight, bottomRight, bottomLeft]. */
+export const radiusSchema = z.union([radiusPx, z.tuple([radiusPx, radiusPx, radiusPx, radiusPx])]);
+
+/** Each corner's radius (top left, top right, bottom right, bottom left), at most half the shorter side. */
+export function cornerRadii(
+  radius: Radius | null | undefined,
+  width: number,
+  height: number,
+): [number, number, number, number] {
+  const max = Math.min(Math.abs(width), Math.abs(height)) / 2;
+  const [tl, tr, br, bl] = Array.isArray(radius) ? radius : [0, 1, 2, 3].map(() => radius ?? 0);
+  return [tl, tr, br, bl].map((r) => Math.min(r ?? 0, max)) as [number, number, number, number];
+}
+
+/**
+ * One gradient color stop: a color at a position along the gradient, 0 to 100 (%). `token` is the
+ * theme color it came from, so it reads back as `$token` while the color still matches.
+ */
+export const gradientStopSchema = z.object({
+  color: z.string().max(64),
+  position: z.number().min(0).max(100),
+  token: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .max(40)
+    .optional(),
+});
+/**
+ * A gradient fill, as in CSS: linear at an angle (0 points up, 90 right, 180 down) or radial from
+ * the center to the farthest corner.
+ */
+export const gradientSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("linear"),
+    angle: z.number().min(-360).max(360),
+    stops: z.array(gradientStopSchema).min(2).max(8),
+  }),
+  z.object({
+    type: z.literal("radial"),
+    stops: z.array(gradientStopSchema).min(2).max(8),
+  }),
+]);
+/** The element types a gradient fill applies to. */
+export const GRADIENT_TYPES: readonly ElementType[] = ["rect", "ellipse", "frame"];
+
+/**
+ * An uploaded image painted inside a shape, clipped to its outline: cover fills the shape
+ * (cropping the image), contain shows the whole image (the fill shows around it).
+ */
+export const imageFillSchema = z.object({
+  assetKey: z.string().max(200),
+  fit: z.enum(["cover", "contain"]),
+});
+/** The element types an image fill applies to. */
+export const IMAGE_FILL_TYPES: readonly ElementType[] = ["rect", "ellipse", "frame"];
+
+/** The element types that blur what's under them (frosted glass); others ignore backdropBlur. */
+export const BLUR_TYPES: readonly ElementType[] = ["rect", "frame"];
+export const BACKDROP_BLUR_MAX = 100;
+
 /** A drop shadow preset: sm (subtle, e.g. inputs), md (cards), lg (menus, modals). */
-export const shadowSchema = z.enum(["sm", "md", "lg"]);
+export const shadowPresetSchema = z.enum(["sm", "md", "lg"]);
+/** One shadow layer, like a CSS box-shadow: offset, blur radius, spread and color (alpha allowed). */
+export const shadowLayerSchema = z.object({
+  x: z.number().min(-500).max(500),
+  y: z.number().min(-500).max(500),
+  blur: z.number().min(0).max(500),
+  spread: z.number().min(-500).max(500),
+  color: z.string().max(64),
+});
+/** A preset, or custom layers (the first draws on top, as in CSS). */
+export const shadowSchema = z.union([shadowPresetSchema, z.array(shadowLayerSchema).min(1).max(6)]);
 /** The element types that draw a shadow; others ignore it. */
 export const SHADOW_TYPES: readonly ElementType[] = [
   "rect",
@@ -183,8 +254,14 @@ const propFields = {
   endBinding: elementRef.nullable().optional(),
   // image, svg: the uploaded file, served at /uploads/<assetKey>
   assetKey: z.string().max(200).optional(),
-  // rect, frame: corner radius in px (capped at half the shorter side when drawn)
-  radius: z.number().min(0).max(10_000).nullable().optional(),
+  // rect, frame: corner radius in px, one or per corner (capped at half the shorter side when drawn)
+  radius: radiusSchema.nullable().optional(),
+  // rect, ellipse, frame: a gradient drawn instead of the fill (which keeps its first color)
+  gradient: gradientSchema.nullable().optional(),
+  // rect, ellipse, frame: an uploaded image painted over the fill, clipped to the shape
+  fillImage: imageFillSchema.nullable().optional(),
+  // rect, frame: frosted glass, blurring the elements under it by this many px (CSS blur())
+  backdropBlur: z.number().min(0).max(BACKDROP_BLUR_MAX).nullable().optional(),
   // shapes, frames, images, SVGs and charts: a drop shadow
   shadow: shadowSchema.nullable().optional(),
   // chart
@@ -256,6 +333,12 @@ export type FontWeight = z.infer<typeof fontWeightSchema>;
 export type TextAlign = z.infer<typeof textAlignSchema>;
 export type ChartKind = z.infer<typeof chartKindSchema>;
 export type Shadow = z.infer<typeof shadowSchema>;
+export type ShadowPreset = z.infer<typeof shadowPresetSchema>;
+export type ShadowLayer = z.infer<typeof shadowLayerSchema>;
+export type Radius = z.infer<typeof radiusSchema>;
+export type Gradient = z.infer<typeof gradientSchema>;
+export type ImageFill = z.infer<typeof imageFillSchema>;
+export type GradientStop = z.infer<typeof gradientStopSchema>;
 export type ChartData = z.infer<typeof chartDataSchema>;
 export type ListItem = z.infer<typeof listItemSchema>;
 export type TokenField = (typeof TOKEN_FIELDS)[number];

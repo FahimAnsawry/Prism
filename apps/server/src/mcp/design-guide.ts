@@ -93,7 +93,13 @@ const BUILD = `## 6. Building it in Prism
 - Stack children stretch to the full width by default. Put badges, pills, icon chips and buttons in a row (or set align: "start" on the stack) so they hug their content.
 - Give big headlines room: put \\n where the line should break and make sure the container is wide enough, or it wraps into extra lines.
 - Layering (a card floating over a product window, decorative shapes): draw the page with create_screen, then add the overlay with a second create_screen or create_elements at explicit x/y; later calls draw on top.
-- Charts: create_elements type chart. Photos and logos: add_image.
+- Charts: create_elements type chart. A standalone picture: add_image.
+- Paint, on containers and boxes (and rect/frame elements):
+  - image: { url, fit: "cover" } puts a photo inside the shape, clipped to its radius: hero photos, card covers, avatars (a box with shape "ellipse"). Prism downloads it.
+  - radius per corner: [16, 16, 0, 0] for a cover photo on top of a card.
+  - gradient: { type: "linear", angle: 135, stops: [{ color: "$primary", position: 0 }, { color: "#a855f7", position: 100 }] } for hero bands and CTA blocks; keep it to one accent family.
+  - shadow as soft layers instead of a preset, like CSS box-shadow: [{ x: 0, y: 24, blur: 48, spread: -12, color: "#0f172a26" }].
+  - backdropBlur: 16 with a semi-transparent fill (#ffffffb3) and a hairline stroke for frosted glass over a photo or gradient.
 - Name every component (one groupId) and give it a role, so build_pages can code it.
 
 ## 7. Check it

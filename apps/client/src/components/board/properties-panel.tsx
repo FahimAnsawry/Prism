@@ -1,19 +1,27 @@
 import {
   type ChartData,
+  BACKDROP_BLUR_MAX,
+  BLUR_TYPES,
   type ChartKind,
   CUSTOM_COLORS_MAX,
+  type Gradient,
+  GRADIENT_TYPES,
+  IMAGE_FILL_TYPES,
+  IMAGE_TYPES,
+  type ImageFill,
   CUSTOM_FONTS_MAX,
   LETTER_SPACING_MAX,
   MIND_TEXT_COLOR,
   LETTER_SPACING_MIN,
   LINE_HEIGHT_MAX,
   LINE_HEIGHT_MIN,
+  type Radius,
   type Shadow,
   SHADOW_TYPES,
   type UpdateBoardStyleInput,
 } from "@prism/shared";
 import { Plus, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   type BoardElement,
@@ -54,8 +62,29 @@ import {
 const SHAPES: ElementType[] = ["rect", "ellipse", "diamond"];
 /** Text colors offered for mind map nodes: dark and white first, for light and dark fills. */
 const MIND_TEXT_COLORS = ["#3d3b4f", "#ffffff", ...STROKE_COLORS.slice(1, 7)];
-/** The corner radius "Round" sets, in px. */
-const ROUND_RADIUS = 12;
+const FILL_TYPES = ["solid", "linear", "radial"] as const;
+type FillType = (typeof FILL_TYPES)[number];
+/** The second color a new gradient starts with. */
+const GRADIENT_END = "#28e99f";
+
+/** Switches an element between a solid fill and a gradient, keeping its colors. */
+function fillTypeChange(el: BoardElement, type: FillType): Partial<BoardElement> {
+  if (type === "solid") return { gradient: null };
+  const stops = el.gradient?.stops ?? [
+    { color: el.fill ?? "#5882ff", position: 0 },
+    { color: GRADIENT_END, position: 100 },
+  ];
+  const gradient: Gradient =
+    type === "linear"
+      ? { type, angle: el.gradient?.type === "linear" ? el.gradient.angle : 135, stops }
+      : { type, stops };
+  return { gradient, fill: stops[0]?.color ?? el.fill };
+}
+
+/** The largest corner radius the panel offers, in px. */
+const RADIUS_MAX = 999;
+const CORNER_NAMES = ["Top left", "Top right", "Bottom right", "Bottom left"] as const;
+type Corners = [number, number, number, number];
 /** The shadow choices, and the preset each one stores. */
 const SHADOW_OPTIONS = ["none", "small", "medium", "large"] as const;
 type ShadowOption = (typeof SHADOW_OPTIONS)[number];
@@ -71,7 +100,10 @@ const APPLIES_TO: Partial<Record<keyof BoardElement, ElementType[]>> = {
   // On text and lists the stroke is the text color; on icons, the icon's color.
   // On mind map nodes it's the branch color, and the fill is the node's background.
   stroke: [...SHAPES, "line", "arrow", "freehand", "text", "list", "icon", "mindnode"],
-  fill: [...SHAPES, "sticky", "icon", "mindnode"],
+  fill: [...SHAPES, "sticky", "icon", "mindnode", "frame"],
+  gradient: [...GRADIENT_TYPES],
+  fillImage: [...IMAGE_FILL_TYPES],
+  backdropBlur: [...BLUR_TYPES],
   strokeWidth: [...SHAPES, "line", "arrow", "freehand", "icon", "mindnode"],
   strokeStyle: [...SHAPES, "line", "arrow"],
   sketch: [...SHAPES, "line", "arrow"],
@@ -108,6 +140,7 @@ export function PropertiesPanel({
   onLayer,
   onTidy,
   onStyleChange,
+  onUploadImage,
 }: {
   /** The selection; changes go to each element they apply to. */
   elements: BoardElement[];
@@ -119,6 +152,8 @@ export function PropertiesPanel({
   /** Lays out the mind map a node belongs to again. */
   onTidy: (id: string) => void;
   onStyleChange: (style: UpdateBoardStyleInput) => void;
+  /** Uploads an image to the board; its asset key, or null if it failed (the board says why). */
+  onUploadImage: (file: File) => Promise<string | null>;
 }) {
   const first = elements[0];
   if (!first) return null;
@@ -132,6 +167,35 @@ export function PropertiesPanel({
   const sketchEl = source("sketch");
   const radiusEl = source("radius");
   const shadowEl = source("shadow");
+  const gradientEl = source("gradient");
+  const imageEl = source("fillImage");
+  const blurEl = source("backdropBlur");
+  const gradient = gradientEl?.gradient ?? null;
+
+  /** The gradient with one stop's color changed by hand; the fill follows the first stop. */
+  const pickStop = (index: number, color: string) => {
+    if (!gradient) return;
+    const stops = gradient.stops.map((stop, i) =>
+      i === index ? { color, position: stop.position } : stop,
+    );
+    onChange({ gradient: { ...gradient, stops }, ...(index === 0 && { fill: color }) });
+  };
+  const stopChoices = (index: number, label: string) =>
+    gradient && (
+      <ColorChoices
+        label={label}
+        value={gradient.stops[index]?.color ?? null}
+        presets={FILL_COLORS}
+        custom={customColors}
+        disabled={locked}
+        onPick={(color) => pickStop(index, color)}
+        onAdd={(hex) => {
+          addColor(hex);
+          pickStop(index, hex);
+        }}
+        onRemove={removeColor}
+      />
+    );
   const textEl = source("font");
   const chartEl = elements.length === 1 && first.type === "chart" ? first : undefined;
   const iconEl = source("icon");
@@ -216,7 +280,38 @@ export function PropertiesPanel({
               </Row>
             )}
 
-            {fill && (
+            {gradientEl && (
+              <Row label="Fill type">
+                <Segmented<FillType>
+                  options={FILL_TYPES}
+                  value={gradient?.type ?? "solid"}
+                  onChange={(type) => onChange(fillTypeChange(gradientEl, type))}
+                />
+              </Row>
+            )}
+
+            {gradient && (
+              <>
+                <Row label="From">{stopChoices(0, "Gradient start color")}</Row>
+                <Row label="To">{stopChoices(gradient.stops.length - 1, "Gradient end color")}</Row>
+                {gradient.type === "linear" && (
+                  <Row label="Angle">
+                    <NumberInput
+                      key={gradientEl?.id}
+                      label="Gradient angle, in degrees (0 points up, 90 right)"
+                      value={gradient.angle}
+                      min={-360}
+                      max={360}
+                      step={15}
+                      unit="°"
+                      onChange={(angle) => onChange({ gradient: { ...gradient, angle } })}
+                    />
+                  </Row>
+                )}
+              </>
+            )}
+
+            {fill && !gradient && (
               <Row label={onlySticky ? "Color" : "Fill"}>
                 <ColorChoices
                   label={onlySticky ? "Note color" : "Fill color"}
@@ -272,13 +367,36 @@ export function PropertiesPanel({
             )}
 
             {radiusEl && (
-              <Row label="Corners">
-                <Segmented
-                  options={["sharp", "round"] as const}
-                  value={radiusEl.radius ? "round" : "sharp"}
-                  onChange={(corners) =>
-                    onChange({ radius: corners === "round" ? ROUND_RADIUS : 0 })
-                  }
+              <Row label="Corner radius">
+                <CornerInputs
+                  key={radiusEl.id}
+                  radius={radiusEl.radius ?? 0}
+                  onChange={(radius) => onChange({ radius })}
+                />
+              </Row>
+            )}
+
+            {imageEl && (
+              <Row label="Image fill">
+                <ImageFillControls
+                  image={imageEl.fillImage ?? null}
+                  onUpload={onUploadImage}
+                  onChange={(fillImage) => onChange({ fillImage })}
+                />
+              </Row>
+            )}
+
+            {blurEl && (
+              <Row label="Background blur">
+                <NumberInput
+                  key={blurEl.id}
+                  label="Background blur, in px: frosts what's under it"
+                  value={blurEl.backdropBlur ?? 0}
+                  min={0}
+                  max={BACKDROP_BLUR_MAX}
+                  step={2}
+                  unit="px"
+                  onChange={(px) => onChange({ backdropBlur: px || null })}
                 />
               </Row>
             )}
@@ -292,6 +410,12 @@ export function PropertiesPanel({
                   )}
                   onChange={(option) => onChange({ shadow: SHADOW_PRESETS[option] })}
                 />
+                {Array.isArray(shadowEl.shadow) && (
+                  <p className="mt-2 font-mono text-3xs text-muted-foreground">
+                    Custom ({shadowEl.shadow.length}{" "}
+                    {shadowEl.shadow.length === 1 ? "layer" : "layers"}). Pick a size to replace it.
+                  </p>
+                )}
               </Row>
             )}
 
@@ -372,24 +496,26 @@ export function PropertiesPanel({
             {source("lineHeight") && (
               <div className="grid grid-cols-2 gap-3">
                 <Row label="Line height">
-                  <PercentInput
+                  <NumberInput
                     key={textEl.id}
                     label="Line height, in percent of the text size"
                     value={Math.round(lineHeightOf(textEl) * 100)}
                     min={Math.round(LINE_HEIGHT_MIN * 100)}
                     max={Math.round(LINE_HEIGHT_MAX * 100)}
                     step={5}
+                    unit="%"
                     onChange={(percent) => onChange({ lineHeight: percent / 100 })}
                   />
                 </Row>
                 <Row label="Letter spacing">
-                  <PercentInput
+                  <NumberInput
                     key={textEl.id}
                     label="Letter spacing, in percent of the text size"
                     value={Math.round(letterSpacingOf(textEl) * 100)}
                     min={Math.round(LETTER_SPACING_MIN * 100)}
                     max={Math.round(LETTER_SPACING_MAX * 100)}
                     step={1}
+                    unit="%"
                     onChange={(percent) => onChange({ letterSpacing: percent / 100 })}
                   />
                 </Row>
@@ -550,12 +676,13 @@ function FontPxInput({ value, onChange }: { value: number; onChange: (px: number
  * A whole percentage typed in, or stepped with the arrow keys (`step`, ×5 with Shift). It commits
  * on Enter or blur, kept within `min`–`max`.
  */
-function PercentInput({
+function NumberInput({
   label,
   value,
   min,
   max,
   step,
+  unit,
   onChange,
 }: {
   label: string;
@@ -563,7 +690,9 @@ function PercentInput({
   min: number;
   max: number;
   step: number;
-  onChange: (percent: number) => void;
+  /** Shown after the number: "%", "px", "°". */
+  unit: string;
+  onChange: (value: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
   // A value changed elsewhere (another element, undo, an AI edit) replaces the draft.
@@ -605,9 +734,128 @@ function PercentInput({
         className="h-full w-full min-w-0 bg-transparent px-1.5 text-right font-mono text-2xs text-foreground tabular-nums outline-none"
       />
       <span aria-hidden="true" className="font-mono text-3xs text-muted-foreground">
-        %
+        {unit}
       </span>
     </label>
+  );
+}
+
+/** An image inside the shape: add, replace or remove it, and crop it (cover) or fit it (contain). */
+function ImageFillControls({
+  image,
+  onUpload,
+  onChange,
+}: {
+  image: ImageFill | null;
+  onUpload: (file: File) => Promise<string | null>;
+  onChange: (image: ImageFill | null) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const button = cn(segmentButton, "bg-background text-foreground hover:bg-divider");
+  return (
+    <div className="flex flex-col gap-1">
+      {image && (
+        <Segmented<ImageFill["fit"]>
+          options={["cover", "contain"]}
+          value={image.fit}
+          onChange={(fit) => onChange({ ...image, fit })}
+        />
+      )}
+      <div className={cn("grid gap-1", image && "grid-cols-2")}>
+        <button type="button" onClick={() => input.current?.click()} className={button}>
+          {image ? "Replace" : "Add image"}
+        </button>
+        {image && (
+          <button type="button" onClick={() => onChange(null)} className={button}>
+            Remove
+          </button>
+        )}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept={IMAGE_TYPES.join(",")}
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          void onUpload(file).then((assetKey) => {
+            if (assetKey) onChange({ assetKey, fit: image?.fit ?? "cover" });
+          });
+        }}
+      />
+    </div>
+  );
+}
+
+/** One radius for every corner, or four (top left, top right, bottom right, bottom left). */
+function CornerInputs({
+  radius,
+  onChange,
+}: {
+  radius: Radius;
+  onChange: (radius: Radius) => void;
+}) {
+  const [each, setEach] = useState(Array.isArray(radius));
+  const corners: Corners = Array.isArray(radius) ? radius : [radius, radius, radius, radius];
+  const toggle = () => {
+    // Back to one radius: every corner takes the top left's.
+    if (each && Array.isArray(radius)) onChange(radius[0]);
+    setEach(!each);
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-1">
+        <div className="min-w-0 flex-1">
+          {each ? (
+            <div className="grid grid-cols-4 gap-1">
+              {CORNER_NAMES.map((name, i) => (
+                <NumberInput
+                  key={name}
+                  label={`${name} corner radius, in px`}
+                  value={corners[i] ?? 0}
+                  min={0}
+                  max={RADIUS_MAX}
+                  step={1}
+                  unit=""
+                  onChange={(r) => {
+                    const next: Corners = [...corners];
+                    next[i] = r;
+                    onChange(next);
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <NumberInput
+              label="Corner radius, in px"
+              value={corners[0]}
+              min={0}
+              max={RADIUS_MAX}
+              step={1}
+              unit="px"
+              onChange={onChange}
+            />
+          )}
+        </div>
+        <button
+          type="button"
+          aria-pressed={each}
+          title="Set each corner"
+          onClick={toggle}
+          className={cn(
+            segmentButton,
+            "px-2",
+            each
+              ? "bg-secondary text-secondary-foreground"
+              : "bg-background text-foreground hover:bg-divider",
+          )}
+        >
+          Each
+        </button>
+      </div>
+    </div>
   );
 }
 

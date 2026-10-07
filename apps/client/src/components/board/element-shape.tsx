@@ -1,13 +1,19 @@
 import {
   type BoardElement,
   type ChartData,
+  cornerRadii,
+  type Gradient,
+  GRADIENT_TYPES,
+  IMAGE_FILL_TYPES,
+  type ImageFill,
   MIND_PAD_X,
   MIND_TEXT_COLOR,
   type Shadow,
+  type ShadowPreset,
   SHADOW_TYPES,
   type StrokeStyle,
 } from "@prism/shared";
-import { Fragment, useId } from "react";
+import { Fragment, type SVGProps, useId } from "react";
 import { cn } from "@/lib/utils";
 import { assetUrl } from "./assets";
 import { displayColor, STICKY_DEFAULT } from "./board-model";
@@ -47,46 +53,183 @@ function dashArray(style: StrokeStyle, width: number) {
   return undefined;
 }
 
+/** A shadow layer as SVG draws it: offset, blur (standard deviation), spread, color, opacity. */
+interface ShadowPass {
+  dx: number;
+  dy: number;
+  blur: number;
+  spread: number;
+  color: string;
+  opacity: number;
+}
+
 /** A shadow preset's layers, largest first: offset down, blur (standard deviation), opacity. */
-const SHADOWS: Record<Shadow, { dy: number; blur: number; opacity: number }[]> = {
-  sm: [{ dy: 1, blur: 1.5, opacity: 0.14 }],
+const SHADOWS: Record<ShadowPreset, ShadowPass[]> = {
+  sm: [{ dx: 0, dy: 1, blur: 1.5, spread: 0, color: "#000", opacity: 0.14 }],
   md: [
-    { dy: 4, blur: 6, opacity: 0.12 },
-    { dy: 1, blur: 1.5, opacity: 0.08 },
+    { dx: 0, dy: 4, blur: 6, spread: 0, color: "#000", opacity: 0.12 },
+    { dx: 0, dy: 1, blur: 1.5, spread: 0, color: "#000", opacity: 0.08 },
   ],
   lg: [
-    { dy: 12, blur: 14, opacity: 0.16 },
-    { dy: 3, blur: 4, opacity: 0.08 },
+    { dx: 0, dy: 12, blur: 14, spread: 0, color: "#000", opacity: 0.16 },
+    { dx: 0, dy: 3, blur: 4, spread: 0, color: "#000", opacity: 0.08 },
   ],
 };
 
+/**
+ * The layers to draw, bottom first. Custom layers are CSS box-shadows: the first is on top, and a
+ * CSS blur radius is about twice the standard deviation.
+ */
+function shadowPasses(shadow: Shadow): ShadowPass[] {
+  if (!Array.isArray(shadow)) return SHADOWS[shadow];
+  return shadow
+    .map((layer) => ({
+      dx: layer.x,
+      dy: layer.y,
+      blur: layer.blur / 2,
+      spread: layer.spread,
+      color: displayColor(layer.color),
+      opacity: 1,
+    }))
+    .reverse();
+}
+
 /** One element, drawn in world coordinates and turned around its center. */
-export function ElementShape({ el, hidden = false }: { el: BoardElement; hidden?: boolean }) {
+export function ElementShape({
+  el,
+  hidden = false,
+  below,
+}: {
+  el: BoardElement;
+  hidden?: boolean;
+  /** For a frosted-glass element, the elements under it to blur (backdropOf). */
+  below?: BoardElement[] | undefined;
+}) {
   const c = center(el);
   // Unique per rendered copy, so the board and a dashboard preview never share a filter.
-  const filterId = `shadow${useId().replace(/[^\w-]/g, "")}`;
-  const shadow = el.shadow && SHADOW_TYPES.includes(el.type) ? el.shadow : null;
+  const uid = useId().replace(/[^\w-]/g, "");
+  const rotate = el.rotation ? `rotate(${el.rotation} ${c.x} ${c.y})` : undefined;
+  const blur = el.backdropBlur && below && below.length > 0 ? el.backdropBlur : 0;
   return (
-    <g
-      opacity={hidden ? 0 : el.opacity}
-      transform={el.rotation ? `rotate(${el.rotation} ${c.x} ${c.y})` : undefined}
-    >
+    <>
+      {blur > 0 && below && (
+        <Backdrop id={`backdrop${uid}`} el={el} below={below} blur={blur} hidden={hidden} />
+      )}
+      <ShapeLayers el={el} hidden={hidden} rotate={rotate} uid={uid} />
+    </>
+  );
+}
+
+/** The element itself: shadow, fill (solid, gradient or image) and outline. */
+function ShapeLayers({
+  el,
+  hidden,
+  rotate,
+  uid,
+}: {
+  el: BoardElement;
+  hidden: boolean;
+  rotate: string | undefined;
+  uid: string;
+}) {
+  const filterId = `shadow${uid}`;
+  const gradientId = `gradient${uid}`;
+  const shadow = el.shadow && SHADOW_TYPES.includes(el.type) ? el.shadow : null;
+  const gradient = el.gradient && GRADIENT_TYPES.includes(el.type) ? el.gradient : null;
+  const image = el.fillImage && IMAGE_FILL_TYPES.includes(el.type) ? el.fillImage : null;
+  return (
+    <g opacity={hidden ? 0 : el.opacity} transform={rotate}>
       {shadow && <ShadowFilter id={filterId} el={el} shadow={shadow} />}
+      {gradient && <GradientDef id={gradientId} el={el} gradient={gradient} />}
       <g filter={shadow ? `url(#${filterId})` : undefined}>
-        <Shape el={el} />
+        <Shape el={el} gradientId={gradient ? gradientId : undefined} />
+        {image && (
+          <>
+            <ImageFillShape id={`clip${uid}`} el={el} image={image} />
+            {/* The outline goes back on top of the image. */}
+            <Shape el={el} outline />
+          </>
+        )}
       </g>
     </g>
   );
 }
 
 /**
- * A drop shadow as plain SVG filter primitives: each layer blurs the shape's alpha, moves it down
- * and tints it black; the layers merge under the shape. The filter region is the element's box
- * plus room for the blur, in board units, so small elements don't clip their shadow.
+ * Frosted glass in plain SVG, so the board and exported images match: a blurred copy of the
+ * elements under the element, clipped to its outline (corners and rotation included). The element
+ * draws on top with its own (usually semi-transparent) fill.
+ */
+function Backdrop({
+  id,
+  el,
+  below,
+  blur,
+  hidden,
+}: {
+  id: string;
+  el: BoardElement;
+  below: BoardElement[];
+  blur: number;
+  hidden: boolean;
+}) {
+  const { x, y, width, height } = el;
+  const c = center(el);
+  // Room for the blur around the element, rotated or not.
+  const reach = Math.hypot(width, height) / 2 + blur * 3;
+  return (
+    <g opacity={hidden ? 0 : el.opacity}>
+      <defs>
+        <clipPath id={`${id}clip`}>
+          <RoundedRect
+            x={x}
+            y={y}
+            width={width}
+            height={height}
+            corners={cornerRadii(el.radius, width, height)}
+            transform={el.rotation ? `rotate(${el.rotation} ${c.x} ${c.y})` : undefined}
+          />
+        </clipPath>
+        <filter
+          id={`${id}blur`}
+          filterUnits="userSpaceOnUse"
+          x={c.x - reach}
+          y={c.y - reach}
+          width={reach * 2}
+          height={reach * 2}
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation={blur} edgeMode="duplicate" />
+        </filter>
+      </defs>
+      <g clipPath={`url(#${id}clip)`}>
+        <g filter={`url(#${id}blur)`}>
+          {below.map((other) => (
+            <ElementShape key={other.id} el={other} />
+          ))}
+        </g>
+      </g>
+    </g>
+  );
+}
+
+/**
+ * A drop shadow as plain SVG filter primitives: each layer grows or shrinks the shape's alpha by
+ * its spread, blurs it, moves it and tints it; the layers merge under the shape. The filter region
+ * is the element's box plus room for the blur, in board units, so small elements don't clip their
+ * shadow.
  */
 function ShadowFilter({ id, el, shadow }: { id: string; el: BoardElement; shadow: Shadow }) {
-  const layers = SHADOWS[shadow];
-  const margin = Math.max(...layers.map((layer) => layer.dy + layer.blur * 3)) + el.strokeWidth;
+  const layers = shadowPasses(shadow);
+  const margin =
+    Math.max(
+      ...layers.map(
+        (layer) =>
+          Math.max(Math.abs(layer.dx), Math.abs(layer.dy)) +
+          layer.blur * 3 +
+          Math.max(0, layer.spread),
+      ),
+    ) + el.strokeWidth;
   return (
     <filter
       id={id}
@@ -99,9 +242,20 @@ function ShadowFilter({ id, el, shadow }: { id: string; el: BoardElement; shadow
     >
       {layers.map((layer, i) => (
         <Fragment key={i}>
-          <feGaussianBlur in="SourceAlpha" stdDeviation={layer.blur} />
-          <feOffset dy={layer.dy} result={`offset${i}`} />
-          <feFlood floodColor="#000" floodOpacity={layer.opacity} />
+          {layer.spread !== 0 && (
+            <feMorphology
+              in="SourceAlpha"
+              operator={layer.spread > 0 ? "dilate" : "erode"}
+              radius={Math.abs(layer.spread)}
+              result={`spread${i}`}
+            />
+          )}
+          <feGaussianBlur
+            in={layer.spread !== 0 ? `spread${i}` : "SourceAlpha"}
+            stdDeviation={layer.blur}
+          />
+          <feOffset dx={layer.dx} dy={layer.dy} result={`offset${i}`} />
+          <feFlood floodColor={layer.color} floodOpacity={layer.opacity} />
           <feComposite in2={`offset${i}`} operator="in" result={`shadow${i}`} />
         </Fragment>
       ))}
@@ -115,7 +269,91 @@ function ShadowFilter({ id, el, shadow }: { id: string; el: BoardElement; shadow
   );
 }
 
-function Shape({ el }: { el: BoardElement }) {
+/**
+ * A gradient fill, as CSS draws it: a linear gradient runs along a line through the center at its
+ * angle, long enough that the corners get the end colors; a radial one reaches the farthest corner.
+ */
+function GradientDef({ id, el, gradient }: { id: string; el: BoardElement; gradient: Gradient }) {
+  const stops = gradient.stops.map((stop, i) => (
+    <stop key={i} offset={`${stop.position}%`} stopColor={displayColor(stop.color)} />
+  ));
+  if (gradient.type === "radial") {
+    return (
+      <defs>
+        <radialGradient id={id} cx="50%" cy="50%" r="70.71%">
+          {stops}
+        </radialGradient>
+      </defs>
+    );
+  }
+  const angle = (gradient.angle * Math.PI) / 180;
+  const dx = Math.sin(angle);
+  const dy = -Math.cos(angle);
+  const half = (Math.abs(el.width * dx) + Math.abs(el.height * dy)) / 2;
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  return (
+    <defs>
+      <linearGradient
+        id={id}
+        gradientUnits="userSpaceOnUse"
+        x1={cx - dx * half}
+        y1={cy - dy * half}
+        x2={cx + dx * half}
+        y2={cy + dy * half}
+      >
+        {stops}
+      </linearGradient>
+    </defs>
+  );
+}
+
+/** An image inside a rect, ellipse or frame, cropped (cover) or fitted (contain), clipped to its outline. */
+function ImageFillShape({ id, el, image }: { id: string; el: BoardElement; image: ImageFill }) {
+  const { x, y, width, height } = el;
+  return (
+    <>
+      <defs>
+        <clipPath id={id}>
+          {el.type === "ellipse" ? (
+            <ellipse cx={x + width / 2} cy={y + height / 2} rx={width / 2} ry={height / 2} />
+          ) : (
+            <RoundedRect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              corners={cornerRadii(el.radius, width, height)}
+            />
+          )}
+        </clipPath>
+      </defs>
+      <image
+        href={assetUrl(image.assetKey)}
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        preserveAspectRatio={image.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet"}
+        clipPath={`url(#${id})`}
+      />
+    </>
+  );
+}
+
+/**
+ * One element's shape. `outline` draws only its stroke (over an image fill); `gradientId` is the
+ * gradient to fill it with.
+ */
+function Shape({
+  el,
+  gradientId,
+  outline = false,
+}: {
+  el: BoardElement;
+  gradientId?: string | undefined;
+  outline?: boolean;
+}) {
   const ink = displayColor(el.stroke);
   const stroke = {
     style: { stroke: ink },
@@ -125,10 +363,16 @@ function Shape({ el }: { el: BoardElement }) {
     strokeLinejoin: "round" as const,
   };
   // A transparent fill keeps the inside clickable when the fill is "none".
-  const fill = el.fill ? displayColor(el.fill) : "transparent";
+  const fill = outline
+    ? "none"
+    : gradientId
+      ? `url(#${gradientId})`
+      : el.fill
+        ? displayColor(el.fill)
+        : "transparent";
   const { x, y, width, height } = el;
-  // Corner radius, at most half the shorter side (SVG clamps it per axis, which distorts).
-  const radius = Math.min(el.radius ?? 0, Math.abs(width) / 2, Math.abs(height) / 2);
+  // Corner radii, at most half the shorter side (SVG clamps rx per axis, which distorts).
+  const corners = cornerRadii(el.radius, width, height);
 
   switch (el.type) {
     case "rect":
@@ -159,12 +403,12 @@ function Shape({ el }: { el: BoardElement }) {
         );
       }
       return el.type === "rect" ? (
-        <rect
+        <RoundedRect
           x={x}
           y={y}
           width={width}
           height={height}
-          rx={radius || undefined}
+          corners={corners}
           {...stroke}
           style={{ fill, stroke: ink }}
         />
@@ -425,17 +669,64 @@ function Shape({ el }: { el: BoardElement }) {
 
     case "frame":
       return (
-        <rect
+        <RoundedRect
           x={x}
           y={y}
           width={width}
           height={height}
-          rx={radius || undefined}
-          className="fill-card"
-          style={{ stroke: "var(--chrome)" }}
+          corners={corners}
+          style={{
+            fill: outline || gradientId ? fill : el.fill ? displayColor(el.fill) : "var(--card)",
+            stroke: "var(--chrome)",
+          }}
         />
       );
   }
+}
+
+type Corners = [number, number, number, number];
+
+/** A box's outline as a path, each corner (top left, top right, bottom right, bottom left) rounded. */
+function roundedRectPath(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  [tl, tr, br, bl]: Corners,
+) {
+  const arc = (r: number, toX: number, toY: number) =>
+    r > 0 ? `A${r} ${r} 0 0 1 ${toX} ${toY}` : "";
+  return [
+    `M${x + tl} ${y}`,
+    `H${x + width - tr}`,
+    arc(tr, x + width, y + tr),
+    `V${y + height - br}`,
+    arc(br, x + width - br, y + height),
+    `H${x + bl}`,
+    arc(bl, x, y + height - bl),
+    `V${y + tl}`,
+    arc(tl, x + tl, y),
+    "Z",
+  ].join("");
+}
+
+/** A rect, or a path when its corners differ, so equal corners draw exactly as before. */
+function RoundedRect({
+  x,
+  y,
+  width,
+  height,
+  corners,
+  ...rest
+}: { x: number; y: number; width: number; height: number; corners: Corners } & Omit<
+  SVGProps<SVGPathElement & SVGRectElement>,
+  "x" | "y" | "width" | "height"
+>) {
+  const [tl] = corners;
+  if (corners.every((r) => r === tl)) {
+    return <rect x={x} y={y} width={width} height={height} rx={tl || undefined} {...rest} />;
+  }
+  return <path d={roundedRectPath(x, y, width, height, corners)} {...rest} />;
 }
 
 /** Wrapped lines as one <text> with a <tspan> per line. */

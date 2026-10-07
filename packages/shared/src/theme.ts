@@ -4,6 +4,9 @@ import {
   type BuiltinFont,
   type ElementTokens,
   type ElementType,
+  type Gradient,
+  type Radius,
+  type Shadow,
   FONT_PX_MAX,
   FONT_PX_MIN,
   type FontFamily,
@@ -17,7 +20,7 @@ import {
   type ThemeRef,
   type TokenField,
 } from "./elements.js";
-import type { LayoutNode } from "./layout.js";
+import type { LayoutNode, LayoutRadius } from "./layout.js";
 
 // Project themes: one set of shadcn/ui CSS variables (light and dark) plus a radius and fonts per
 // project, so every screen an AI editor draws and every page it codes from them use the same
@@ -513,7 +516,75 @@ const STRICT_TYPES = new Set<ElementType>([
 
 const plainColor = (value: unknown) =>
   typeof value === "string" && !isThemeRef(value) && value !== "transparent";
-const plainRadius = (value: unknown) => typeof value === "number" && value !== 0;
+const plainRadius = (value: unknown): boolean =>
+  Array.isArray(value) ? value.some(plainRadius) : typeof value === "number" && value !== 0;
+
+/**
+ * The token binding of a per-corner radius set with `$radius-*` tokens: each corner reads back as
+ * the token whose value it holds (boundTokens).
+ */
+const CORNER_TOKENS = "corners";
+
+/** The `$radius-*` token whose value is `px`, if any. */
+function radiusTokenFor(theme: Theme, px: number): ThemeRef | null {
+  if (px === RADIUS_FULL) return "$radius-full";
+  const name = (Object.keys(RADIUS_SCALE) as (keyof typeof RADIUS_SCALE)[]).find((n) =>
+    near(tokenValue(theme, "light", "radius", n) as number, px),
+  );
+  return name ? `$${name}` : null;
+}
+
+/** A gradient with each stop's `$color` token resolved and remembered on the stop. */
+function resolveGradient(
+  gradient: Gradient,
+  theme: Theme,
+  mode: ThemeMode,
+  unknown: string[],
+): Gradient {
+  const stops = gradient.stops.map(({ token: _, ...stop }) => {
+    if (!isThemeRef(stop.color)) return stop;
+    const resolved = tokenValue(theme, mode, "fill", stop.color.slice(1));
+    if (typeof resolved === "string")
+      return { ...stop, color: resolved, token: stop.color.slice(1) };
+    unknown.push(`gradient color: ${stop.color}`);
+    return { ...stop, color: "#000000" };
+  });
+  return { ...gradient, stops };
+}
+
+/** Custom shadow layers with their `$color` tokens resolved; presets pass through. */
+function resolveShadow(
+  shadow: Shadow | undefined,
+  theme: Theme,
+  mode: ThemeMode,
+  unknown: string[],
+): Shadow | undefined {
+  if (!Array.isArray(shadow)) return shadow;
+  return shadow.map((layer) => {
+    if (!isThemeRef(layer.color)) return layer;
+    const resolved = tokenValue(theme, mode, "fill", layer.color.slice(1));
+    if (typeof resolved === "string") return { ...layer, color: resolved };
+    unknown.push(`shadow color: ${layer.color}`);
+    return { ...layer, color: "#000000" };
+  });
+}
+
+/** Per-corner radius with its `$radius-*` tokens resolved to px; unknown tokens become 0. */
+function resolveCorners(
+  corners: readonly TokenValue[],
+  theme: Theme,
+  mode: ThemeMode,
+  unknown: string[],
+): Radius {
+  const px = corners.map((corner) => {
+    if (!isThemeRef(corner)) return Number(corner);
+    const resolved = tokenValue(theme, mode, "radius", corner.slice(1));
+    if (typeof resolved === "number") return resolved;
+    unknown.push(`radius: ${corner}`);
+    return 0;
+  });
+  return [px[0] ?? 0, px[1] ?? 0, px[2] ?? 0, px[3] ?? 0];
+}
 
 /** What a strict theme refuses in an element's fields: plain colors, radius, fonts, text sizes. */
 export function strictViolations(fields: Record<string, unknown>, type: ElementType) {
@@ -521,6 +592,9 @@ export function strictViolations(fields: Record<string, unknown>, type: ElementT
   const out: string[] = [];
   for (const field of ["stroke", "fill"]) {
     if (plainColor(fields[field])) out.push(`${field} ${String(fields[field])}`);
+  }
+  for (const stop of (fields["gradient"] as Gradient | null | undefined)?.stops ?? []) {
+    if (plainColor(stop.color)) out.push(`gradient color ${stop.color}`);
   }
   if (plainRadius(fields["radius"])) out.push(`radius ${String(fields["radius"])}`);
   if (typeof fields["font"] === "string" && !isThemeRef(fields["font"])) {
@@ -568,9 +642,27 @@ export function resolveElementTokens<T extends Record<string, unknown>>(
     changed = true;
   }
 
+  if (Array.isArray(out["shadow"])) {
+    out["shadow"] = resolveShadow(out["shadow"] as Shadow, theme, mode, unknown);
+  }
+  const gradient = out["gradient"] as Gradient | null | undefined;
+  if (gradient) {
+    // The fill keeps the gradient's first color (and its token), for contrast checks and readers
+    // that don't draw gradients.
+    if (!("fill" in fields)) out["fill"] = gradient.stops[0]?.color ?? null;
+    out["gradient"] = resolveGradient(gradient, theme, mode, unknown);
+  }
+
   for (const field of ["stroke", "fill", "textColor", "radius", "font"] as const) {
     if (!(field in out)) continue;
     const value = out[field];
+    if (field === "radius" && Array.isArray(value)) {
+      out[field] = resolveCorners(value as TokenValue[], theme, mode, unknown);
+      if (value.some(isThemeRef)) tokens.radius = CORNER_TOKENS;
+      else delete tokens.radius;
+      changed = true;
+      continue;
+    }
     if (isThemeRef(value)) {
       const resolved = tokenValue(theme, mode, field, value.slice(1));
       if (resolved === null) unknown.push(`${field}: ${value}`);
@@ -618,6 +710,31 @@ export function resolveLayoutTokens(
       }
     }
   };
+
+  /** A box's or container's fill and gradient; the fill defaults to the gradient's first color. */
+  function paint(
+    node: { fill?: string | undefined; gradient?: Gradient | undefined },
+    tokens: ElementTokens,
+  ) {
+    if (!node.gradient) return { fill: resolve("fill", node.fill, tokens) as string | undefined };
+    if (strict) {
+      for (const stop of node.gradient.stops) {
+        if (plainColor(stop.color)) violations.push(`gradient color ${stop.color}`);
+      }
+    }
+    return {
+      fill: resolve("fill", node.fill ?? node.gradient.stops[0]?.color, tokens) as
+        string | undefined,
+      gradient: resolveGradient(node.gradient, theme, mode, unknown),
+    };
+  }
+
+  function resolveRadius(value: LayoutRadius | undefined, tokens: ElementTokens) {
+    if (!Array.isArray(value)) return resolve("radius", value, tokens) as number | undefined;
+    if (strict && plainRadius(value)) violations.push(`radius [${value.join(", ")}]`);
+    if (value.some(isThemeRef)) tokens.radius = CORNER_TOKENS;
+    return resolveCorners(value, theme, mode, unknown);
+  }
 
   function resolve(field: TokenField, value: TokenValue | undefined, tokens: ElementTokens) {
     if (!isThemeRef(value)) {
@@ -695,18 +812,20 @@ export function resolveLayoutTokens(
       case "box":
         return withTokens({
           ...node,
-          fill: resolve("fill", node.fill, tokens) as string | undefined,
+          ...paint(node, tokens),
           stroke: resolve("stroke", node.stroke, tokens) as string | undefined,
-          radius: resolve("radius", node.radius, tokens) as number | undefined,
+          radius: resolveRadius(node.radius, tokens),
+          shadow: resolveShadow(node.shadow, theme, mode, unknown),
         });
       default:
         offGrid("gap", node.gap);
         offGrid("padding", node.padding);
         return withTokens({
           ...node,
-          fill: resolve("fill", node.fill, tokens) as string | undefined,
+          ...paint(node, tokens),
           stroke: resolve("stroke", node.stroke, tokens) as string | undefined,
-          radius: resolve("radius", node.radius, tokens) as number | undefined,
+          radius: resolveRadius(node.radius, tokens),
+          shadow: resolveShadow(node.shadow, theme, mode, unknown),
           children: node.children.map(visit),
         });
     }
@@ -724,8 +843,30 @@ const weightOf = (weight: BoardElement["fontWeight"]) =>
  * textStyle: "$h1" }. A field changed by hand since no longer counts.
  */
 export function boundTokens(el: BoardElement, theme: Theme) {
-  const bound: Partial<Record<TokenField, ThemeRef>> = {};
+  const bound: Partial<Record<Exclude<TokenField, "radius">, ThemeRef>> & {
+    radius?: ThemeRef | (ThemeRef | number)[];
+    gradient?: Gradient;
+  } = {};
+  if (el.gradient) {
+    const stops = el.gradient.stops.map(({ token, ...stop }) => {
+      const holds =
+        token !== undefined &&
+        THEME_MODES.some(
+          (mode) =>
+            tokenValue(theme, mode, "fill", token)?.toString().toLowerCase() ===
+            stop.color.toLowerCase(),
+        );
+      return holds ? { ...stop, color: `$${token}` } : stop;
+    });
+    bound.gradient = { ...el.gradient, stops };
+  }
   for (const [field, name] of Object.entries(el.tokens ?? {}) as [TokenField, string][]) {
+    if (field === "radius" && name === CORNER_TOKENS) {
+      if (Array.isArray(el.radius)) {
+        bound.radius = el.radius.map((px) => (px === 0 ? 0 : (radiusTokenFor(theme, px) ?? px)));
+      }
+      continue;
+    }
     if (field === "textStyle") {
       const s = isTextStyle(name) ? theme.text[name] : undefined;
       if (

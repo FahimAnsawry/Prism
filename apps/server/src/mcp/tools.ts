@@ -31,6 +31,7 @@ import {
   RADIUS_SCALE,
   resolveElementTokens,
   resolveLayoutTokens,
+  storeLayoutImages,
   strictMessage,
   strictViolations,
   TEXT_STYLES,
@@ -44,6 +45,7 @@ import {
   type BoardElement,
   type ElementOp,
   type ElementTokens,
+  type ImageFill,
   type Theme,
   type ThemeMode,
 } from "@prism/shared";
@@ -51,6 +53,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
   completeEdit,
+  imageFillAsset,
   importImage,
   loadElements,
   selectionFor,
@@ -155,6 +158,25 @@ function componentUsage(name: string, component: z.infer<typeof componentSchema>
   };
 }
 
+/**
+ * Stores image fills given as URLs with the board (downloading each URL once per call) and returns
+ * them as the element's fillImage. undefined and null pass through.
+ */
+function imageFills(boardId: string) {
+  const stored = new Map<string, Promise<string>>();
+  return async (
+    fill: { url: string; fit?: ImageFill["fit"] | undefined } | null | undefined,
+  ): Promise<ImageFill | null | undefined> => {
+    if (!fill) return fill;
+    let assetKey = stored.get(fill.url);
+    if (!assetKey) {
+      assetKey = imageFillAsset(boardId, fill.url);
+      stored.set(fill.url, assetKey);
+    }
+    return { assetKey: await assetKey, fit: fill.fit ?? "cover" };
+  };
+}
+
 /** Element fields with their $tokens resolved, or a 400 that lists the valid tokens. */
 function themed<T extends Record<string, unknown>>(
   fields: T,
@@ -171,9 +193,12 @@ function themed<T extends Record<string, unknown>>(
 }
 
 /** create_elements values that come from the theme unless given. */
-function themedDefaults(input: CreateElementInput): Partial<CreateElementInput> {
+function themedDefaults(
+  input: Omit<CreateElementInput, "fillImage">,
+): Partial<Omit<CreateElementInput, "fillImage">> {
   if (input.type === "icon") return { stroke: "$foreground" };
-  if (input.type === "frame") return { fill: "$background" };
+  // A gradient frame's fill comes from its first color instead.
+  if (input.type === "frame") return input.gradient ? {} : { fill: "$background" };
   if (input.type !== "text" && input.type !== "list") return {};
   // Text without a style or size of its own gets the body style (which sets its font too).
   const sized = input.textStyle != null || input.fontSizePx != null || input.fontSize != null;
@@ -727,7 +752,11 @@ export function registerTools(server: McpServer, userId: string) {
           theme,
           inputs.map((input) => ({ fields: input, type: input.type })),
         );
-        const resolved = inputs.map((input) =>
+        const store = imageFills(board.id);
+        const stored = await Promise.all(
+          inputs.map(async (input) => ({ ...input, fillImage: await store(input.fillImage) })),
+        );
+        const resolved = stored.map((input) =>
           themed({ ...themedDefaults(input), ...input }, theme, mode ?? "light"),
         );
         const elements = buildElements(resolved, await loadElements(board.id));
@@ -774,7 +803,7 @@ export function registerTools(server: McpServer, userId: string) {
       description: [
         "Call get_design_guide before your first screen.",
         "The main way to draw UI: describe a screen as a layout tree and Prism positions everything, flexbox-style, so spacing and alignment come out exact.",
-        'Containers: stack (top to bottom), row (left to right), grid (equal columns), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow).',
+        'Containers: stack (top to bottom), row (left to right), grid (equal columns), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow, plus gradient, image (a photo URL), backdropBlur (frosted glass); radius may be per corner).',
         "Leaves: text, icon (Lucide), box (placeholder rect/ellipse: images, avatars), spacer (fixed, or flexible to push things apart), divider.",
         "A button is a row with padding, fill, radius, justify/align center and a text child; a card is a stack with padding, fill, radius and shadow. Give components a name (one groupId) and a role.",
         'Use the project\'s components (list_components) wherever they fit: { type: "use", component: "Button", variant: "ghost", props: { label: "Cancel" } }, with children for a component\'s slot (a Card\'s content) and width/height to resize it. Same component, same look on every screen.',
@@ -833,8 +862,13 @@ export function registerTools(server: McpServer, userId: string) {
           );
         }
         const mode = input.mode ?? "light";
-        const { root, unknown, violations } = resolveLayoutTokens(
+        const store = imageFills(board.id);
+        const withImages = await storeLayoutImages(
           expanded.root,
+          async (url) => (await store({ url }))?.assetKey ?? "",
+        );
+        const { root, unknown, violations } = resolveLayoutTokens(
+          withImages,
           theme,
           mode,
           input.font,
@@ -1071,7 +1105,17 @@ export function registerTools(server: McpServer, userId: string) {
           theme,
           updates.map((u) => ({ fields: u.changes, type: current.get(u.id)?.type ?? "rect" })),
         );
-        const ops: ElementOp[] = updates.map(({ id: elementId, changes }) => ({
+        const store = imageFills(board.id);
+        const stored = await Promise.all(
+          updates.map(async ({ id: elementId, changes }) => ({
+            elementId,
+            changes:
+              changes.fillImage === undefined
+                ? changes
+                : { ...changes, fillImage: await store(changes.fillImage) },
+          })),
+        );
+        const ops: ElementOp[] = stored.map(({ elementId, changes }) => ({
           op: "update",
           id: elementId,
           version: (current.get(elementId)?.version ?? 0) + 1,
