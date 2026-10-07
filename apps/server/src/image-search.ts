@@ -19,6 +19,8 @@ export interface FoundImage {
   license: string;
   licenseUrl: string | null;
   author: string | null;
+  /** A small copy, for checking its colors (not shown to AI editors). */
+  thumb?: string;
   /** The page the image comes from. */
   page: string | null;
   /** A credit line to show when the license asks for one (CC BY). */
@@ -67,6 +69,7 @@ function creditLine(image: Omit<FoundImage, "credit">) {
 
 interface OpenverseResult {
   url?: string;
+  thumbnail?: string | null;
   width?: number | null;
   height?: number | null;
   title?: string | null;
@@ -140,7 +143,7 @@ export const openverse: ImageSource = {
         author: r.creator?.trim() || null,
         page: r.foreign_landing_url ?? null,
       };
-      return [{ ...image, credit: creditLine(image) }];
+      return [{ ...image, credit: creditLine(image), ...(r.thumbnail && { thumb: r.thumbnail }) }];
     });
   },
 };
@@ -210,10 +213,69 @@ export const wikimedia: ImageSource = {
         author: stripTags(meta["Artist"]?.value ?? "") || null,
         page: info.descriptionurl ?? null,
       };
-      return [{ ...image, credit: creditLine(image) }];
+      // A small copy for the color check.
+      const thumb = info.thumburl.replace(/\/\d+px-([^/]+)$/, "/160px-$1");
+      return [{ ...image, credit: creditLine(image), thumb }];
     });
   },
 };
+
+// ── Color ──────────────────────────────────────────────────────────────────
+
+/** Below this mean saturation (0-1) a photo reads as black and white. */
+export const COLOR_SATURATION_MIN = 0.08;
+const THUMB_BYTES_MAX = 1_500_000;
+const THUMB_TIMEOUT_MS = 8_000;
+/** Saturation measured so far, by image URL (only successful measurements). */
+const saturations = new Map<string, number>();
+
+/** An image's small copy as a data URL, or null if it can't be fetched. */
+async function thumbnailData(url: string) {
+  try {
+    const response = await fetch(url, {
+      // Openverse's thumbnail endpoint refuses image/* (406); any type is fine here.
+      headers: { "User-Agent": USER_AGENT, Accept: "*/*" },
+      signal: AbortSignal.timeout(THUMB_TIMEOUT_MS),
+    });
+    const type = response.headers.get("content-type") ?? "";
+    if (!response.ok || !type.startsWith("image/")) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > THUMB_BYTES_MAX) return null;
+    return `data:${type.split(";")[0]};base64,${bytes.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Measures thumbnails' saturation; null when nothing can measure them (no board tab). */
+export type ColorMeasurer = (
+  images: { id: string; data: string }[],
+) => Promise<ReadonlyMap<string, number | null> | null>;
+
+/**
+ * Up to `count` of `images`, leaving out black and white ones. Photos whose color couldn't be
+ * measured are kept. `checked` is false when nothing could measure them.
+ */
+export async function colorPhotos(images: FoundImage[], count: number, measure: ColorMeasurer) {
+  const unknown = images.filter((image) => !saturations.has(image.url));
+  const thumbs = await Promise.all(
+    unknown.map(async (image) => ({
+      id: image.url,
+      data: await thumbnailData(image.thumb ?? image.url),
+    })),
+  );
+  const readable = thumbs.filter((t): t is { id: string; data: string } => t.data !== null);
+  let checked = true;
+  if (readable.length > 0) {
+    const measured = await measure(readable);
+    if (measured === null) checked = false;
+    for (const [url, saturation] of measured ?? []) {
+      if (saturation !== null) saturations.set(url, saturation);
+    }
+  }
+  const kept = images.filter((image) => (saturations.get(image.url) ?? 1) >= COLOR_SATURATION_MIN);
+  return { images: kept.slice(0, count), dropped: images.length - kept.length, checked };
+}
 
 // ── Search ─────────────────────────────────────────────────────────────────
 

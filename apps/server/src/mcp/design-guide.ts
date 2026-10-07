@@ -62,9 +62,9 @@ A landing page is a whole page, usually 2400-4000px tall in one 1440 frame. Mini
 1. Nav (64-80px): logo, 4-5 links, a quiet secondary action (Sign in) and the primary CTA. A hairline below.
 2. Hero, one of:
    - Centered: eyebrow pill, 2-line headline, 1-2 line lead, primary + secondary button, a trust line (No credit card required), then a large product window below.
-   - Split: copy left (about 560 wide), product visual right.
+   - Split: copy left (about 560 wide), product visual right. Only when the visual still gets 640+ px; for a product-led page (the UI is what sells it) use the centered hero with the window below.
    - Split with signup: headline left, a signup card right (fields, primary button, social sign-in, fine print).
-3. Product visual: the hero's image is the product. Draw a believable app window (window bar, sidebar, a real table, kanban or chart with plausible names and numbers), 960-1200 wide, optionally on a faint tinted panel behind it for depth.
+3. Product visual: the hero's image is the product. Draw a believable app window (window bar, sidebar, a real table, kanban or chart with plausible names and numbers), 960-1200 wide below a centered hero (never under 640 beside split copy), optionally on a faint tinted panel behind it for depth. A small window loses the sale: it is the page's proof.
 4. Social proof: a one-line claim (Trusted by 4,000+ revenue teams) and 5-6 fictional SVG wordmark logos in one muted color, or a stats row.
 5. Features: a section title and lead, then 3 (or 6) identical cards: icon chip, 20-24px title, two lines of body.
 6. Optional: alternating text and visual rows for 2-3 key features, a testimonial with name and role, a pricing teaser.

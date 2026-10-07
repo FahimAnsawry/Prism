@@ -152,7 +152,7 @@ function boardFontFaces() {
 }
 
 /** The board font a CSS font list starts with, if it's one. */
-function boardFont(families: string, theme: Theme): FontFamily | null {
+function boardFont(families: string, theme: Theme, google: ReadonlySet<string>): FontFamily | null {
   const first = (families.split(",")[0] ?? "").trim().replace(/^["']|["']$/g, "");
   for (const id of BUILTIN_FONT_IDS) {
     const info = fontInfo(id);
@@ -161,8 +161,69 @@ function boardFont(families: string, theme: Theme): FontFamily | null {
   for (const slot of THEME_FONTS) {
     if (googleFamily(theme.fonts[slot]) === first) return theme.fonts[slot];
   }
-  return null;
+  // A Google font the page asked for (and that loaded).
+  return google.has(first) ? (`gf:${first}` as FontFamily) : null;
 }
+
+/** CSS generic families and system fonts: never fetched from Google Fonts. */
+const SYSTEM_FONTS = new Set([
+  "serif",
+  "sans-serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  "system-ui",
+  "math",
+  "emoji",
+  "inherit",
+  "initial",
+  "arial",
+  "helvetica",
+  "georgia",
+  "times new roman",
+  "courier new",
+  "verdana",
+  "tahoma",
+  "segoe ui",
+]);
+
+/**
+ * The font families the page names itself (font-['Instrument_Serif'] classes and inline
+ * font-family styles), other than board fonts and system ones: Google fonts to load.
+ */
+function pageFontFamilies(doc: Document) {
+  const found = new Set<string>();
+  const add = (list: string) => {
+    const first = (list.split(",")[0] ?? "")
+      .trim()
+      .replace(/^["']|["']$/g, "")
+      .trim();
+    const lower = first.toLowerCase();
+    if (!first || SYSTEM_FONTS.has(lower) || lower.startsWith("ui-") || lower.startsWith("var(")) {
+      return;
+    }
+    if (/^[\d.]+$/.test(first)) return; // font-[550]: a weight, not a family.
+    if (BUILTIN_FONT_IDS.some((id) => [fontInfo(id).family, fontInfo(id).label].includes(first))) {
+      return;
+    }
+    found.add(first);
+  };
+  for (const el of doc.querySelectorAll("[class]")) {
+    for (const cls of el.classList) {
+      const utility = splitVariants(cls).pop() ?? "";
+      const value = /^font-\[(.+)\]$/.exec(utility)?.[1];
+      if (value) add(value.replace(/^family-name:/, "").replace(/_/g, " "));
+    }
+  }
+  for (const el of doc.querySelectorAll("[style]")) {
+    const value = /font-family\s*:\s*([^;]+)/i.exec(el.getAttribute("style") ?? "")?.[1];
+    if (value) add(value);
+  }
+  return found;
+}
+
+const googleLink = (family: string) =>
+  `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}&display=swap">`;
 
 // ── Colors ────────────────────────────────────────────────────────────────
 
@@ -530,16 +591,18 @@ function avatarStyle(el: Element): AvatarStyle {
     : "notionists";
 }
 
-function pageMarkup(doc: Document, css: string, theme: Theme, mode: ThemeMode) {
+function pageMarkup(
+  doc: Document,
+  css: string,
+  theme: Theme,
+  mode: ThemeMode,
+  pageFonts: ReadonlySet<string>,
+) {
   const fonts = THEME_FONTS.map((slot) => googleFamily(theme.fonts[slot])).filter(
     (family): family is string => family !== null,
   );
-  const links = [...new Set(fonts)]
-    .map(
-      (family) =>
-        `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}&display=swap">`,
-    )
-    .join("");
+  // One link per family, so a name Google doesn't know can't break the others.
+  const links = [...new Set([...fonts, ...pageFonts])].map(googleLink).join("");
   const csp =
     "default-src 'none'; img-src * data: blob:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src * data:";
   const htmlClass = [mode === "dark" ? "dark" : "", doc.documentElement.className].join(" ").trim();
@@ -714,6 +777,7 @@ async function convert(
 
   // ── The page, with components sized ──
   const parsed = preparePage(request.html, notes);
+  const pageFonts = pageFontFamilies(parsed);
   const specs = readUses(parsed, components);
   const candidates = new Set<string>();
   for (const el of [parsed.documentElement, ...parsed.querySelectorAll("[class]")]) {
@@ -768,7 +832,7 @@ async function convert(
   }
 
   const { frame, doc } = await renderFrame(
-    pageMarkup(parsed, css, theme, mode),
+    pageMarkup(parsed, css, theme, mode, pageFonts),
     width,
     viewportHeight,
   );
@@ -804,6 +868,12 @@ async function convert(
   };
   writeUseRules();
   await settle(doc);
+  // The page's own Google fonts that loaded; the others fall back (fontOf says so).
+  const loadedFonts = new Set<string>();
+  doc.fonts.forEach((face) => {
+    const family = face.family.replace(/^["']|["']$/g, "");
+    if (face.status === "loaded" && pageFonts.has(family)) loadedFonts.add(family);
+  });
 
   for (let round = 0; round < 4 && specs.length > 0; round++) {
     let changed = false;
@@ -943,10 +1013,10 @@ async function convert(
 
   /** The text's font: a theme font as a token, else a board font, else the theme's sans. */
   function fontOf(el: Element, families: string): string {
-    const font = boardFont(families, theme);
+    const font = boardFont(families, theme, loadedFonts);
     if (!font) {
       notes.add(
-        `The font "${families.split(",")[0]?.trim()}" isn't on the board; that text uses the theme's $sans. Use font-sans, font-heading or font-mono.`,
+        `The font "${families.split(",")[0]?.trim()}" isn't a board font or a Google font that loaded; that text uses the theme's $sans. Use font-sans, font-heading or font-mono, or a Google font by its exact name, e.g. font-['Instrument_Serif'].`,
       );
       return "$sans";
     }
@@ -1450,16 +1520,21 @@ ${part}`
           : cs.textAlign === "right" || cs.textAlign === "end"
             ? "right"
             : "left";
+      // One line hugging its text needs no alignment; several keep theirs (a centered title
+      // broken with <br> stays centered).
+      const textAlign = hug && lines.length === 1 ? "left" : align;
       push(
         {
           type: "text",
-          x: left - (hug ? 0 : align === "center" ? 1 : align === "right" ? 2 : 0),
+          x: left - (textAlign === "center" ? 1 : textAlign === "right" ? 2 : 0),
           y: first.top - (lh - first.height) / 2,
           width: Math.ceil(widest) + 2,
           height: lines.length * lh,
           text,
-          textAlign: hug ? "left" : align,
+          textAlign,
           autoWidth: hug,
+          // Text the browser wrapped: its last line, for the orphan check (not stored).
+          ...(!hug && { lastLine: transform(textOf(lines[lines.length - 1]?.glyphs ?? []), cs) }),
           ...fields,
         },
         ctx,

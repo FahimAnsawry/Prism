@@ -36,6 +36,8 @@ const PLACEHOLDER_SIDE_MIN = 80;
 const PLACEHOLDER_TINT_MAX = 24;
 /** Shapes smaller than this (traffic-light dots, avatars) don't count toward the palette. */
 const ACCENT_AREA_MIN = 400;
+/** A wrapped paragraph's last line this short (or one word) is an orphan. */
+const ORPHAN_CHARS_MAX = 12;
 
 const isText = (el: BoardElement) => el.type === "text";
 const pxOf = (el: BoardElement) => el.fontSizePx ?? PRESET_PX[el.fontSize ?? "M"];
@@ -270,11 +272,27 @@ function isPlaceholder(el: BoardElement, above: BoardElement[]) {
   });
 }
 
+/** What the layout knew besides the elements (none of it stored). */
+export interface LintExtras {
+  /** Wrapped text's last line, by element id. */
+  lastLines?: ReadonlyMap<string, string>;
+  /** Rows a child without a width grows across (rowFillTraps), as messages. */
+  rowFill?: string[];
+}
+
 export function lintScreen(
   elements: BoardElement[],
   layers: ReadonlyMap<string, string> = new Map(),
+  extras: LintExtras = {},
 ): ScreenWarning[] {
   const warnings: ScreenWarning[] = [];
+  const rowFill = extras.rowFill ?? [];
+  // A row grown too wide is usually why things spill: say so where they do.
+  const spillCause =
+    rowFill.length > 0
+      ? " A row that grows to its full width (see the row-fill warning) is the likely cause."
+      : "";
+  for (const message of rowFill) warnings.push({ kind: "row-fill", ids: [], message });
   const frame = elements.find((el) => el.type === "frame");
   const grouped = new Map<string, { ids: string[]; texts: string[]; detail: string }>();
   const group = (key: string, el: BoardElement, detail: () => string) => {
@@ -292,7 +310,7 @@ export function lintScreen(
       warnings.push({
         kind: "overflow",
         ids: [el.id],
-        message: `${isText(el) ? `Text ${quote(el.text)}` : `A ${el.role ?? el.type}`} reaches outside the frame. Make it or its row narrower, or let it wrap.`,
+        message: `${isText(el) ? `Text ${quote(el.text)}` : `A ${el.role ?? el.type}`} reaches outside the frame. Make it or its row narrower, or let it wrap.${spillCause}`,
       });
     } else {
       const container = containerOf(elements, index);
@@ -301,7 +319,7 @@ export function lintScreen(
         warnings.push({
           kind: "overflow",
           ids: [el.id],
-          message: `${isText(el) ? `Text ${quote(el.text)}` : `A ${el.role ?? el.type}`} spills out of the ${container.role ?? container.type} it sits on (${container.id}). Give the container room (width, padding) or shorten the content.`,
+          message: `${isText(el) ? `Text ${quote(el.text)}` : `A ${el.role ?? el.type}`} spills out of the ${container.role ?? container.type} it sits on (${container.id}). Give the container room (width, padding) or shorten the content.${spillCause}`,
         });
       }
     }
@@ -318,6 +336,16 @@ export function lintScreen(
         ids: [el.id],
         message: `Text ${quote(el.text)} wraps to ${lines} lines (written as ${written}). Widen its container, shorten it, or put \\n where it should break.`,
       });
+    } else {
+      // A paragraph that wraps with one short word left on its last line.
+      const last = extras.lastLines?.get(el.id)?.trim();
+      if (last && (!/\s/.test(last) || last.length <= ORPHAN_CHARS_MAX)) {
+        warnings.push({
+          kind: "orphan",
+          ids: [el.id],
+          message: `Text ${quote(el.text)} ends with "${last}" alone on its last line. Reword it, make its container a little wider or narrower, or put \\n where a line should break, so the last line holds a few words.`,
+        });
+      }
     }
 
     if (px < MIN_TEXT_PX) {

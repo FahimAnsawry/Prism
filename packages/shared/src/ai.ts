@@ -224,6 +224,26 @@ export const htmlScreenReplySchema = z.discriminatedUnion("ok", [
 export type HtmlScreenReply = z.infer<typeof htmlScreenReplySchema>;
 export type PendingAsset = z.infer<typeof pendingAssetSchema>;
 
+// ── Photo colors (search_images color: true) ───────────────────────────────
+
+/** Small thumbnails of candidate photos, as data URLs, for a board tab to measure. */
+export interface ImageColorsRequest {
+  images: { id: string; data: string }[];
+}
+
+export const imageColorsReplySchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    /** Mean saturation, 0 (gray) to 1, or null when an image couldn't be read. */
+    results: z
+      .array(z.object({ id: z.string(), saturation: z.number().min(0).max(1).nullable() }))
+      .max(50),
+  }),
+  z.object({ ok: z.literal(false), error: z.string().max(500) }),
+]);
+
+export type ImageColorsReply = z.infer<typeof imageColorsReplySchema>;
+
 /** Mind map nodes for a board tab to size with the board's fonts (create_mindmap). */
 export interface LayoutMindmapRequest {
   boardId: string;
@@ -247,6 +267,8 @@ export interface ServerToClientEvents {
   "layout:screen": (request: LayoutScreenRequest, ack: (reply: LayoutScreenReply) => void) => void;
   /** An AI editor's create_screen with html: render it and read it back as elements. */
   "html:screen": (request: HtmlScreenRequest, ack: (reply: HtmlScreenReply) => void) => void;
+  /** An AI editor's search_images: measure how colorful each photo is and reply. */
+  "image:colors": (request: ImageColorsRequest, ack: (reply: ImageColorsReply) => void) => void;
   /** An AI editor's create_mindmap: size the nodes with real text measurements and reply. */
   "layout:mindmap": (
     request: LayoutMindmapRequest,

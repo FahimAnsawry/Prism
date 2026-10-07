@@ -9,6 +9,8 @@ import {
   type ExportImageRequest,
   htmlScreenReplySchema,
   type HtmlScreenRequest,
+  imageColorsReplySchema,
+  type ImageColorsRequest,
   type LayoutMindmapRequest,
   type LayoutScreenRequest,
   layoutScreenReplySchema,
@@ -221,6 +223,33 @@ export function requestHtmlScreen(userId: string, request: HtmlScreenRequest) {
     (tab) => tab.timeout(HTML_TIMEOUT_MS).emitWithAck("html:screen", request),
     htmlScreenReplySchema,
   );
+}
+
+/** How long a tab gets to measure photo colors. */
+const COLORS_TIMEOUT_MS = 15_000;
+
+/**
+ * Has one of the user's open tabs (on any board) measure how colorful each photo is
+ * (search_images). Null when no tab is open or none answers.
+ */
+export async function requestImageColors(userId: string, request: ImageColorsRequest) {
+  if (!io) return null;
+  const lastActive = (id: string) => selections.get(id)?.at ?? 0;
+  const tabs = [...io.sockets.sockets.values()]
+    .filter((socket) => socket.data.userId === userId && socket.rooms.size > 1)
+    .sort((a, b) => lastActive(b.id) - lastActive(a.id));
+  for (const tab of tabs) {
+    try {
+      const reply = imageColorsReplySchema.parse(
+        await tab.timeout(COLORS_TIMEOUT_MS).emitWithAck("image:colors", request),
+      );
+      if (reply.ok) return new Map(reply.results.map((r) => [r.id, r.saturation]));
+      console.warn("[Prism] A board tab couldn't measure photo colors:", reply.error);
+    } catch (error) {
+      console.warn("[Prism] A board tab didn't measure photo colors:", error);
+    }
+  }
+  return null;
 }
 
 /** How long a tab gets to lay out a screen before the server estimates instead. */

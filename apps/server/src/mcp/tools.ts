@@ -37,6 +37,7 @@ import {
   RADIUS_SCALE,
   resolveElementTokens,
   resolveLayoutTokens,
+  rowFillTraps,
   screenTree,
   storeLayoutImages,
   strictMessage,
@@ -70,11 +71,12 @@ import {
   waitForEdits,
 } from "../ai-actions.js";
 import { HttpError } from "../errors.js";
-import { searchImages } from "../image-search.js";
+import { colorPhotos, searchImages } from "../image-search.js";
 import {
   broadcastOps,
   requestBoardImage,
   requestHtmlScreen,
+  requestImageColors,
   requestReferenceComparison,
   requestMindmapLayout,
   requestScreenLayout,
@@ -354,11 +356,13 @@ async function createHtmlScreen(
     ),
   );
   const layerOf: (string | undefined)[] = [];
+  const lastLineOf: (string | undefined)[] = [];
   const parts = reply.elements.map((raw) => {
-    const { fillImage, layer, ...fields } = raw as Record<string, unknown> & {
+    const { fillImage, layer, lastLine, ...fields } = raw as Record<string, unknown> & {
       fillImage?: { assetKey?: unknown; fit?: unknown };
     };
     layerOf.push(typeof layer === "string" ? layer : undefined);
+    lastLineOf.push(typeof lastLine === "string" ? lastLine : undefined);
     const key = typeof fillImage?.assetKey === "string" ? fillImage.assetKey : "";
     // Only images this call stored: a tab can't point an element at another board's files.
     const assetKey = key.startsWith(PENDING_ASSET)
@@ -395,14 +399,17 @@ async function createHtmlScreen(
     elements.map((element) => ({ op: "create", element })),
   );
   const layers = new Map<string, string>();
+  const lastLines = new Map<string, string>();
   layerOf.forEach((layer, i) => {
     const id = elements[frameElement ? i + 1 : i]?.id;
     if (id && layer) layers.set(id, layer);
+    const last = lastLineOf[i];
+    if (id && last) lastLines.set(id, last);
   });
   const warnings: ScreenWarning[] = [
     ...reply.notes.map((message) => ({ kind: "html", ids: [], message })),
     ...images.warnings,
-    ...lintScreen(elements, layers),
+    ...lintScreen(elements, layers, { lastLines }),
   ];
   return json({
     frameId: frameElement ? elements[0]?.id : null,
@@ -1202,12 +1209,17 @@ export function registerTools(server: McpServer, userId: string) {
         );
         // Overlay layers (not stored) by element id; parts follow the frame, if any.
         const layers = new Map<string, string>();
+        const lastLines = new Map<string, string>();
         laidOut.forEach((el, i) => {
           const id = elements[frame ? i + 1 : i]?.id;
-          const layer = (el as { layer?: unknown }).layer;
+          const { layer, lastLine } = el as { layer?: unknown; lastLine?: unknown };
           if (id && typeof layer === "string") layers.set(id, layer);
+          if (id && typeof lastLine === "string") lastLines.set(id, lastLine);
         });
-        const warnings = [...images.warnings, ...lintScreen(elements, layers)];
+        const warnings = [
+          ...images.warnings,
+          ...lintScreen(elements, layers, { lastLines, rowFill: rowFillTraps(root) }),
+        ];
         return json({
           frameId: frame ? elements[0]?.id : null,
           bounds: boundsOf(elements),
@@ -1520,13 +1532,39 @@ export function registerTools(server: McpServer, userId: string) {
           .optional()
           .describe("landscape for heroes and cards, portrait for people, square for avatars."),
         count: z.number().int().min(1).max(20).optional().describe("Default 6."),
+        color: z
+          .boolean()
+          .optional()
+          .describe(
+            "Color photos only (default true): black and white ones are left out. Checked in an open board tab; false keeps every result.",
+          ),
       }),
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    ({ query, orientation, count }) =>
+    ({ query, orientation, count, color }) =>
       run(async () => {
-        const { images, notes } = await searchImages(query, { orientation, count: count ?? 6 });
-        if (images.length === 0) {
+        const want = count ?? 6;
+        // Twice as many candidates when some may be left out for being black and white.
+        const found = await searchImages(query, {
+          orientation,
+          count: color === false ? want : Math.min(20, want * 2),
+        });
+        const notes = [...found.notes];
+        let images = found.images.slice(0, want);
+        if (color !== false && found.images.length > 0) {
+          const checked = await colorPhotos(found.images, want, (thumbs) =>
+            requestImageColors(userId, { images: thumbs }),
+          );
+          images = checked.images;
+          if (!checked.checked) {
+            notes.push(
+              "colors: no board tab is open to check them, so some photos may be black and white. Open a board and search again to leave those out.",
+            );
+          }
+        }
+        // The thumbnail is only for the color check.
+        const shown = images.map(({ thumb: _, ...image }) => image);
+        if (shown.length === 0) {
           return json({
             images: [],
             ...(notes.length > 0 && { unavailable: notes }),
@@ -1536,7 +1574,7 @@ export function registerTools(server: McpServer, userId: string) {
                 : "Nothing matched. Try broader or different words.",
           });
         }
-        return json({ images, ...(notes.length > 0 && { unavailable: notes }) });
+        return json({ images: shown, ...(notes.length > 0 && { unavailable: notes }) });
       }),
   );
 

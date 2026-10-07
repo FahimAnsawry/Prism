@@ -14,6 +14,8 @@ import {
   type ExportImageRequest,
   type HtmlScreenReply,
   type HtmlScreenRequest,
+  type ImageColorsReply,
+  type ImageColorsRequest,
   type LayoutMindmapRequest,
   type LayoutScreenReply,
   type LayoutScreenRequest,
@@ -28,6 +30,7 @@ import { applyOps } from "./board-model";
 import { compareReference } from "./compare-reference";
 import { exportBoardImage } from "./export-image";
 import { htmlScreenOnTab } from "./html-screen";
+import { imageColorsOnTab } from "./image-colors";
 import { layoutMindmapOnTab, layoutScreenOnTab } from "./screen-layout";
 
 const elementsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}/elements`;
@@ -308,6 +311,11 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
       if (request.boardId === boardId) void htmlScreenOnTab(request).then(ack);
     };
     socket.on("html:screen", onHtmlScreen);
+    // An AI editor's search_images: any open board tab measures photo colors.
+    const onImageColors = (request: ImageColorsRequest, ack: (reply: ImageColorsReply) => void) => {
+      void imageColorsOnTab(request).then(ack);
+    };
+    socket.on("image:colors", onImageColors);
     const onLayoutMindmap = (
       request: LayoutMindmapRequest,
       ack: (reply: LayoutScreenReply) => void,
@@ -324,6 +332,7 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
       socket.off("compare:reference", onCompareReference);
       socket.off("layout:screen", onLayoutScreen);
       socket.off("html:screen", onHtmlScreen);
+      socket.off("image:colors", onImageColors);
       socket.off("layout:mindmap", onLayoutMindmap);
       socket.emit("board:leave", boardId);
     };

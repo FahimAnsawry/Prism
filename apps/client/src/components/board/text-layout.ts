@@ -170,7 +170,7 @@ export const boardMeasure: TextMeasurer = (text, style, maxWidth) => {
   const { font, px, weight, letterSpacing } = style;
   const lines = wrapText(text, font, px, weight, maxWidth, letterSpacing);
   const width = Math.max(0, ...lines.map((line) => measure(line, font, px, weight, letterSpacing)));
-  return { width, lines: lines.length };
+  return { width, lines: lines.length, last: lines[lines.length - 1] ?? "" };
 };
 
 /** A mind map node's lines: on newlines, wrapped past MIND_MAX_TEXT. */

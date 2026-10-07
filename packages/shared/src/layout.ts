@@ -469,39 +469,49 @@ export interface LayoutTextStyle {
   letterSpacing: number;
 }
 
-/** Wraps `text` to `maxWidth` (null: only at newlines) and reports the widest line and the count. */
+/**
+ * Wraps `text` to `maxWidth` (null: only at newlines) and reports the widest line, the count
+ * and, when it knows it, the last line's text (for the orphan check).
+ */
 export type TextMeasurer = (
   text: string,
   style: LayoutTextStyle,
   maxWidth: number | null,
-) => { width: number; lines: number };
+) => { width: number; lines: number; last?: string };
 
 /** A rough measurer for when no board tab can measure: average glyph widths, word wrapping. */
 export const estimateText: TextMeasurer = (text, style, maxWidth) => {
   const charWidth = style.px * (0.55 + style.letterSpacing);
   let lines = 0;
   let widest = 0;
+  let last = "";
   for (const paragraph of text.split("\n")) {
     if (maxWidth === null || paragraph.length * charWidth <= maxWidth) {
       lines++;
       widest = Math.max(widest, paragraph.length * charWidth);
+      last = paragraph;
       continue;
     }
     let line = 0;
+    let words: string[] = [];
     for (const word of paragraph.split(/\s+/)) {
       const width = word.length * charWidth;
       const next = line === 0 ? width : line + charWidth + width;
-      if (next <= maxWidth || line === 0) line = next;
-      else {
+      if (next <= maxWidth || line === 0) {
+        line = next;
+        words.push(word);
+      } else {
         lines++;
         widest = Math.max(widest, line);
         line = width;
+        words = [word];
       }
     }
     lines++;
     widest = Math.max(widest, line);
+    last = words.join(" ");
   }
-  return { width: Math.min(widest, maxWidth ?? widest), lines };
+  return { width: Math.min(widest, maxWidth ?? widest), lines, last };
 };
 
 // ── Layout ────────────────────────────────────────────────────────────────
@@ -526,6 +536,8 @@ export type LayoutElement = Partial<Omit<BoardElement, "id" | "version" | "z" | 
      * meant to hang over what's under it as spilling out. Not stored.
      */
     layer?: string;
+    /** Text that wraps: its last line, for the orphan check. Not stored. */
+    lastLine?: string;
   };
 
 const TEXT_COLOR = "#3d3b4f";
@@ -630,17 +642,23 @@ export function layoutScreen(
     const style = textStyle(node);
     const lineHeight = style.px * (node.lineHeight ?? LINE_HEIGHT);
     if (width !== null) {
-      const { lines } = measureText(node.text, style, width);
-      return { width, height: Math.max(1, lines) * lineHeight, hug: false };
+      const { lines, last } = measureText(node.text, style, width);
+      return { width, height: Math.max(1, lines) * lineHeight, hug: false, lines, last };
     }
     const natural = measureText(node.text, style, null);
     // The board sizes hugging text to its widest line + 2px; match it.
     const hugWidth = Math.ceil(natural.width) + 2;
     if (hugWidth <= limit) {
-      return { width: hugWidth, height: Math.max(1, natural.lines) * lineHeight, hug: true };
+      return {
+        width: hugWidth,
+        height: Math.max(1, natural.lines) * lineHeight,
+        hug: true,
+        lines: natural.lines,
+        last: natural.last,
+      };
     }
-    const { lines } = measureText(node.text, style, limit);
-    return { width: limit, height: Math.max(1, lines) * lineHeight, hug: false };
+    const { lines, last } = measureText(node.text, style, limit);
+    return { width: limit, height: Math.max(1, lines) * lineHeight, hug: false, lines, last };
   }
 
   /** The width a child takes in a stack whose content box is `inner` wide. */
@@ -813,11 +831,12 @@ export function layoutScreen(
     const groupId = groupFor(node, group);
     switch (node.type) {
       case "text": {
-        const { hug } = measureTextNode(
+        const { hug, lines, last } = measureTextNode(
           node,
           node.width === undefined ? null : width,
           Math.max(width, 1),
         );
+        const wraps = lines > node.text.split("\n").length;
         const style = textStyle(node);
         out.push({
           type: "text",
@@ -834,6 +853,7 @@ export function layoutScreen(
           autoWidth: hug,
           ...(node.lineHeight !== undefined && { lineHeight: node.lineHeight }),
           ...(node.letterSpacing !== undefined && { letterSpacing: node.letterSpacing }),
+          ...(wraps && last && { lastLine: last }),
           ...meta(node, groupId),
         });
         return;
@@ -1040,6 +1060,85 @@ export function layoutScreen(
   const rootHeight = options.height ?? rootSize.height;
   place(root, options.x, options.y, rootWidth, Math.max(rootHeight, rootSize.height), undefined);
   return out;
+}
+
+/**
+ * Whether a node with no width of its own still grows to the width it's offered (as layoutScreen
+ * measures it): a box or "fill" text does, a row with a flexible child does, and a stack does
+ * when any child does or (stretching, the default) when it holds a container.
+ */
+function growsToFill(node: LayoutNode): boolean {
+  if ("width" in node && node.width === "fill") return true;
+  if ("width" in node && typeof node.width === "number") return false;
+  switch (node.type) {
+    case "box":
+      return true;
+    case "spacer":
+      return node.size === undefined;
+    case "stack":
+      return node.children.some(
+        (child) =>
+          growsToFill(child) ||
+          ((node.align ?? "stretch") === "stretch" &&
+            isContainer(child) &&
+            !("width" in child && typeof child.width === "number")),
+      );
+    case "row":
+      return node.children.some(
+        (child) =>
+          (child.type === "spacer" && child.size === undefined) ||
+          ("width" in child && child.width === "fill") ||
+          (child.type === "box" && child.width === undefined),
+      );
+    case "grid":
+      return true;
+    case "overlay": {
+      const [base] = node.children;
+      return base !== undefined && growsToFill(base);
+    }
+    default:
+      return false;
+  }
+}
+
+/** A short way to point at a node in a message: its name, else its first text. */
+function describeNode(node: LayoutNode): string {
+  if ("name" in node && node.name) return `"${node.name}"`;
+  const text = (n: LayoutNode): string | undefined =>
+    n.type === "text" ? n.text : isContainer(n) ? n.children.map(text).find(Boolean) : undefined;
+  const first = text(node)?.replace(/\s+/g, " ").trim();
+  return first ? `the ${node.type} with "${first.slice(0, 30)}"` : `a ${node.type}`;
+}
+
+/**
+ * Rows where a child without a width grows to the row's whole width (often a box with no width
+ * inside a stack meant to hug), squeezing or pushing out its neighbors. One message each, for
+ * create_screen's warnings; the layout itself is unchanged.
+ */
+export function rowFillTraps(root: LayoutNode): string[] {
+  const found: string[] = [];
+  const visit = (node: LayoutNode) => {
+    if (!isContainer(node)) return;
+    if (node.type === "row" && node.children.length > 1) {
+      for (const child of node.children) {
+        const unsized = !("width" in child) || child.width === undefined;
+        if (!unsized || child.type === "box" || child.type === "spacer" || !isContainer(child)) {
+          continue;
+        }
+        if (growsToFill(child)) {
+          const cause = child.children.find((c) => c.type === "box" && c.width === undefined)
+            ? "a box with no width inside it fills"
+            : "something inside it fills (a nested container in a stretching stack, a fill width or a flexible spacer)";
+          found.push(
+            `${describeNode(child)} has no width and grows to its row's full width because ${cause}, pushing its neighbors aside. Give the box (or the ${child.type}) a width, or set align: "start" on the ${child.type}.`,
+          );
+        }
+      }
+    }
+    node.children.forEach(visit);
+  };
+  visit(root);
+  return found;
 }
 
 /** The fonts and weights the tree's text uses, to load before measuring. */
