@@ -76,6 +76,8 @@ import {
   saveProjectComponents,
   saveProjectTheme,
 } from "../routes/workspace.js";
+import { DESIGN_SURFACES, designGuide } from "./design-guide.js";
+import { lintScreen } from "./screen-lint.js";
 import {
   boundsOf,
   buildElements,
@@ -745,10 +747,32 @@ export function registerTools(server: McpServer, userId: string) {
   );
 
   server.registerTool(
+    "get_design_guide",
+    {
+      title: "Get the design guide",
+      description:
+        "REQUIRED before your first create_screen in a conversation: how a good screen looks (deciding a visual thesis, type sizes, color, spacing, a recipe for the surface, how to check the result). Read it once, design from it, and reuse it for later screens.",
+      inputSchema: z.object({
+        surface: z
+          .enum(DESIGN_SURFACES)
+          .optional()
+          .describe(
+            "landing (marketing pages, default), app (dashboards and product screens) or mobile.",
+          ),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ surface }) => ({
+      content: [{ type: "text" as const, text: designGuide(surface ?? "landing") }],
+    }),
+  );
+
+  server.registerTool(
     "create_screen",
     {
       title: "Create a screen from a layout",
       description: [
+        "Call get_design_guide before your first screen.",
         "The main way to draw UI: describe a screen as a layout tree and Prism positions everything, flexbox-style, so spacing and alignment come out exact.",
         'Containers: stack (top to bottom), row (left to right), grid (equal columns), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow).',
         "Leaves: text, icon (Lucide), box (placeholder rect/ellipse: images, avatars), spacer (fixed, or flexible to push things apart), divider.",
@@ -756,7 +780,7 @@ export function registerTools(server: McpServer, userId: string) {
         'Use the project\'s components (list_components) wherever they fit: { type: "use", component: "Button", variant: "ghost", props: { label: "Cancel" } }, with children for a component\'s slot (a Card\'s content) and width/height to resize it. Same component, same look on every screen.',
         "Colors, radius and text come from the project theme (get_theme): textStyle $h1/$h2/$body/$caption/… for every text (size, weight and font together), fill $primary with color $primary-foreground, $card, $muted-foreground, stroke $border, radius $radius-md/$radius-lg, so every screen matches and the code uses the same classes. Text defaults to $body and $foreground, icons to $foreground, dividers to $border, the frame to $background. A strict theme refuses plain colors, radius, fonts and text sizes.",
         "With frame, a frame of that size is drawn behind it (a fixed frame height lets a flexible spacer pin a bottom bar). Without x/y it goes to the right of the board's content.",
-        "The whole screen is one undo step. Check it afterwards with export_image (frameId).",
+        "The whole screen is one undo step. The result lists warnings (text wrapping more than written, content spilling out of its container, low contrast, tiny text, too many sizes or accent colors): fix them, then check the screen with export_image (frameId).",
       ].join(" "),
       inputSchema: z.object({
         boardId,
@@ -848,11 +872,13 @@ export function registerTools(server: McpServer, userId: string) {
           board.id,
           elements.map((element) => ({ op: "create", element })),
         );
+        const warnings = lintScreen(elements);
         return json({
           frameId: frame ? elements[0]?.id : null,
           bounds: boundsOf(elements),
           measured: measured ? "browser" : "estimated (no board tab open; text sizes may be off)",
           theme: { name: theme.name ?? null, mode },
+          ...(warnings.length > 0 && { warnings }),
           elements: elements.map((el) => ({
             id: el.id,
             type: el.type,
@@ -860,7 +886,10 @@ export function registerTools(server: McpServer, userId: string) {
             ...(el.groupId && { groupId: el.groupId }),
             ...(el.text && { text: el.text.slice(0, 60) }),
           })),
-          next: "Check it with export_image (frameId), then fix anything off with update_elements.",
+          next:
+            warnings.length > 0
+              ? `Fix the ${warnings.length} warning${warnings.length === 1 ? "" : "s"} with update_elements (or redraw that section), then check it with export_image (frameId).`
+              : "Check it with export_image (frameId), then fix anything off with update_elements.",
         });
       }),
   );
@@ -1283,9 +1312,10 @@ export function registerPrompts(server: McpServer) {
               "2. Theme: get_theme (boardId). If saved is false and this folder is the app's repo with a global CSS file (app/globals.css, src/index.css) defining shadcn/ui variables, import it with set_theme (css) so the design matches the app. Otherwise keep the theme, or ask me for brand colors and set them with set_theme.",
               "3. Components: list_components. If the project has none, define its shared parts first with define_component, using the theme's tokens: Button (variants primary, secondary, outline, ghost, destructive), Input (label, placeholder), Card (a slot for content), PageHeader (title, description, a slot for actions) and the app's navigation (Sidebar or TopBar with its items). Add a component whenever a part repeats across screens.",
               "4. If a Mobbin MCP is available, search it for 3 strong references. Add each with add_image (its image_url) in a row at the top, with a sticky note beside each saying what to take from it.",
-              '5. Below the references, build the new design with create_screen (a layout tree, inside a frame at a real device size: 390x844 mobile or 1440x900 desktop), using create_elements only for extras that don\'t fit a layout. Put a small text above each frame naming its route and state, e.g. "/reset-password · desktop · link sent". Use theme tokens for every color, radius and text: textStyle $h1–$h4 for headings, $body / $body-sm for copy, $label for buttons and form labels, $caption for hints; fill $primary with $primary-foreground text, $card, $muted-foreground, stroke $border, $radius-md on buttons and inputs, $radius-lg on cards. Never hex or px sizes. Place the project components with use nodes wherever they fit instead of drawing buttons, inputs, cards and navigation again. Keep spacing on the scale (gaps and padding 4, 8, 12, 16, 24, 32). Clean look (sketch: false), real copy, consistent spacing, a shadow on raised surfaces (md cards, lg modals), Lucide icons (type icon) for nav, actions and inputs, one groupId and a role per component.',
-              "6. Look at it with export_image (the frame's id), fix anything that overlaps, is misaligned or wraps badly, check again, then summarize what you made.",
-              "7. Finish by watching for my Ask AI requests (wait_for_edits, handle each, complete_edit, repeat).",
+              "5. Read get_design_guide (surface landing, app or mobile) and write down the design's thesis, signature move, palette and type before drawing. Where the guide's sizes and the theme's text styles differ, the theme wins.",
+              '6. Below the references, build the new design with create_screen (a layout tree, inside a frame at a real device size: 390x844 mobile or 1440x900 desktop), using create_elements only for extras that don\'t fit a layout. Put a small text above each frame naming its route and state, e.g. "/reset-password · desktop · link sent". Use theme tokens for every color, radius and text: textStyle $h1–$h4 for headings, $body / $body-sm for copy, $label for buttons and form labels, $caption for hints; fill $primary with $primary-foreground text, $card, $muted-foreground, stroke $border, $radius-md on buttons and inputs, $radius-lg on cards. Never hex or px sizes. Place the project components with use nodes wherever they fit instead of drawing buttons, inputs, cards and navigation again. Keep spacing on the scale from get_design_guide. Clean look (sketch: false), real copy, consistent spacing, a shadow on raised surfaces (md cards, lg modals), Lucide icons (type icon) for nav, actions and inputs, one groupId and a role per component.',
+              "7. Fix the warnings create_screen returns. Then look at it with export_image (the frame's id), critique it against the thesis and references, fix anything that overlaps, is misaligned or wraps badly, check again, then summarize what you made.",
+              "8. Finish by watching for my Ask AI requests (wait_for_edits, handle each, complete_edit, repeat).",
             ].join("\n"),
           },
         },
