@@ -113,7 +113,7 @@ const BUILD = `## 6. Building it in Prism
   - Logos: fictional SVG wordmarks (svg on a box): a simple mark plus a name, each in a different typeface or weight, all in one muted color. Never a real company's logo. Text in an SVG uses the viewer's system fonts (Arial, Georgia, Courier New, …), so name a generic fallback and leave a third of spare width in the viewBox.
   - Illustrations, empty states, patterns and blobs: SVG in the theme's colors.
   - The product itself stays drawn UI (a window with a real table, chart or board), not a photo of a screen.
-- Name every component (one groupId) and give it a role, so build_pages can code it.
+- Name every component (one groupId) and give it a role, so build_pages can code it. To code a screen, read it with get_screen_code (nested layout, sizes, tokens and component instances) rather than get_board's flat elements, and get_theme in the app's format (css for Tailwind, css-vars for plain CSS, dart for Flutter).
 
 ## 7. Check it
 

@@ -21,6 +21,7 @@ import {
   EDIT_NOTE_MAX,
   estimateText,
   fontFamilySchema,
+  frameLabel,
   HTML_SCREEN_MAX,
   LAYOUT_NODES_MAX,
   layoutNodeSchema,
@@ -29,10 +30,14 @@ import {
   fontFamilyName,
   mergeTheme,
   parseThemeCss,
+  themeCode,
+  THEME_FORMATS,
+  TOKEN_USAGE,
   PENDING_ASSET,
   RADIUS_SCALE,
   resolveElementTokens,
   resolveLayoutTokens,
+  screenTree,
   storeLayoutImages,
   strictMessage,
   strictViolations,
@@ -148,6 +153,10 @@ const hasTokens = (elements: BoardElement[]) => elements.some((el) => el.tokens)
 const COMPONENTS_NOTE =
   'Elements with the same groupId and a component ("Button:primary", "Sidebar > NavItem") are one instance of a project component (list_components): build each component once (at its code path if it has one) and reuse it, passing the instance\'s text as props.';
 const hasComponents = (elements: BoardElement[]) => elements.some((el) => el.component);
+
+/** How get_screen_code's trees map to code, in any framework. */
+const LAYOUT_NOTE =
+  "kind: frame = the page; box = a painted container (div / Container with decoration); group = an unpainted wrapper (div / Column, Row); component = a project component instance (render it, texts → its props); text, icon, image, divider, shape = leaves. layout.direction: column → flex flex-col / Column, row → flex flex-row / Row, grid → grid grid-cols-N / GridView or Wrap, overlay → a relative parent with absolute children at `at` {x, y} / Stack with Positioned. gap, padding [top, right, bottom, left] and box sizes are px: in Tailwind divide by `spacing` (16px with spacing 4 = p-4 or gap-4), in CSS write px or rem, in Flutter SizedBox and EdgeInsets. width/height: fill → w-full or flex-1 in a row / Expanded, hug → its content's size (w-fit / no size), a number → that px (prefer max-w-* and responsive classes over fixed widths on the web). align is cross-axis (items-*), justify main-axis (justify-*), alignSelf overrides align for one child (self-*).";
 
 /** How to place a component, for an AI editor. */
 function componentUsage(name: string, component: z.infer<typeof componentSchema>) {
@@ -522,17 +531,33 @@ export function registerTools(server: McpServer, userId: string) {
       description: [
         "Read the theme a project's boards use: shadcn/ui color tokens (light and dark), radius and fonts, plus css, the Tailwind v4 + shadcn/ui CSS to put in the app's global CSS.",
         "Read it before designing (use the $tokens in create_screen) and before coding screens (put css in app/globals.css or src/index.css, then code $tokens as Tailwind classes).",
+        'For an app without Tailwind, pass format: "css-vars" (plain CSS custom properties and type-scale classes, for plain CSS or CSS Modules), "dart" (a Flutter theme file: ThemeData, color tokens, type scale, radius and spacing) or "json" (design tokens); code and usage say where it goes and how tokens are written.',
         "saved: false means the project still has the default theme.",
       ].join(" "),
       inputSchema: z.object({
         projectId: projectId.optional(),
         boardId: boardId.optional().describe("Or a board: its project's theme."),
+        format: z
+          .enum(THEME_FORMATS)
+          .optional()
+          .describe(
+            "css (default: Tailwind v4 + shadcn/ui), css-vars (plain CSS), json (design tokens) or dart (Flutter).",
+          ),
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     (input) =>
       run(async () => {
         let id = input.projectId;
+        // Another format: the theme as that code, and how tokens are written in it.
+        const asCode = (theme: Theme) =>
+          input.format && input.format !== "css"
+            ? {
+                format: input.format,
+                code: themeCode(theme, input.format),
+                usage: TOKEN_USAGE[input.format],
+              }
+            : {};
         if (!id && input.boardId) {
           const board = await ownedBoard(input.boardId, userId);
           if (!board.projectId) {
@@ -542,6 +567,7 @@ export function registerTools(server: McpServer, userId: string) {
               note: "This board isn't in a project, so it uses the default theme. Move it into a project to give it one.",
               ...describeTheme(DEFAULT_THEME),
               tokens: themeTokenNames(),
+              ...asCode(DEFAULT_THEME),
             });
           }
           id = board.projectId;
@@ -554,7 +580,7 @@ export function registerTools(server: McpServer, userId: string) {
           saved,
           ...describeTheme(theme),
           components: Object.keys(components),
-          css,
+          ...(input.format && input.format !== "css" ? asCode(theme) : { css }),
         });
       }),
   );
@@ -806,6 +832,62 @@ export function registerTools(server: McpServer, userId: string) {
             .map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height })),
           elements: elements.map((el) => view(el, theme)),
           ...(hasTokens(elements) && { tokens: TOKENS_NOTE }),
+          ...(hasComponents(elements) && { components: COMPONENTS_NOTE }),
+        });
+      }),
+  );
+
+  server.registerTool(
+    "get_screen_code",
+    {
+      title: "Read screens for code",
+      description: [
+        "Read a board's screens (frames) as nested trees ready to code in any framework, instead of get_board's flat x/y elements: what sits inside what, each container's layout (row, column, grid or overlay, with gap, padding, align and justify in px), each node's size (px, fill or hug), its style with $tokens kept, and project component instances with their text.",
+        "Use it with build_pages: code each tree with the app's own layout primitives, then compare the page with export_image of the frame.",
+      ].join(" "),
+      inputSchema: z.object({
+        boardId,
+        frameId: z
+          .uuid()
+          .optional()
+          .describe("Only this frame. Default: every frame on the board."),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ boardId: id, frameId }) =>
+      run(async () => {
+        const board = await ownedBoard(id, userId);
+        const theme = await boardTheme(board);
+        const elements = await loadElements(board.id);
+        const frames = elements.filter(
+          (el) => el.type === "frame" && (frameId === undefined || el.id === frameId),
+        );
+        if (frameId && frames.length === 0) {
+          throw new HttpError(404, "No frame with that frameId on this board.");
+        }
+        if (frames.length === 0) {
+          throw new HttpError(
+            404,
+            "This board has no frames. Screens are frames (create_screen draws one); read free-form boards with get_board.",
+          );
+        }
+        // Frames nested in another frame are part of it, not screens of their own.
+        const screens = frames.filter(
+          (frame) => !frames.some((other) => other !== frame && insideFrame(frame, other)),
+        );
+        return json({
+          boardId: board.id,
+          name: board.name,
+          spacing: theme.spacing,
+          screens: screens.map((frame) => ({
+            frameId: frame.id,
+            label: frameLabel(frame, elements),
+            width: frame.width,
+            height: frame.height,
+            tree: screenTree(frame, elements, (el) => view(el, theme)),
+          })),
+          layout: LAYOUT_NOTE,
+          tokens: TOKENS_NOTE,
           ...(hasComponents(elements) && { components: COMPONENTS_NOTE }),
         });
       }),
@@ -1668,13 +1750,23 @@ export function registerPrompts(server: McpServer) {
     {
       title: "Build pages from Prism designs",
       description:
-        "Code the screens designed in a Prism project as pages of this app (React + Tailwind CSS), using the project's theme.",
+        "Code the screens designed in a Prism project as pages of this app, in its own framework and styling (React, Next.js, Vue, Svelte, plain HTML or Flutter; Tailwind, plain CSS or CSS Modules), using the project's theme and components.",
       argsSchema: z.object({
         project: z.string().describe("The Prism project (name or id)."),
         board: z.string().optional().describe("Only this board (name). Default: every board."),
+        framework: z
+          .string()
+          .optional()
+          .describe(
+            "nextjs, react, vue, nuxt, svelte, sveltekit, html or flutter. Default: detected from the app.",
+          ),
+        styling: z
+          .string()
+          .optional()
+          .describe("tailwind, css or css-modules (ignored for Flutter). Default: detected."),
       }),
     },
-    ({ project, board }) => ({
+    ({ project, board, framework, styling }) => ({
       messages: [
         {
           role: "user" as const,
@@ -1682,13 +1774,21 @@ export function registerPrompts(server: McpServer) {
             type: "text" as const,
             text: [
               `Build the screens designed in the Prism project "${project}" as pages of this app.`,
-              "1. Find the project and its boards with list_boards, then call get_theme and list_components with its projectId.",
-              "2. Theme: open the app's global CSS (app/globals.css or src/index.css). If it doesn't already define these shadcn/ui variables with the same values, write get_theme's css there, replacing the old :root, .dark and @theme inline variables and keeping @import \"tailwindcss\" and other rules. Load the theme's fonts (next/font/google in Next.js, else @fontsource or a Google Fonts link) and wire them to --font-sans, --font-heading and --font-mono.",
-              "3. Components: build each project component once as a React component (components/<name>.tsx; reuse the app's own when its code path exists, e.g. @/components/ui/button with the matching variant), with its props and variants. Navigation and page shells go in a shared layout (app/(app)/layout.tsx).",
-              `4. For ${board ? `the board "${board}"` : "each board in the project"}: get_board. Every frame is a screen; the text above it names its route and state. Look at each frame with export_image.`,
-              "5. Build each screen as a page (Next.js app router: app/<route>/page.tsx; else the app's router), React + Tailwind CSS. Elements tagged with a component are instances: render that component with the instance's text as props, never redraw it. Reuse the app's components where a role matches, lay out with flex and grid following the design's groups, and use real links between screens. Different states of one route are one page with that state logic.",
-              "6. Code theme values as Tailwind classes, never hex: fill $primary → bg-primary, text color $muted-foreground → text-muted-foreground, a rect's stroke $border → border border-border, $radius-lg → rounded-lg ($radius-full → rounded-full), textStyle $h1 → text-h1 (with font-heading when its font is $heading; get_theme's textStyles gives each class). Use arbitrary values (bg-[#…], text-[15px]) only for the rare plain values.",
-              "7. Make each page responsive, run the app, compare each page with its frame's image and fix differences. Then list the routes you made.",
+              `1. Stack: ${framework ? `the framework is ${framework}` : "detect the framework from the app (package.json dependencies: next, nuxt, vue, @sveltejs/kit, svelte, react with vite; pubspec.yaml with flutter for Flutter; only .html files for plain HTML)"} and ${styling ? `the styling is ${styling}` : 'detect the styling (tailwindcss in the dependencies or @import "tailwindcss" in the global CSS: tailwind; *.module.css files: css-modules; else plain css)'}. If there's no app yet, ask the user which stack to use before creating one.`,
+              '2. Find the project and its boards with list_boards. Call list_components with its projectId, and get_theme with its projectId and the format for the stack: Tailwind → format "css" (the default), plain CSS or CSS Modules → "css-vars", Flutter → "dart". Its usage says how $tokens are written in that code.',
+              "3. Theme, once:",
+              '   - Tailwind: in the global CSS (app/globals.css, src/index.css, src/app.css or assets/css/main.css), write get_theme\'s css in place of the old :root, .dark and @theme inline variables, keeping @import "tailwindcss" and other rules.',
+              "   - Plain CSS or CSS Modules: put the css-vars code in the global stylesheet (or src/styles/theme.css imported once at the root) and use var(--token) in every component's styles.",
+              "   - Flutter: save the dart code as lib/theme/prism_theme.dart, add google_fonts (flutter pub add google_fonts) and set MaterialApp(theme: prismTheme(Brightness.light), darkTheme: prismTheme(Brightness.dark)).",
+              "   - Web fonts: load the theme's fonts (next/font/google in Next.js, @fontsource packages or a Google Fonts link elsewhere) and wire them to --font-sans, --font-heading and --font-mono.",
+              "4. Components: build each project component once, with its props and variants, where the stack keeps components: components/<Name>.tsx (React, Next.js), components/<Name>.vue (Vue, Nuxt), src/lib/components/<Name>.svelte (SvelteKit), a reusable class or partial in plain HTML, lib/widgets/<name>.dart as a StatelessWidget (Flutter). Reuse the app's own component when its code path exists (e.g. @/components/ui/button with the matching variant). Navigation and page shells go in a shared layout (app/(app)/layout.tsx, a layout route, +layout.svelte, layouts/default.vue, or a Scaffold shell in Flutter).",
+              `5. For ${board ? `the board "${board}"` : "each board in the project"}: get_screen_code. Each screen is a frame as a nested tree; its label (the text above the frame) names its route and state. Look at each frame with export_image too.`,
+              "6. Build each screen as a page where the stack keeps routes: app/<route>/page.tsx (Next.js), the app's router (React Router, TanStack Router), pages/<route>.vue (Nuxt) or the vue-router config, src/routes/<route>/+page.svelte (SvelteKit), <route>.html (plain HTML), lib/screens/<name>_screen.dart with a go_router route (Flutter).",
+              "   - Code the tree as it is nested: each box or group is one element (div, section, nav, header… / Container, Padding, Row, Column) and each layout maps as get_screen_code's layout note says (column → flex-col / Column, row → flex-row / Row, grid → grid / GridView, overlay → relative + absolute / Stack + Positioned; gap, padding, align, justify, fill and hug).",
+              "   - Components are instances: render the component with the instance's texts as props, never redraw its parts.",
+              "   - Write theme values as tokens in the stack's form (get_theme's usage), never as hex: bg-primary, var(--primary) or PrismTokens.of(context).primary. Plain values only where the tree has no $token.",
+              "   - Use real links or routes between screens. Different states of one route are one page with that state logic.",
+              "7. Make each page responsive (web: fluid widths, max-w containers, breakpoints; Flutter: LayoutBuilder or flexible widgets), run the app, compare each page with its frame's image and fix differences. Then list the routes you made.",
             ].join("\n"),
           },
         },

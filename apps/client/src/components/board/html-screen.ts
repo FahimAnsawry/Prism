@@ -396,6 +396,9 @@ interface UseSpec {
   index: number;
   use: LayoutUse;
   hasSlot: boolean;
+  /** As wide as it needs (its sizer's width); the page may make it wider or narrower. */
+  natural: number;
+  /** The width it was last laid out at. */
   width: number;
   height: number;
   slotHeight: number;
@@ -459,6 +462,11 @@ function readUses(doc: Document, components: Components) {
       slot.append(...el.childNodes);
       el.replaceChildren(slot);
     }
+    // The sizer gives the element the component's size, as content, so the page's layout (a
+    // grid cell, a flex row, w-full) can still stretch or shrink it like any element.
+    const sizer = doc.createElement("span");
+    sizer.setAttribute("data-prism-sizer", "");
+    el.prepend(sizer);
     el.setAttribute("data-prism-use", String(index));
     const use: LayoutUse = {
       type: "use",
@@ -468,7 +476,16 @@ function readUses(doc: Document, components: Components) {
       ...(el.getAttribute("data-name") && { name: el.getAttribute("data-name") ?? undefined }),
       ...(el.getAttribute("data-role") && { role: el.getAttribute("data-role") ?? undefined }),
     };
-    specs.push({ index, use, hasSlot: slotted, width: 0, height: 0, slotHeight: 0, slot: null });
+    specs.push({
+      index,
+      use,
+      hasSlot: slotted,
+      natural: 0,
+      width: 0,
+      height: 0,
+      slotHeight: 0,
+      slot: null,
+    });
   });
   return specs;
 }
@@ -707,10 +724,19 @@ async function convert(
   /** Lays a component out: its size and its slot's place at `w` (null: as wide as it needs). */
   async function measureUse(spec: UseSpec, w: number | null) {
     const children: LayoutNode[] | undefined = spec.hasSlot
-      ? [{ type: "stack", width: "fill", height: spec.slotHeight, fill: SLOT_MARK, children: [] }]
+      ? [
+          {
+            type: "stack",
+            // Its natural width doesn't count the slot's content, which the page lays out.
+            width: w === null ? 1 : "fill",
+            height: spec.slotHeight,
+            fill: SLOT_MARK,
+            children: [],
+          },
+        ]
       : undefined;
     const use: LayoutUse = { ...spec.use, ...(w !== null && { width: w }), children };
-    const wrapped: LayoutNode = { type: "stack", fill: BOX_MARK, children: [use] };
+    const wrapped: LayoutNode = { type: "stack", align: "start", fill: BOX_MARK, children: [use] };
     const expanded = expandComponents(
       w === null ? { type: "row", children: [wrapped] } : wrapped,
       components,
@@ -736,7 +762,10 @@ async function convert(
   }
 
   resetMeasurements();
-  for (const spec of specs) Object.assign(spec, await measureUse(spec, null));
+  for (const spec of specs) {
+    Object.assign(spec, await measureUse(spec, null));
+    spec.natural = spec.width;
+  }
 
   const { frame, doc } = await renderFrame(
     pageMarkup(parsed, css, theme, mode),
@@ -753,13 +782,17 @@ async function convert(
   const slotElement = (spec: UseSpec) =>
     instanceElement(spec)?.querySelector<HTMLElement>(":scope > [data-prism-slot]") ?? null;
 
-  // Components get their size as low-priority defaults (classes such as w-full win) and their
-  // slot content goes where the component's slot is.
+  // Each component's sizer holds its size (classes on the <x-use> such as w-full still win, and
+  // one with a slot is a block, like a card), and its slot content goes where its slot is.
   const writeUseRules = () => {
     if (!instanceStyle) return;
     const sizes = specs.map(
       (s) =>
-        `:where(x-use[data-prism-use="${s.index}"]) { width: ${s.width}px; height: ${s.height}px; position: relative; }`,
+        `:where(x-use[data-prism-use="${s.index}"]) { position: relative;${s.hasSlot ? " display: block;" : ""} }`,
+    );
+    const sizers = specs.map(
+      (s) =>
+        `x-use[data-prism-use="${s.index}"] > [data-prism-sizer] { display: block; width: ${s.natural}px; max-width: 100%; height: ${s.height}px; }`,
     );
     const slots = specs
       .filter((s) => s.slot)
@@ -767,7 +800,7 @@ async function convert(
         (s) =>
           `x-use[data-prism-use="${s.index}"] > [data-prism-slot] { position: absolute; left: ${s.slot?.x ?? 0}px; top: ${s.slot?.y ?? 0}px; width: ${s.slot?.width ?? 0}px; height: auto; }`,
       );
-    instanceStyle.textContent = `@layer base {\n${sizes.join("\n")}\n}\n${slots.join("\n")}`;
+    instanceStyle.textContent = `@layer base {\n${sizes.join("\n")}\n}\n${[...sizers, ...slots].join("\n")}`;
   };
   writeUseRules();
   await settle(doc);
