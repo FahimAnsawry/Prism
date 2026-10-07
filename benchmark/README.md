@@ -28,6 +28,7 @@ All runs live on one Prism board, **Benchmark: Phase 0 baseline** (http://localh
 | Phase | Notes |
 | --- | --- |
 | 0 (baseline) | Avatars are plain circles (no real images). The landing page was laid out before a board tab was open, so the text sizes were estimated: the quote wrapped badly (fixed by hand) and the hero paragraph ends with "days, not weeks." on its own line, with no warning. The palette check counted status chips as accent colors. |
+| 8 | Each screen drawn twice from one design: as a layout tree (`root`) and as HTML + Tailwind (`html`); the two came out nearly identical. Scores rose from 23 to 27 of 30 per screen, mostly from imagery (a real testimonial photo, drawn avatars, SVG wordmarks, a product window with a floating card) and steadier spacing and color. All four frames ended with no warnings after one round of fixes (headline wrap, quote breaks, 12 → 8 text sizes, contrast). Still wrong: the lead paragraph ends with "ten." on its own line, with no warning; the HTML path drew a centered two-line section title left-aligned (fixed with update_elements); in the layout tree a full-width box inside a hugging stack pushed the window's tabs out of it. The split hero's product window (about 620 wide) sells the product less than Phase 0's 1100-wide window. |
 
 ## Comparing with another tool
 
