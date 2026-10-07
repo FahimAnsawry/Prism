@@ -65,7 +65,7 @@ A landing page is a whole page, usually 2400-4000px tall in one 1440 frame. Mini
    - Split: copy left (about 560 wide), product visual right.
    - Split with signup: headline left, a signup card right (fields, primary button, social sign-in, fine print).
 3. Product visual: the hero's image is the product. Draw a believable app window (window bar, sidebar, a real table, kanban or chart with plausible names and numbers), 960-1200 wide, optionally on a faint tinted panel behind it for depth.
-4. Social proof: a one-line claim (Trusted by 4,000+ revenue teams) and 5-6 gray wordmark logos, or a stats row.
+4. Social proof: a one-line claim (Trusted by 4,000+ revenue teams) and 5-6 fictional SVG wordmark logos in one muted color, or a stats row.
 5. Features: a section title and lead, then 3 (or 6) identical cards: icon chip, 20-24px title, two lines of body.
 6. Optional: alternating text and visual rows for 2-3 key features, a testimonial with name and role, a pricing teaser.
 7. Final CTA band: one headline, one line, one button. The page's single dark or accent-filled block.
@@ -100,6 +100,12 @@ const BUILD = `## 6. Building it in Prism
   - gradient: { type: "linear", angle: 135, stops: [{ color: "$primary", position: 0 }, { color: "#a855f7", position: 100 }] } for hero bands and CTA blocks; keep it to one accent family.
   - shadow as soft layers instead of a preset, like CSS box-shadow: [{ x: 0, y: 24, blur: 48, spread: -12, color: "#0f172a26" }].
   - backdropBlur: 16 with a semi-transparent fill (#ffffffb3) and a hairline stroke for frosted glass over a photo or gradient.
+- Imagery: never leave a gray box where a picture belongs (create_screen warns about them).
+  - Photos (hero scenes, feature images, team shots): search_images with two to four concrete words ("modern office interior", "woman portrait smiling", "laptop on desk"; short queries find the polished stock photos) and the orientation you need, then image: { url } with fit cover. Results are free to use; for a CC BY one, show its credit line in a small caption or the footer.
+  - People: avatar: "Maya Okafor" on an ellipse box gives a consistent drawn face (the same name, the same face). For a testimonial, a real portrait from search_images (orientation portrait) reads warmer.
+  - Logos: fictional SVG wordmarks (svg on a box): a simple mark plus a name, each in a different typeface or weight, all in one muted color. Never a real company's logo. Text in an SVG uses the viewer's system fonts (Arial, Georgia, Courier New, …), so name a generic fallback and leave a third of spare width in the viewBox.
+  - Illustrations, empty states, patterns and blobs: SVG in the theme's colors.
+  - The product itself stays drawn UI (a window with a real table, chart or board), not a photo of a screen.
 - Name every component (one groupId) and give it a role, so build_pages can code it.
 
 ## 7. Check it

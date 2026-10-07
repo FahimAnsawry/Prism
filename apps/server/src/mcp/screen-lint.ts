@@ -2,8 +2,9 @@ import type { BoardElement } from "@prism/shared";
 
 // Checks a screen create_screen just built and reports what an AI editor should fix before it
 // shows the user: text that wraps more than it was written, content spilling out of its
-// container, unreadable contrast, tiny text, too many sizes and too many accent colors. It reads
-// only the laid-out elements, so it works the same for browser-measured and estimated layouts.
+// container, unreadable contrast, tiny text, too many sizes, too many accent colors and gray boxes
+// standing in for images. It reads only the laid-out elements, so it works the same for
+// browser-measured and estimated layouts.
 
 export type ScreenWarning = { kind: string; ids: string[]; message: string };
 
@@ -14,6 +15,10 @@ const PRESET_PX = { S: 16, M: 22, L: 30, XL: 40 } as const;
 const MIN_TEXT_PX = 12;
 const TEXT_SIZES_MAX = 8;
 const ACCENT_FAMILIES_MAX = 3;
+/** A gray box this big on both sides, with nothing on it, reads as a missing image. */
+const PLACEHOLDER_SIDE_MIN = 80;
+/** How far apart a gray's channels may be (a slate tint still counts as gray). */
+const PLACEHOLDER_TINT_MAX = 24;
 /** Shapes smaller than this (traffic-light dots, avatars) don't count toward the palette. */
 const ACCENT_AREA_MIN = 400;
 
@@ -100,6 +105,31 @@ function accentFamily(color: [number, number, number]) {
  * `layers` gives the overlay layer (create_screen) of elements drawn in one: such an element only
  * spills out of containers in its own layer, since a layer may hang over what's under it.
  */
+/** A neutral gray between light and dark: not a white or near-white surface, not a dark panel. */
+function isMidGray(color: string | null | undefined) {
+  const parsed = rgb(color);
+  if (!parsed) return false;
+  const max = Math.max(...parsed);
+  const min = Math.min(...parsed);
+  const light = (max + min) / 2 / 255;
+  return max - min <= PLACEHOLDER_TINT_MAX && light >= 0.55 && light <= 0.95;
+}
+
+/**
+ * A big flat gray rect or ellipse with nothing on it (`above`: what's drawn after it): the gray
+ * box that stands in for a photo, an avatar or an illustration.
+ */
+function isPlaceholder(el: BoardElement, above: BoardElement[]) {
+  if (el.type !== "rect" && el.type !== "ellipse") return false;
+  if (el.gradient || el.fillImage || !isMidGray(el.fill)) return false;
+  if (Math.min(Math.abs(el.width), Math.abs(el.height)) < PLACEHOLDER_SIDE_MIN) return false;
+  return !above.some((other) => {
+    const cx = other.x + other.width / 2;
+    const cy = other.y + other.height / 2;
+    return cx >= el.x && cx <= el.x + el.width && cy >= el.y && cy <= el.y + el.height;
+  });
+}
+
 export function lintScreen(
   elements: BoardElement[],
   layers: ReadonlyMap<string, string> = new Map(),
@@ -217,6 +247,16 @@ export function lintScreen(
       kind: "palette",
       ids: frame ? [frame.id] : [],
       message: `The screen uses ${families.size} accent color families (${[...families].join(", ")}). Keep one accent; use the others only for status chips and charts.`,
+    });
+  }
+
+  const placeholders = elements.filter((el, i) => isPlaceholder(el, elements.slice(i + 1)));
+  if (placeholders.length > 0) {
+    const sizes = placeholders.map((el) => `${Math.round(el.width)}×${Math.round(el.height)}`);
+    warnings.push({
+      kind: "missing-imagery",
+      ids: placeholders.map((el) => el.id),
+      message: `${placeholders.length === 1 ? `A ${sizes[0]} gray box looks like an image placeholder` : `${placeholders.length} gray boxes (${sizes.join(", ")}) look like image placeholders`}. Fill ${placeholders.length === 1 ? "it" : "them"} with a real photo (search_images, then image: { url }), an avatar (avatar on a box) or an SVG illustration (svg on a box).`,
     });
   }
 

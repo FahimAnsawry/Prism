@@ -55,11 +55,14 @@ import {
   completeEdit,
   imageFillAsset,
   importImage,
+  importSvg,
+  storeSvg,
   loadElements,
   selectionFor,
   waitForEdits,
 } from "../ai-actions.js";
 import { HttpError } from "../errors.js";
+import { searchImages } from "../image-search.js";
 import {
   broadcastOps,
   requestBoardImage,
@@ -80,7 +83,7 @@ import {
   saveProjectTheme,
 } from "../routes/workspace.js";
 import { DESIGN_SURFACES, designGuide } from "./design-guide.js";
-import { lintScreen } from "./screen-lint.js";
+import { lintScreen, type ScreenWarning } from "./screen-lint.js";
 import {
   boundsOf,
   buildElements,
@@ -159,22 +162,51 @@ function componentUsage(name: string, component: z.infer<typeof componentSchema>
 }
 
 /**
- * Stores image fills given as URLs with the board (downloading each URL once per call) and returns
- * them as the element's fillImage. undefined and null pass through.
+ * Stores a call's images with the board: image URLs (downloaded once per call) and SVG markup.
+ * One that can't be stored is skipped with a warning instead of failing the whole call, so an
+ * AI editor can retry it with another URL.
  */
-function imageFills(boardId: string) {
-  const stored = new Map<string, Promise<string>>();
-  return async (
-    fill: { url: string; fit?: ImageFill["fit"] | undefined } | null | undefined,
-  ): Promise<ImageFill | null | undefined> => {
-    if (!fill) return fill;
-    let assetKey = stored.get(fill.url);
+function imageStore(boardId: string) {
+  const warnings: ScreenWarning[] = [];
+  const urls = new Map<string, Promise<string | undefined>>();
+  const reason = (error: unknown) =>
+    error instanceof Error ? error.message : "it couldn't be stored";
+
+  const image = (url: string) => {
+    let assetKey = urls.get(url);
     if (!assetKey) {
-      assetKey = imageFillAsset(boardId, fill.url);
-      stored.set(fill.url, assetKey);
+      assetKey = imageFillAsset(boardId, url).catch((error: unknown) => {
+        warnings.push({
+          kind: "image",
+          ids: [],
+          message: `Skipped the image ${url}: ${reason(error)} The shape keeps its fill. Try another URL (search_images finds working ones).`,
+        });
+        return undefined;
+      });
+      urls.set(url, assetKey);
     }
-    return { assetKey: await assetKey, fit: fill.fit ?? "cover" };
+    return assetKey;
   };
+
+  const svg = (markup: string) =>
+    storeSvg(boardId, markup).then(
+      (stored) => stored.assetKey,
+      (error: unknown) => {
+        warnings.push({ kind: "svg", ids: [], message: `Skipped an svg: ${reason(error)}` });
+        return undefined;
+      },
+    );
+
+  /** An image fill given as a URL, stored; undefined when it was skipped. */
+  const fill = async (
+    value: { url: string; fit?: ImageFill["fit"] | undefined } | null | undefined,
+  ): Promise<ImageFill | null | undefined> => {
+    if (!value) return value;
+    const assetKey = await image(value.url);
+    return assetKey ? { assetKey, fit: value.fit ?? "cover" } : undefined;
+  };
+
+  return { image, svg, fill, warnings };
 }
 
 /** Element fields with their $tokens resolved, or a 400 that lists the valid tokens. */
@@ -752,9 +784,12 @@ export function registerTools(server: McpServer, userId: string) {
           theme,
           inputs.map((input) => ({ fields: input, type: input.type })),
         );
-        const store = imageFills(board.id);
+        const images = imageStore(board.id);
         const stored = await Promise.all(
-          inputs.map(async (input) => ({ ...input, fillImage: await store(input.fillImage) })),
+          inputs.map(async (input) => ({
+            ...input,
+            fillImage: await images.fill(input.fillImage),
+          })),
         );
         const resolved = stored.map((input) =>
           themed({ ...themedDefaults(input), ...input }, theme, mode ?? "light"),
@@ -771,6 +806,7 @@ export function registerTools(server: McpServer, userId: string) {
             ...(inputs[i]?.key && { key: inputs[i]?.key }),
             type: el.type,
           })),
+          ...(images.warnings.length > 0 && { warnings: images.warnings }),
         });
       }),
   );
@@ -804,7 +840,7 @@ export function registerTools(server: McpServer, userId: string) {
         "Call get_design_guide before your first screen.",
         "The main way to draw UI: describe a screen as a layout tree and Prism positions everything, flexbox-style, so spacing and alignment come out exact.",
         'Containers: stack (top to bottom), row (left to right), grid (equal columns), overlay (layers on top of each other: the first sets its size, later ones are placed by anchor and x/y and may hang past its edges, for cards floating over a product window or a badge on an avatar), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow, plus gradient, image (a photo URL), backdropBlur (frosted glass); radius may be per corner).',
-        "Leaves: text, icon (Lucide), box (placeholder rect/ellipse: images, avatars), spacer (fixed, or flexible to push things apart), divider.",
+        'Leaves: text, icon (Lucide), box (a rect or ellipse holding a photo with image: { url } from search_images, an avatar with avatar: "Full Name", or an SVG logo or illustration with svg; never a gray placeholder), spacer (fixed, or flexible to push things apart), divider.',
         "A button is a row with padding, fill, radius, justify/align center and a text child; a card is a stack with padding, fill, radius and shadow. Give components a name (one groupId) and a role.",
         'Use the project\'s components (list_components) wherever they fit: { type: "use", component: "Button", variant: "ghost", props: { label: "Cancel" } }, with children for a component\'s slot (a Card\'s content) and width/height to resize it. Same component, same look on every screen.',
         "Colors, radius and text come from the project theme (get_theme): textStyle $h1/$h2/$body/$caption/… for every text (size, weight and font together), fill $primary with color $primary-foreground, $card, $muted-foreground, stroke $border, radius $radius-md/$radius-lg, so every screen matches and the code uses the same classes. Text defaults to $body and $foreground, icons to $foreground, dividers to $border, the frame to $background. A strict theme refuses plain colors, radius, fonts and text sizes.",
@@ -862,11 +898,8 @@ export function registerTools(server: McpServer, userId: string) {
           );
         }
         const mode = input.mode ?? "light";
-        const store = imageFills(board.id);
-        const withImages = await storeLayoutImages(
-          expanded.root,
-          async (url) => (await store({ url }))?.assetKey ?? "",
-        );
+        const images = imageStore(board.id);
+        const withImages = await storeLayoutImages(expanded.root, images);
         const { root, unknown, violations } = resolveLayoutTokens(
           withImages,
           theme,
@@ -913,7 +946,7 @@ export function registerTools(server: McpServer, userId: string) {
           const layer = (el as { layer?: unknown }).layer;
           if (id && typeof layer === "string") layers.set(id, layer);
         });
-        const warnings = lintScreen(elements, layers);
+        const warnings = [...images.warnings, ...lintScreen(elements, layers)];
         return json({
           frameId: frame ? elements[0]?.id : null,
           bounds: boundsOf(elements),
@@ -1112,15 +1145,18 @@ export function registerTools(server: McpServer, userId: string) {
           theme,
           updates.map((u) => ({ fields: u.changes, type: current.get(u.id)?.type ?? "rect" })),
         );
-        const store = imageFills(board.id);
+        const images = imageStore(board.id);
         const stored = await Promise.all(
-          updates.map(async ({ id: elementId, changes }) => ({
-            elementId,
-            changes:
-              changes.fillImage === undefined
-                ? changes
-                : { ...changes, fillImage: await store(changes.fillImage) },
-          })),
+          updates.map(async ({ id: elementId, changes }) => {
+            if (changes.fillImage === undefined) return { elementId, changes };
+            const { fillImage, ...rest } = changes;
+            const image = await images.fill(fillImage);
+            // A skipped image leaves the element's current one alone.
+            return {
+              elementId,
+              changes: image === undefined ? rest : { ...rest, fillImage: image },
+            };
+          }),
         );
         const ops: ElementOp[] = stored.map(({ elementId, changes }) => ({
           op: "update",
@@ -1132,7 +1168,11 @@ export function registerTools(server: McpServer, userId: string) {
           }),
         }));
         const result = await save(userId, board.id, ops);
-        return json({ updated: result.applied.length, conflicts: result.stale });
+        return json({
+          updated: result.applied.length,
+          conflicts: result.stale,
+          ...(images.warnings.length > 0 && { warnings: images.warnings }),
+        });
       }),
   );
 
@@ -1196,6 +1236,76 @@ export function registerTools(server: McpServer, userId: string) {
     },
     ({ boardId: id, ...input }) =>
       run(async () => json({ element: view(await importImage(userId, id, input)) })),
+  );
+
+  server.registerTool(
+    "search_images",
+    {
+      title: "Search for photos",
+      description: [
+        "Find real photos for a design (hero images, product shots, office scenes, portraits for testimonials) with no API key: openly licensed images from Openverse (stock photo sites first), with Wikimedia Commons as a fallback.",
+        "Only licenses that allow commercial use and changes come back: CC0 and public domain (free to use) or CC BY (show the credit line, e.g. in a small caption).",
+        'Use specific, photographic queries ("modern office interior, natural light", "woman portrait smiling", "laptop on wooden desk") and pick by orientation. Then use a result\'s url as an image fill (create_screen: image: { url }; create_elements: fillImage: { url }) or with add_image.',
+        "For avatars of made-up people use create_screen's avatar instead; for logos and illustrations draw SVG (add_svg, or svg on a box).",
+      ].join(" "),
+      inputSchema: z.object({
+        query: z
+          .string()
+          .min(2)
+          .max(200)
+          .describe("What the photo shows, in a few concrete words."),
+        orientation: z
+          .enum(["landscape", "portrait", "square"])
+          .optional()
+          .describe("landscape for heroes and cards, portrait for people, square for avatars."),
+        count: z.number().int().min(1).max(20).optional().describe("Default 6."),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    ({ query, orientation, count }) =>
+      run(async () => {
+        const { images, notes } = await searchImages(query, { orientation, count: count ?? 6 });
+        if (images.length === 0) {
+          return json({
+            images: [],
+            ...(notes.length > 0 && { unavailable: notes }),
+            next:
+              notes.length > 0
+                ? "The photo sources couldn't be reached. Use an SVG illustration, a gradient, or add_image with a URL you already have."
+                : "Nothing matched. Try broader or different words.",
+          });
+        }
+        return json({ images, ...(notes.length > 0 && { unavailable: notes }) });
+      }),
+  );
+
+  server.registerTool(
+    "add_svg",
+    {
+      title: "Add an SVG",
+      description: [
+        "Place SVG markup you write as an editable element: fictional company logos and wordmarks, illustrations, decorative blobs and patterns, empty-state art. Use the theme's colors.",
+        "Logos are always made up: never draw a real company's logo or trademark.",
+        "Allowed: shapes, paths, text, gradients, patterns, masks and filters, with links only to #ids in the same SVG. Scripts, event handlers (onload, …), foreignObject and external links or url(...) references are refused, with the parts named.",
+        "Without width it takes the size the SVG declares (width/height, else its viewBox); height keeps the ratio. Without x/y it goes to the right of everything on the board. Inside a create_screen layout, use svg on a box instead.",
+      ].join(" "),
+      inputSchema: z.object({
+        boardId,
+        svg: z.string().min(1).max(200_000).describe("The markup, starting with <svg>."),
+        x: z.number().optional(),
+        y: z.number().optional(),
+        width: z.number().positive().max(10_000).optional().describe("Display width in px."),
+        name: z
+          .string()
+          .max(64)
+          .optional()
+          .describe("Its groupId, to move it with other parts of a component."),
+        role: z.string().max(60).optional().describe('What it is: "logo", "illustration", …'),
+      }),
+      annotations: { openWorldHint: false },
+    },
+    ({ boardId: id, ...input }) =>
+      run(async () => json({ element: view(await importSvg(userId, id, input)) })),
   );
 
   // ── Selection and "Ask AI" requests ──────────────────────────────────────

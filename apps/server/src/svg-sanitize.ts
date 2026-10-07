@@ -102,3 +102,47 @@ export function sanitizeSvg(source: string, keepStyles = true): string | null {
   }
   return out;
 }
+
+/**
+ * What sanitizeSvg would drop from `source`, described for an AI editor: elements that aren't
+ * allowed (script, foreignObject, …) and unsafe attributes (event handlers, external links).
+ * Empty when the markup is clean.
+ */
+export function unsafeSvgParts(source: string): string[] {
+  const found = new Set<string>();
+  const tag = new RegExp(TAG.source, "g");
+  for (const [, closing, name = "", rawAttributes = ""] of source.matchAll(tag)) {
+    if (closing) continue;
+    if (!SVG_ALLOWED_ELEMENTS.has(name)) {
+      found.add(`<${name}>`);
+      continue;
+    }
+    for (const [, attributeName = "", double, single, bare] of rawAttributes.matchAll(ATTRIBUTE)) {
+      if (!isSafeSvgAttribute(name, attributeName, double ?? single ?? bare ?? "")) {
+        found.add(`${attributeName} on <${name}>`);
+      }
+    }
+  }
+  if (/<!DOCTYPE|<!ENTITY/i.test(source)) found.add("a DOCTYPE or entity declaration");
+  return [...found];
+}
+
+/** The size an SVG declares: width/height, else its viewBox, else 300 × 150 (as browsers do). */
+export function svgSize(markup: string) {
+  const root = /<svg\b([^>]*)>/i.exec(markup)?.[1] ?? "";
+  const attribute = (name: string) =>
+    new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`, "i").exec(root)?.[1];
+  const length = (name: string) => {
+    const raw = attribute(name);
+    const value = Number.parseFloat(raw ?? "");
+    return raw && !raw.endsWith("%") && Number.isFinite(value) && value > 0 ? value : undefined;
+  };
+  const box = attribute("viewBox")
+    ?.split(/[\s,]+/)
+    .map(Number);
+  const fromBox = box?.length === 4 && box.every(Number.isFinite) ? box : undefined;
+  return {
+    width: length("width") ?? fromBox?.[2] ?? 300,
+    height: length("height") ?? fromBox?.[3] ?? 150,
+  };
+}

@@ -34,6 +34,26 @@ export type LayoutSize = number | "fill";
 export type LayoutPadding = number | number[];
 export type LayoutAlign = "start" | "center" | "end" | "stretch";
 export type LayoutJustify = "start" | "center" | "end" | "space-between";
+/**
+ * DiceBear avatar styles Prism offers: CC0 1.0, except avataaars ("free for personal and
+ * commercial use"), so none needs a credit line. Styles under CC BY are left out.
+ */
+export const AVATAR_STYLES = [
+  "notionists",
+  "lorelei",
+  "open-peeps",
+  "avataaars",
+  "initials",
+  "thumbs",
+  "shapes",
+] as const;
+export type AvatarStyle = (typeof AVATAR_STYLES)[number];
+
+/** A DiceBear avatar for `seed` (a person's name): the same name always gets the same face. */
+export function avatarUrl(seed: string, style: AvatarStyle = "notionists") {
+  return `https://api.dicebear.com/9.x/${style}/png?size=256&seed=${encodeURIComponent(seed)}`;
+}
+
 /** An image fill: a URL to download (AI input) or, once stored with the board, its asset key. */
 export interface LayoutImage {
   url?: string | undefined;
@@ -124,6 +144,11 @@ export interface LayoutIcon extends NodeBase {
 
 export interface LayoutBox extends NodeBase {
   type: "box";
+  /** A generated avatar for this name (DiceBear), as its image. */
+  avatar?: string | undefined;
+  avatarStyle?: AvatarStyle | undefined;
+  /** SVG markup an AI editor wrote (a logo, an illustration), fitted inside it as its image. */
+  svg?: string | undefined;
   height: number;
   width?: LayoutSize | undefined;
   shape?: "rect" | "ellipse" | undefined;
@@ -339,6 +364,27 @@ const boxSchema = z.object({
   gradient: gradientSchema.optional().describe(GRADIENT_HELP),
   image: imageSchema.optional(),
   backdropBlur: z.number().min(0).max(BACKDROP_BLUR_MAX).optional().describe(BLUR_HELP),
+  avatar: z
+    .string()
+    .min(1)
+    .max(80)
+    .optional()
+    .describe(
+      "A generated avatar for a person's name (the same name always gets the same face), e.g. Maya Okafor. Use shape ellipse for a round one.",
+    ),
+  avatarStyle: z
+    .enum(AVATAR_STYLES)
+    .optional()
+    .describe(
+      "notionists (default, hand-drawn), lorelei, open-peeps, avataaars (cartoon), initials, thumbs or shapes.",
+    ),
+  svg: z
+    .string()
+    .max(200_000)
+    .optional()
+    .describe(
+      "SVG markup you write, fitted inside the box: a fictional logo or wordmark, an illustration, a pattern. Plain shapes, text, gradients and filters; no scripts, event handlers or external links.",
+    ),
   ...base,
 });
 
@@ -507,18 +553,36 @@ function radiusOf(radius: LayoutRadius | undefined): { radius?: Radius } {
   }
   return {};
 }
+/** Saves a tree's images with the board; undefined when one can't be saved (it's skipped). */
+export interface LayoutImageStore {
+  /** Downloads an image URL and returns its asset key. */
+  image: (url: string) => Promise<string | undefined>;
+  /** Saves SVG markup and returns its asset key. */
+  svg: (markup: string) => Promise<string | undefined>;
+}
+
 /**
- * The tree with each image fill's URL replaced by its stored asset key. `store` saves a URL with
- * the board; run it after components are expanded.
+ * The tree with its images stored with the board: image URLs, avatars and SVG markup become
+ * asset keys. Run it after components are expanded. An image that can't be stored is left out.
  */
 export async function storeLayoutImages(
   node: LayoutNode,
-  store: (url: string) => Promise<string>,
+  store: LayoutImageStore,
 ): Promise<LayoutNode> {
   if (node.type !== "box" && !isContainer(node)) return node;
-  const image = node.image?.url
-    ? { assetKey: await store(node.image.url), fit: node.image.fit }
-    : node.image;
+  let image = node.image;
+  if (image?.url) {
+    const assetKey = await store.image(image.url);
+    image = assetKey ? { assetKey, fit: image.fit } : undefined;
+  }
+  if (node.type === "box" && !image && node.svg) {
+    const assetKey = await store.svg(node.svg);
+    if (assetKey) image = { assetKey, fit: "contain" };
+  }
+  if (node.type === "box" && !image && node.avatar) {
+    const assetKey = await store.image(avatarUrl(node.avatar, node.avatarStyle));
+    if (assetKey) image = { assetKey, fit: "cover" };
+  }
   if (!isContainer(node)) return { ...node, image };
   const children = await Promise.all(node.children.map((child) => storeLayoutImages(child, store)));
   return { ...node, image, children };

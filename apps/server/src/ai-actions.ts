@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { BoardElement, EditRequest } from "@prism/shared";
+import { type BoardElement, type EditRequest, SVG_TYPE, UPLOAD_MAX_BYTES } from "@prism/shared";
 import type { EditStatus } from "./db/generated/client.js";
 import { prisma } from "./db/client.js";
-import { notFound } from "./errors.js";
+import { badRequest, notFound } from "./errors.js";
 import { downloadImage } from "./image-import.js";
 import { broadcastEdit, broadcastOps, latestSelection } from "./realtime.js";
 import { applyOps, ownedBoard, toElement } from "./routes/elements.js";
 import { putObject } from "./storage.js";
+import { sanitizeSvg, svgSize, unsafeSvgParts } from "./svg-sanitize.js";
 
 // What AI editors do besides plain element ops (src/mcp) and what the browser's "Ask AI" box
 // shares with them: the live selection, image import and edit requests.
@@ -100,28 +101,26 @@ function displayWidth(natural: { width: number; height: number }) {
   return Math.min(natural.width, portrait ? 390 : 960);
 }
 
-/**
- * Downloads an image from a public URL into the board's storage and places it as an image
- * element, by default to the right of everything else on the board.
- */
-export async function importImage(
-  userId: string,
-  boardId: string,
-  input: {
-    url: string;
-    x?: number | undefined;
-    y?: number | undefined;
-    width?: number | undefined;
-  },
-) {
-  const board = await ownedBoard(boardId, userId);
-  const image = await downloadImage(input.url);
-  const assetKey = await storeImage(board.id, image);
+interface Placement {
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+}
 
-  const width = input.width ?? displayWidth(image);
-  const height = Math.round((width * image.height) / image.width);
+/**
+ * Places a stored image or SVG `width` × `height` on the board, by default to the right of
+ * everything else, and tells open tabs.
+ */
+async function placeAsset(
+  boardId: string,
+  type: "image" | "svg",
+  assetKey: string,
+  input: Placement & { name?: string | undefined; role?: string | undefined },
+  width: number,
+  height: number,
+) {
   const placed = await prisma.element.findMany({
-    where: { boardId: board.id, deletedAt: null },
+    where: { boardId, deletedAt: null },
     select: { x: true, y: true, width: true, z: true },
   });
   const x =
@@ -132,7 +131,7 @@ export async function importImage(
   const element: BoardElement = {
     id: randomUUID(),
     version: 1,
-    type: "image",
+    type,
     x,
     y,
     width,
@@ -147,10 +146,63 @@ export async function importImage(
     opacity: 1,
     updatedBy: "ai_agent",
     assetKey,
+    ...(input.name && { groupId: input.name }),
+    ...(input.role && { role: input.role }),
   };
+  const board = await prisma.board.findUniqueOrThrow({ where: { id: boardId } });
   const { applied } = await applyOps(board, [{ op: "create", element }]);
-  broadcastOps(board.id, applied);
+  broadcastOps(boardId, applied);
   return element;
+}
+
+/**
+ * Downloads an image from a public URL into the board's storage and places it as an image
+ * element, by default to the right of everything else on the board.
+ */
+export async function importImage(
+  userId: string,
+  boardId: string,
+  input: Placement & { url: string },
+) {
+  const board = await ownedBoard(boardId, userId);
+  const image = await downloadImage(input.url);
+  const assetKey = await storeImage(board.id, image);
+  const width = input.width ?? displayWidth(image);
+  const height = Math.round((width * image.height) / image.width);
+  return placeAsset(board.id, "image", assetKey, input, width, height);
+}
+
+/**
+ * Checks SVG markup an AI editor wrote and stores it with the board. Refuses markup with unsafe
+ * parts (naming them) instead of quietly dropping them, so the editor knows to fix it.
+ */
+export async function storeSvg(boardId: string, markup: string) {
+  const unsafe = unsafeSvgParts(markup);
+  if (unsafe.length > 0) {
+    throw badRequest(
+      `This SVG has parts Prism doesn't allow: ${unsafe.join(", ")}. Use plain shapes, text, gradients and filters, links only to #ids in the same SVG, and no scripts or event handlers.`,
+    );
+  }
+  const clean = sanitizeSvg(markup);
+  if (!clean) throw badRequest("That isn't SVG markup: it needs an <svg> root element.");
+  const bytes = Buffer.from(clean, "utf8");
+  if (bytes.length > UPLOAD_MAX_BYTES) throw badRequest("That SVG is over the 10 MB limit.");
+  const assetKey = `${boardId}/${randomUUID()}.svg`;
+  await putObject(assetKey, bytes, SVG_TYPE);
+  return { assetKey, ...svgSize(clean) };
+}
+
+/** Places SVG markup an AI editor wrote (a logo, an illustration) as an svg element. */
+export async function importSvg(
+  userId: string,
+  boardId: string,
+  input: Placement & { svg: string; name?: string | undefined; role?: string | undefined },
+) {
+  const board = await ownedBoard(boardId, userId);
+  const svg = await storeSvg(board.id, input.svg);
+  const width = input.width ?? svg.width;
+  const height = Math.round(((width * svg.height) / svg.width) * 10) / 10;
+  return placeAsset(board.id, "svg", svg.assetKey, input, width, height);
 }
 
 // ── Edit requests ("Ask AI") ───────────────────────────────────────────────
