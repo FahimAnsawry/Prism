@@ -82,6 +82,7 @@ export function useDeleteProject() {
       // Its boards went with it.
       queryClient.removeQueries({ queryKey: ["board"] });
       patchWorkspace(queryClient, (w) => ({
+        ...w,
         projects: w.projects.filter((p) => p.id !== id),
         boards: w.boards.filter((b) => b.projectId !== id),
       }));
@@ -95,6 +96,28 @@ const tileOf = ({ id, name, itemCount, editedAt }: BoardSummary) => ({
   itemCount,
   editedAt,
 });
+
+/** Every board the user can open: their own and the ones shared with them. */
+export const allBoards = (workspace: Workspace) => [
+  ...workspace.boards,
+  ...workspace.shared.boards,
+];
+
+/** Every project the user can open: their own and the ones shared with them. */
+export const allProjects = (workspace: Workspace) => [
+  ...workspace.projects,
+  ...workspace.shared.projects,
+];
+
+/** Applies `change` to the board in whichever list holds it (the user's own or shared ones). */
+function withBoard(workspace: Workspace, board: BoardSummary): Workspace {
+  const swap = (list: BoardSummary[]) => list.map((b) => (b.id === board.id ? board : b));
+  return {
+    ...workspace,
+    boards: swap(workspace.boards),
+    shared: { ...workspace.shared, boards: swap(workspace.shared.boards) },
+  };
+}
 
 /** A board joined `projectId`: count it and show it first among the tiles. */
 function addToProject(workspace: Workspace, board: BoardSummary) {
@@ -126,7 +149,10 @@ export function useCreateBoard() {
     onSuccess: (board) => {
       queryClient.setQueryData(boardQuery(board.id).queryKey, board);
       patchWorkspace(queryClient, (w) =>
-        addToProject({ ...w, boards: [board, ...w.boards] }, board),
+        // A board made in a project shared with the user belongs to the project's owner.
+        board.access === "owner"
+          ? addToProject({ ...w, boards: [board, ...w.boards] }, board)
+          : { ...w, shared: { ...w.shared, boards: [board, ...w.shared.boards] } },
       );
     },
   });
@@ -142,10 +168,7 @@ export function useUpdateBoard() {
       queryClient.setQueryData(boardQuery(board.id).queryKey, board);
       patchWorkspace(queryClient, (w) => {
         const before = w.boards.find((b) => b.id === board.id);
-        let next: Workspace = {
-          ...w,
-          boards: w.boards.map((b) => (b.id === board.id ? board : b)),
-        };
+        let next = withBoard(w, board);
         if (before && before.projectId !== board.projectId) {
           next = addToProject(removeFromProject(next, before.projectId, board.id), board);
         } else if (board.projectId) {
@@ -202,9 +225,7 @@ export function useUpdateBoardStyle(boardId: string) {
     },
     onSuccess: (board) => {
       queryClient.setQueryData(key, board);
-      queryClient.setQueryData<Workspace>(WORKSPACE_KEY, (w) =>
-        w ? { ...w, boards: w.boards.map((b) => (b.id === board.id ? board : b)) } : w,
-      );
+      queryClient.setQueryData<Workspace>(WORKSPACE_KEY, (w) => (w ? withBoard(w, board) : w));
     },
   });
 }

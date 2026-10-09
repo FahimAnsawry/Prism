@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
-import { useState, type ComponentType } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import { ctaVariants } from "@/components/cta";
 import { DeleteItemDialog } from "@/components/dashboard/delete-item-dialog";
 import type { ItemAction } from "@/components/dashboard/item-actions-menu";
@@ -25,6 +25,7 @@ import {
   itemsFor,
   matchesQuery,
   plural,
+  sharedItemsFor,
   sortItems,
   type Filter,
   type ViewMode,
@@ -32,14 +33,23 @@ import {
 } from "@/components/dashboard/workspace-data";
 import { WorkspaceListHeader, WorkspaceRow } from "@/components/dashboard/workspace-row";
 import { PrismLoader } from "@/components/feedback/prism-loader";
+import { LeaveDialog } from "@/components/share/leave-dialog";
+import { ShareDialog } from "@/components/share/share-dialog";
 import { apiErrorMessage } from "@/lib/api";
 import { requireSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
-import { workspaceQuery } from "@/lib/workspace";
+import { claimPendingInvite } from "@/lib/sharing";
+import { allProjects, workspaceQuery } from "@/lib/workspace";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard - Prism" }] }),
-  beforeLoad: requireSession,
+  beforeLoad: async () => {
+    const session = await requireSession();
+    // Signed in from an invite link: finish accepting it.
+    const invite = claimPendingInvite();
+    if (invite) throw redirect({ to: "/invite/$token", params: { token: invite } });
+    return session;
+  },
   component: DashboardPage,
 });
 
@@ -74,6 +84,14 @@ function DashboardPage() {
     open: false,
     item: null,
   });
+  const [sharing, setSharing] = useState<{ open: boolean; item: WorkspaceItem | null }>({
+    open: false,
+    item: null,
+  });
+  const [leaving, setLeaving] = useState<{ open: boolean; item: WorkspaceItem | null }>({
+    open: false,
+    item: null,
+  });
   const workspace = useQuery(workspaceQuery);
 
   const updatePrefs = (changes: Partial<DashboardPrefs>) => {
@@ -86,27 +104,57 @@ function DashboardPage() {
   const onItemAction = (action: ItemAction, item: WorkspaceItem) => {
     if (action === "open") setProjectView({ open: true, projectId: item.id });
     else if (action === "edit") setItemDialog({ open: true, target: { mode: "edit", item } });
+    else if (action === "share") setSharing({ open: true, item });
+    else if (action === "leave") setLeaving({ open: true, item });
     else setDeleting({ open: true, item });
   };
 
   const data = workspace.data;
-  const isEmpty = data !== undefined && data.projects.length === 0 && data.boards.length === 0;
+  const ownEmpty = data !== undefined && data.projects.length === 0 && data.boards.length === 0;
+  const sharedCount = data ? data.shared.projects.length + data.shared.boards.length : 0;
+  const isEmpty = ownEmpty && sharedCount === 0;
   const items = data
     ? sortItems(
         itemsFor(data, filter).filter((item) => matchesQuery(item, query)),
         prefs.sort,
       )
     : [];
+  const sharedItems = data
+    ? sortItems(
+        sharedItemsFor(data, filter).filter((item) => matchesQuery(item, query)),
+        prefs.sort,
+      )
+    : [];
 
-  const viewedProject = data?.projects.find((p) => p.id === projectView.projectId);
+  const viewedProject = data && allProjects(data).find((p) => p.id === projectView.projectId);
   const viewedBoards = data
     ? sortItems(
-        itemsFor(data, "board").filter(
+        [...itemsFor(data, "board"), ...sharedItemsFor(data, "board")].filter(
           (b) => b.kind === "board" && b.projectId === projectView.projectId,
         ),
         prefs.sort,
       )
     : [];
+
+  const itemList = (list: WorkspaceItem[]): ReactNode =>
+    prefs.view === "grid" ? (
+      <ul className="mt-8 grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+        {list.map((item) => (
+          <li key={item.id}>
+            <WorkspaceCard item={item} sort={prefs.sort} onAction={onItemAction} />
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <div className="mt-8 border border-divider bg-card">
+        <WorkspaceListHeader sort={prefs.sort} />
+        <ul className="divide-y divide-divider">
+          {list.map((item) => (
+            <WorkspaceRow key={item.id} item={item} sort={prefs.sort} onAction={onItemAction} />
+          ))}
+        </ul>
+      </div>
+    );
 
   return (
     <div className="min-h-dvh bg-background">
@@ -193,31 +241,31 @@ function DashboardPage() {
               {workspace.isFetching ? "Retrying…" : "Try again"}
             </button>
           </div>
-        ) : isEmpty ? (
+        ) : isEmpty || (ownEmpty && !query.trim()) ? (
           <EmptyWorkspace onCreate={openCreate} />
         ) : items.length === 0 ? (
-          <NoMatches
-            query={query}
-            filter={filter}
-            onCreate={() => openCreate(filter === "project" ? "project" : "whiteboard")}
-          />
-        ) : prefs.view === "grid" ? (
-          <ul className="mt-8 grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((item) => (
-              <li key={item.id}>
-                <WorkspaceCard item={item} sort={prefs.sort} onAction={onItemAction} />
-              </li>
-            ))}
-          </ul>
+          // With only shared items, a search that matches some of them needs no "nothing here".
+          sharedItems.length > 0 && query.trim() ? null : (
+            <NoMatches
+              query={query}
+              filter={filter}
+              onCreate={() => openCreate(filter === "project" ? "project" : "whiteboard")}
+            />
+          )
         ) : (
-          <div className="mt-8 border border-divider bg-card">
-            <WorkspaceListHeader sort={prefs.sort} />
-            <ul className="divide-y divide-divider">
-              {items.map((item) => (
-                <WorkspaceRow key={item.id} item={item} sort={prefs.sort} onAction={onItemAction} />
-              ))}
-            </ul>
-          </div>
+          itemList(items)
+        )}
+
+        {sharedItems.length > 0 && (
+          <section aria-labelledby="shared-heading" className="mt-20">
+            <h2 id="shared-heading" className="text-[26px] leading-8 font-bold text-ink">
+              Shared with you
+            </h2>
+            <p className="mt-1 font-mono text-[13px] leading-[19px] text-muted-foreground">
+              {plural(sharedItems.length, "item")} others invited you to
+            </p>
+            {itemList(sharedItems)}
+          </section>
         )}
       </main>
 
@@ -239,6 +287,20 @@ function DashboardPage() {
         open={deleting.open}
         item={deleting.item}
         onOpenChange={(open) => setDeleting((d) => ({ ...d, open }))}
+      />
+      {sharing.item && (
+        <ShareDialog
+          kind={sharing.item.kind}
+          id={sharing.item.id}
+          name={sharing.item.name}
+          open={sharing.open}
+          onOpenChange={(open) => setSharing((d) => ({ ...d, open }))}
+        />
+      )}
+      <LeaveDialog
+        open={leaving.open}
+        item={leaving.item}
+        onOpenChange={(open) => setLeaving((d) => ({ ...d, open }))}
       />
     </div>
   );

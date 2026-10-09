@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { BoardPreview } from "./board-preview";
 import { ItemActionsMenu, type ItemAction } from "./item-actions-menu";
 import { ItemDate, KindBadge } from "./workspace-item-parts";
-import { itemMeta, type SortKey, type WorkspaceItem } from "./workspace-data";
+import { itemMeta, sharedLabel, type SortKey, type WorkspaceItem } from "./workspace-data";
 
 /** Project folders show three boards; the fourth slot counts the rest or stays an empty slot. */
 const VISIBLE_TILES = 3;
@@ -37,7 +37,11 @@ export function WorkspaceCard({
           {item.name}
         </h3>
         <p className="mt-0.5 truncate text-[13px] leading-[19px] text-muted-foreground">
-          {item.kind === "board" && item.projectName ? (
+          {sharedLabel(item) ? (
+            <>
+              Shared by <span className="font-bold text-foreground">{sharedLabel(item)}</span>
+            </>
+          ) : item.kind === "board" && item.projectName ? (
             <>
               <span className="font-bold text-foreground">{item.projectName}</span>
               {item.description && ` · ${item.description}`}

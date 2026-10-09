@@ -34,11 +34,39 @@ export function itemsFor(workspace: Workspace, filter: Filter): WorkspaceItem[] 
   return filter === "board" ? boards : [...projects, ...boards];
 }
 
+/**
+ * What others shared with the user, under the same filters: shared projects, and shared boards
+ * that aren't already reachable through one of those projects ("Whiteboards" lists them all).
+ */
+export function sharedItemsFor(workspace: Workspace, filter: Filter): WorkspaceItem[] {
+  const { shared } = workspace;
+  const projects = shared.projects.map((p) => ({ kind: "project" as const, ...p }));
+  if (filter === "project") return projects;
+  const projectNames = new Map(shared.projects.map((p) => [p.id, p.name]));
+  const boards = shared.boards
+    .filter((b) => filter === "board" || !b.projectId || !projectNames.has(b.projectId))
+    .map((b) => ({
+      kind: "board" as const,
+      ...b,
+      projectName: (b.projectId && projectNames.get(b.projectId)) || undefined,
+    }));
+  return filter === "board" ? boards : [...projects, ...boards];
+}
+
+/** "Shared by Ana · can edit" for an item someone else owns; undefined for the user's own. */
+export function sharedLabel(item: WorkspaceItem) {
+  if (item.access === "owner") return undefined;
+  return `${item.ownerName} · ${item.access === "editor" ? "can edit" : "can view"}`;
+}
+
 export function matchesQuery(item: WorkspaceItem, query: string) {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   const project = item.kind === "board" ? item.projectName : undefined;
-  return [item.name, item.description, project].some((text) => text?.toLowerCase().includes(q));
+  const owner = item.access === "owner" ? undefined : item.ownerName;
+  return [item.name, item.description, project, owner].some((text) =>
+    text?.toLowerCase().includes(q),
+  );
 }
 
 const byName = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });

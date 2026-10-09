@@ -9,10 +9,10 @@ import {
 import express, { Router } from "express";
 import type { Prisma } from "../db/generated/client.js";
 import { prisma } from "../db/client.js";
-import { notFound, parseBody } from "../errors.js";
+import { parseBody } from "../errors.js";
 import { broadcastOps } from "../realtime.js";
 import { requireUser } from "../session.js";
-import { BOARD_NOT_FOUND, liveBoardWhere, uuidParam } from "./board-access.js";
+import { boardFor } from "./board-access.js";
 
 type ElementRow = Prisma.ElementGetPayload<object>;
 type Props = Record<string, unknown>;
@@ -59,19 +59,6 @@ export function toElement(row: ElementRow): BoardElement {
   if (element.role === null) delete element.role;
   if (!element.locked) delete element.locked;
   return element;
-}
-
-/** The board if it's the user's and live; otherwise a 404. */
-export async function ownedBoard(boardIdParam: string | string[] | undefined, ownerId: string) {
-  const boardId = uuidParam(boardIdParam);
-  const board = boardId
-    ? await prisma.board.findFirst({
-        where: { id: boardId, ...liveBoardWhere(ownerId) },
-        select: { id: true, name: true, projectId: true },
-      })
-    : null;
-  if (!board) throw notFound(BOARD_NOT_FOUND);
-  return board;
 }
 
 type Existing = Pick<ElementRow, "id" | "version" | "deletedAt"> & { props: unknown };
@@ -209,7 +196,7 @@ export const elementsRouter = Router();
 
 /** The board's live elements, bottom layer first. */
 elementsRouter.get("/boards/:boardId/elements", requireUser, async (req, res) => {
-  const board = await ownedBoard(req.params.boardId, res.locals.userId);
+  const board = await boardFor(req.params.boardId, res.locals.userId, "view");
   const rows = await prisma.element.findMany({
     where: { boardId: board.id, deletedAt: null },
     orderBy: { z: "asc" },
@@ -224,7 +211,8 @@ elementsRouter.post(
   // Freehand strokes and big batches outgrow express.json()'s 100 KB default.
   express.json({ limit: "8mb" }),
   async (req, res) => {
-    const board = await ownedBoard(req.params.boardId, res.locals.userId);
+    // Viewers get a 403 here: only owners and editors change a board.
+    const board = await boardFor(req.params.boardId, res.locals.userId, "edit");
     const { ops } = parseBody(saveElementsSchema, req.body);
     const { applied, stale } = await applyOps(board, ops);
     // The saving tab already has these; every other tab on the board gets them now.

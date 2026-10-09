@@ -68,6 +68,7 @@ import {
   storeSvg,
   loadElements,
   selectionFor,
+  sourceFileStem,
   waitForEdits,
 } from "../ai-actions.js";
 import { HttpError } from "../errors.js";
@@ -80,13 +81,16 @@ import {
   requestReferenceComparison,
   requestMindmapLayout,
   requestScreenLayout,
+  showBoardInBrowser,
 } from "../realtime.js";
-import { applyOps, ownedBoard } from "../routes/elements.js";
+import { boardFor } from "../routes/board-access.js";
+import { applyOps } from "../routes/elements.js";
 import {
   boardComponents,
   boardTheme,
   createBoard,
   createProject,
+  designSites,
   getBoardSummary,
   getProjectComponents,
   getProjectTheme,
@@ -95,6 +99,7 @@ import {
   saveProjectTheme,
 } from "../routes/workspace.js";
 import { DESIGN_SURFACES, designGuide } from "./design-guide.js";
+import { photosOf, siteContext } from "./site-context.js";
 import { lintScreen, type ScreenWarning } from "./screen-lint.js";
 import {
   boundsOf,
@@ -304,7 +309,7 @@ function describeTheme(theme: Theme) {
 
 /** Saves AI-made ops (one undo step for the user) and sends them to open board tabs. */
 async function save(userId: string, id: string, ops: ElementOp[]) {
-  const board = await ownedBoard(id, userId);
+  const board = await boardFor(id, userId, "edit");
   const result = await applyOps(board, ops);
   broadcastOps(board.id, result.applied);
   return result;
@@ -323,7 +328,7 @@ async function createHtmlScreen(
   font: z.infer<typeof fontFamilySchema> | undefined,
   mode: ThemeMode,
 ) {
-  const board = await ownedBoard(boardIdInput, userId);
+  const board = await boardFor(boardIdInput, userId, "edit");
   const [theme, components] = await Promise.all([boardTheme(board), boardComponents(board)]);
   const existing = await loadElements(board.id);
   const content = boundsOf(existing);
@@ -431,6 +436,10 @@ async function createHtmlScreen(
   });
 }
 
+/** For an item shared with the user: what they may do there and whose it is. */
+const sharedBy = (item: { access: string; ownerName: string }) =>
+  item.access === "owner" ? {} : { access: item.access, owner: item.ownerName };
+
 export function registerTools(server: McpServer, userId: string) {
   // ── Boards ───────────────────────────────────────────────────────────────
 
@@ -439,23 +448,25 @@ export function registerTools(server: McpServer, userId: string) {
     {
       title: "List boards",
       description:
-        "List the user's Prism boards (id, name, project, item count), most recently edited first.",
+        'List the user\'s Prism boards (id, name, project, item count), most recently edited first, then the boards and projects others shared with them. access says what the user may do there: "editor" (edit content) or "viewer" (read-only: drawing tools refuse changes); the user\'s own items have no access field.',
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     () =>
       run(async () => {
         const workspace = await loadWorkspace(userId);
-        const projects = new Map(workspace.projects.map((p) => [p.id, p.name]));
+        const allProjects = [...workspace.projects, ...workspace.shared.projects];
+        const projects = new Map(allProjects.map((p) => [p.id, p.name]));
         return json({
-          boards: workspace.boards.map((b) => ({
+          boards: [...workspace.boards, ...workspace.shared.boards].map((b) => ({
             id: b.id,
             name: b.name,
             project: b.projectId ? (projects.get(b.projectId) ?? null) : null,
             items: b.itemCount,
             editedAt: b.editedAt,
             url: boardUrl(b.id),
+            ...sharedBy(b),
           })),
-          projects: workspace.projects.map((p) => ({ id: p.id, name: p.name })),
+          projects: allProjects.map((p) => ({ id: p.id, name: p.name, ...sharedBy(p) })),
         });
       }),
   );
@@ -465,7 +476,7 @@ export function registerTools(server: McpServer, userId: string) {
     {
       title: "Open or create a board",
       description:
-        "Open a board by id, or by name: an existing board with that name is reused, otherwise a new one is created. Returns the board id and its URL; give the URL to the user so they can watch the board update live.",
+        'Open a board by id, or by name: an existing board with that name is reused, otherwise a new one is created. If the user has Prism open in their browser, that tab switches to the board. Returns the board id, its URL and `browser`: "open" (it already was) or "opened" (the tab switched): the user is watching; "asked": the user was busy and got a prompt to open it; "no-tab": no Prism tab is open, so give the user the URL to open.',
       inputSchema: z.object({
         boardId: boardId.optional(),
         name: z
@@ -487,8 +498,9 @@ export function registerTools(server: McpServer, userId: string) {
           board = await getBoardSummary(userId, input.boardId);
         } else if (input.name) {
           const wanted = input.name.toLowerCase();
-          const { boards } = await loadWorkspace(userId);
-          board = boards.find((b) => b.name.trim().toLowerCase() === wanted);
+          const { boards, shared } = await loadWorkspace(userId);
+          // The user's own board first, then one shared with them.
+          board = [...boards, ...shared.boards].find((b) => b.name.trim().toLowerCase() === wanted);
           if (!board) {
             board = await createBoard(
               userId,
@@ -499,10 +511,12 @@ export function registerTools(server: McpServer, userId: string) {
         } else {
           throw new HttpError(400, "Give a boardId or a name.");
         }
+        const browser = await showBoardInBrowser(userId, board.id, { fromOtherBoards: true });
         return json({
-          board: { id: board.id, name: board.name, items: board.itemCount },
+          board: { id: board.id, name: board.name, items: board.itemCount, ...sharedBy(board) },
           url: boardUrl(board.id),
           created,
+          browser,
         });
       }),
   );
@@ -566,7 +580,7 @@ export function registerTools(server: McpServer, userId: string) {
               }
             : {};
         if (!id && input.boardId) {
-          const board = await ownedBoard(input.boardId, userId);
+          const board = await boardFor(input.boardId, userId, "view");
           if (!board.projectId) {
             return json({
               projectId: null,
@@ -663,7 +677,7 @@ export function registerTools(server: McpServer, userId: string) {
       run(async () => {
         let id = input.projectId;
         if (!id && input.boardId) {
-          const board = await ownedBoard(input.boardId, userId);
+          const board = await boardFor(input.boardId, userId, "view");
           if (!board.projectId) {
             return json({
               projectId: null,
@@ -821,7 +835,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     ({ boardId: id, frameId }) =>
       run(async () => {
-        const board = await ownedBoard(id, userId);
+        const board = await boardFor(id, userId, "view");
         const theme = await boardTheme(board);
         let elements = await loadElements(board.id);
         if (frameId) {
@@ -863,7 +877,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     ({ boardId: id, frameId }) =>
       run(async () => {
-        const board = await ownedBoard(id, userId);
+        const board = await boardFor(id, userId, "view");
         const theme = await boardTheme(board);
         const elements = await loadElements(board.id);
         const frames = elements.filter(
@@ -934,7 +948,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     ({ boardId: id, frameId, ids, scale }) =>
       run(async () => {
-        const board = await ownedBoard(id, userId);
+        const board = await boardFor(id, userId, "view");
         const elements = await loadElements(board.id);
         const image = await requestBoardImage(userId, {
           boardId: board.id,
@@ -984,7 +998,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     ({ boardId: id, frameId, referenceId }) =>
       run(async () => {
-        const board = await ownedBoard(id, userId);
+        const board = await boardFor(id, userId, "view");
         const elements = await loadElements(board.id);
         const { ok: _, ...report } = await requestReferenceComparison(userId, {
           boardId: board.id,
@@ -1019,7 +1033,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     ({ boardId: id, elements: inputs, mode }) =>
       run(async () => {
-        const board = await ownedBoard(id, userId);
+        const board = await boardFor(id, userId, "edit");
         const theme = await boardTheme(board);
         checkStrict(
           theme,
@@ -1057,7 +1071,7 @@ export function registerTools(server: McpServer, userId: string) {
     {
       title: "Get the design guide",
       description:
-        "REQUIRED before your first create_screen in a conversation: how a good screen looks (deciding a visual thesis, type sizes, color, spacing, a recipe for the surface, how to check the result). Read it once, design from it, and reuse it for later screens.",
+        "REQUIRED before your first create_screen in a conversation: how a good screen looks (deciding a visual thesis, type sizes, color, spacing, a recipe for the surface, how to check the result). Pass the boardId: the guide then ends with the board's site (a project, or a board outside any), either the screens it already has, whose design language every new page keeps, or, for a new site, how the user's other sites look, so it doesn't repeat them. Read it once per board, design from it, and reuse it for that board's later screens.",
       inputSchema: z.object({
         surface: z
           .enum(DESIGN_SURFACES)
@@ -1065,12 +1079,19 @@ export function registerTools(server: McpServer, userId: string) {
           .describe(
             "landing (marketing pages, default), app (dashboards and product screens) or mobile.",
           ),
+        boardId: boardId
+          .optional()
+          .describe("The board you're designing on, for its site section. Recommended."),
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    ({ surface }) => ({
-      content: [{ type: "text" as const, text: designGuide(surface ?? "landing") }],
-    }),
+    ({ surface, boardId: id }) =>
+      run(async () => {
+        const site = id ? siteContext(await designSites(userId, id)) : undefined;
+        return {
+          content: [{ type: "text" as const, text: designGuide(surface ?? "landing", site) }],
+        };
+      }),
   );
 
   server.registerTool(
@@ -1078,7 +1099,7 @@ export function registerTools(server: McpServer, userId: string) {
     {
       title: "Create a screen from a layout",
       description: [
-        "Call get_design_guide before your first screen.",
+        "Call get_design_guide (with the boardId) before your first screen.",
         "The main way to draw UI: describe a screen as a layout tree (root) and Prism positions everything, flexbox-style, so spacing and alignment come out exact. Or write it as HTML + Tailwind (html): the user's board tab renders it and reads it back as elements.",
         'HTML: the page body with Tailwind v4 classes (no scripts). The project theme is loaded, so use its classes: bg-primary, text-primary-foreground, text-muted-foreground, border-border, bg-card, rounded-lg, text-h1/text-body/text-caption (the theme sizes), font-heading; they are kept as $tokens. Icons: <i data-icon="search" class="size-5 text-muted-foreground"></i> (Lucide). Photos: <img src> from search_images. Avatars: <img data-avatar="Ana Ruiz" class="size-10 rounded-full">. Logos and illustrations: inline <svg>. Components: <x-use component="Button" variant="ghost" label="Cancel"></x-use> (children fill its slot). data-name="Hero" groups an element and data-role names it. Absolutely positioned elements are overlay layers. Gradient text (bg-clip-text) works; ::before/::after content, video and canvas are not drawn. Needs the board open in the browser.',
         'Containers: stack (top to bottom), row (left to right), grid (equal columns), overlay (layers on top of each other: the first sets its size, later ones are placed by anchor and x/y and may hang past its edges, for cards floating over a product window or a badge on an avatar), with gap, padding, align, justify, width/height (px, "fill" or hug) and an optional background (fill, stroke, radius, shadow, plus gradient, image (a photo URL), backdropBlur (frosted glass); radius may be per corner).',
@@ -1151,7 +1172,7 @@ export function registerTools(server: McpServer, userId: string) {
             input.mode ?? "light",
           );
         }
-        const board = await ownedBoard(input.boardId, userId);
+        const board = await boardFor(input.boardId, userId, "edit");
         const [theme, components] = await Promise.all([boardTheme(board), boardComponents(board)]);
         const expanded = expandComponents(
           input.root ?? { type: "stack", children: [] },
@@ -1297,7 +1318,7 @@ export function registerTools(server: McpServer, userId: string) {
             `Use at most ${MINDMAP_NODES_MAX} nodes per call (got ${total}).`,
           );
         }
-        const board = await ownedBoard(input.boardId, userId);
+        const board = await boardFor(input.boardId, userId, "edit");
         const existing = await loadElements(board.id);
         const content = boundsOf(existing);
 
@@ -1407,7 +1428,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     ({ boardId: id, updates, mode }) =>
       run(async () => {
-        const board = await ownedBoard(id, userId);
+        const board = await boardFor(id, userId, "edit");
         const theme = await boardTheme(board);
         const current = new Map((await loadElements(board.id)).map((el) => [el.id, el]));
         const missing = updates.filter((u) => !current.has(u.id)).map((u) => u.id);
@@ -1459,7 +1480,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     ({ boardId: id, ids }) =>
       run(async () => {
-        const board = await ownedBoard(id, userId);
+        const board = await boardFor(id, userId, "edit");
         const elements = await loadElements(board.id);
         const doomed = new Set(
           ids.filter((elementId) => elements.some((el) => el.id === elementId)),
@@ -1516,9 +1537,9 @@ export function registerTools(server: McpServer, userId: string) {
     {
       title: "Search for photos",
       description: [
-        "Find real photos for a design (hero images, product shots, office scenes, portraits for testimonials) with no API key: openly licensed images from Openverse (stock photo sites first), with Wikimedia Commons as a fallback.",
+        "Find real photos for a design (hero scenes, the customer's world, product shots, feature images) with no API key: openly licensed images from Openverse (stock photo sites first), with Wikimedia Commons as a fallback.",
         "Only licenses that allow commercial use and changes come back: CC0 and public domain (free to use) or CC BY (show the credit line, e.g. in a small caption).",
-        'Use specific, photographic queries ("modern office interior, natural light", "woman portrait smiling", "laptop on wooden desk") and pick by orientation. Then use a result\'s url as an image fill (create_screen: image: { url }; create_elements: fillImage: { url }) or with add_image.',
+        'Use specific, photographic queries from the product\'s own world ("freight depot loading bay at dawn", "dentist chair by a window", "hands sorting seed packets") rather than generic offices or smiling portraits, and pick by subject, crop, light and orientation, not by rank. Pass the boardId to leave out photos the user\'s other sites already use. Then use a result\'s url as an image fill (create_screen: image: { url }; create_elements: fillImage: { url }) or with add_image.',
         "For avatars of made-up people use create_screen's avatar instead; for logos and illustrations draw SVG (add_svg, or svg on a box).",
       ].join(" "),
       inputSchema: z.object({
@@ -1538,21 +1559,29 @@ export function registerTools(server: McpServer, userId: string) {
           .describe(
             "Color photos only (default true): black and white ones are left out. Checked in an open board tab; false keeps every result.",
           ),
+        boardId: boardId
+          .optional()
+          .describe(
+            "The board you're designing on: photos the user's other sites already use are left out, so sites don't share a face.",
+          ),
       }),
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    ({ query, orientation, count, color }) =>
+    ({ query, orientation, count, color, boardId: id }) =>
       run(async () => {
         const want = count ?? 6;
-        // Twice as many candidates when some may be left out for being black and white.
+        const taken = id ? photosOf((await designSites(userId, id)).others) : new Set<string>();
+        // Twice as many candidates when some may be left out (black and white, or already used).
         const found = await searchImages(query, {
           orientation,
-          count: color === false ? want : Math.min(20, want * 2),
+          count: color === false && taken.size === 0 ? want : Math.min(20, want * 2),
         });
         const notes = [...found.notes];
-        let images = found.images.slice(0, want);
-        if (color !== false && found.images.length > 0) {
-          const checked = await colorPhotos(found.images, want, (thumbs) =>
+        const fresh = found.images.filter((image) => !taken.has(sourceFileStem(image.url)));
+        const leftOut = found.images.length - fresh.length;
+        let images = fresh.slice(0, want);
+        if (color !== false && fresh.length > 0) {
+          const checked = await colorPhotos(fresh, want, (thumbs) =>
             requestImageColors(userId, { images: thumbs }),
           );
           images = checked.images;
@@ -1564,17 +1593,28 @@ export function registerTools(server: McpServer, userId: string) {
         }
         // The thumbnail is only for the color check.
         const shown = images.map(({ thumb: _, ...image }) => image);
+        const used =
+          leftOut > 0
+            ? `${leftOut} photo${leftOut === 1 ? "" : "s"} the user's other sites already use`
+            : undefined;
         if (shown.length === 0) {
           return json({
             images: [],
             ...(notes.length > 0 && { unavailable: notes }),
+            ...(used && { leftOut: used }),
             next:
               notes.length > 0
                 ? "The photo sources couldn't be reached. Use an SVG illustration, a gradient, or add_image with a URL you already have."
-                : "Nothing matched. Try broader or different words.",
+                : used
+                  ? "Every match is already used on another site. Try different words, or a typographic treatment instead of a photo."
+                  : "Nothing matched. Try broader or different words.",
           });
         }
-        return json({ images: shown, ...(notes.length > 0 && { unavailable: notes }) });
+        return json({
+          images: shown,
+          ...(notes.length > 0 && { unavailable: notes }),
+          ...(used && { leftOut: used }),
+        });
       }),
   );
 
@@ -1623,7 +1663,7 @@ export function registerTools(server: McpServer, userId: string) {
         const selection = await selectionFor(userId, id);
         const theme =
           selection.elements.length > 0 && selection.boardId
-            ? await boardTheme(await ownedBoard(selection.boardId, userId))
+            ? await boardTheme(await boardFor(selection.boardId, userId, "view"))
             : undefined;
         return json({
           boardId: selection.boardId,
@@ -1669,7 +1709,7 @@ export function registerTools(server: McpServer, userId: string) {
         const themes = new Map<string, Theme>();
         for (const r of requests) {
           if (!themes.has(r.boardId)) {
-            themes.set(r.boardId, await boardTheme(await ownedBoard(r.boardId, userId)));
+            themes.set(r.boardId, await boardTheme(await boardFor(r.boardId, userId, "view")));
           }
         }
         return json({
@@ -1767,12 +1807,12 @@ export function registerPrompts(server: McpServer) {
             text: [
               `Design this in Prism: ${idea}`,
               project
-                ? `1. Find the project "${project}" with list_boards (create_project if it doesn't exist), then open_board with the name "${board ?? idea}" and its projectId, and give me the board's URL.`
-                : `1. open_board with the name "${board ?? idea}" and give me its URL.`,
+                ? `1. Find the project "${project}" with list_boards (create_project if it doesn't exist), then open_board with the name "${board ?? idea}" and its projectId. Give me the board's URL unless it opened in my browser.`
+                : `1. open_board with the name "${board ?? idea}". Give me its URL unless it opened in my browser.`,
               "2. Theme: get_theme (boardId). If saved is false and this folder is the app's repo with a global CSS file (app/globals.css, src/index.css) defining shadcn/ui variables, import it with set_theme (css) so the design matches the app. Otherwise keep the theme, or ask me for brand colors and set them with set_theme.",
               "3. Components: list_components. If the project has none, define its shared parts first with define_component, using the theme's tokens: Button (variants primary, secondary, outline, ghost, destructive), Input (label, placeholder), Card (a slot for content), PageHeader (title, description, a slot for actions) and the app's navigation (Sidebar or TopBar with its items). Add a component whenever a part repeats across screens.",
               "4. If a Mobbin MCP is available, search it for 3 strong references. Add each with add_image (its image_url) in a row at the top, with a sticky note beside each saying what to take from it.",
-              "5. Read get_design_guide (surface landing, app or mobile) and write down the design's thesis, signature move, palette and type before drawing. Where the guide's sizes and the theme's text styles differ, the theme wins.",
+              "5. Read get_design_guide (surface landing, app or mobile, and the boardId) and write down the design's thesis, signature move, palette and type before drawing. Where the guide's sizes and the theme's text styles differ, the theme wins.",
               '6. Below the references, build the new design with create_screen (a layout tree, inside a frame at a real device size: 390x844 mobile or 1440x900 desktop), using create_elements only for extras that don\'t fit a layout. Put a small text above each frame naming its route and state, e.g. "/reset-password · desktop · link sent". Use theme tokens for every color, radius and text: textStyle $h1–$h4 for headings, $body / $body-sm for copy, $label for buttons and form labels, $caption for hints; fill $primary with $primary-foreground text, $card, $muted-foreground, stroke $border, $radius-md on buttons and inputs, $radius-lg on cards. Never hex or px sizes. Place the project components with use nodes wherever they fit instead of drawing buttons, inputs, cards and navigation again. Keep spacing on the scale from get_design_guide. Clean look (sketch: false), real copy, consistent spacing, a shadow on raised surfaces (md cards, lg modals), Lucide icons (type icon) for nav, actions and inputs, one groupId and a role per component.',
               "7. Fix the warnings create_screen returns. Then look at it with export_image (the frame's id), critique it against the thesis and references, fix anything that overlaps, is misaligned or wraps badly, check again, then summarize what you made.",
               "8. Finish by watching for my Ask AI requests (wait_for_edits, handle each, complete_edit, repeat).",

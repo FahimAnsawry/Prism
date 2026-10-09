@@ -114,9 +114,15 @@ function diff(
 /**
  * Keeps the server in step with `elements`. Returns the save status for the top bar, and
  * `receive` / `resync` for ops saved elsewhere: they record those ops as saved and return the
- * ones that are new, for the editor to apply.
+ * ones that are new, for the editor to apply. A read-only board (a viewer, a public link) never
+ * saves; it only uses `receive` and `resync`.
  */
-export function useBoardSaver(boardId: string, initial: BoardElement[], elements: BoardElement[]) {
+export function useBoardSaver(
+  boardId: string,
+  initial: BoardElement[],
+  elements: BoardElement[],
+  { readOnly = false } = {},
+) {
   const saved = useRef(new Map(initial.map((el) => [el.id, el])));
   /** The highest version the server has for each id, deleted ones included. */
   const versions = useRef(new Map(initial.map((el) => [el.id, el.version])));
@@ -187,14 +193,15 @@ export function useBoardSaver(boardId: string, initial: BoardElement[], elements
 
   useEffect(() => {
     latest.current = elements;
-    // Nothing to do for the board as it loaded.
-    if (elements === initial) return;
+    // Nothing to do for the board as it loaded, or one this tab can't change.
+    if (elements === initial || readOnly) return;
     const timer = setTimeout(() => void flush(), SAVE_DELAY);
     return () => clearTimeout(timer);
-  }, [elements, initial, flush]);
+  }, [elements, initial, flush, readOnly]);
 
   // Leaving the board (another route) saves what's pending; closing the tab asks first.
   useEffect(() => {
+    if (readOnly) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (diff(saved.current, latest.current, versions.current).length > 0) {
         void flush();
@@ -206,7 +213,7 @@ export function useBoardSaver(boardId: string, initial: BoardElement[], elements
       window.removeEventListener("beforeunload", onBeforeUnload);
       void flush();
     };
-  }, [flush]);
+  }, [flush, readOnly]);
 
   /** Records ops saved elsewhere; returns the ones newer than what this tab has. */
   const receive = useCallback((ops: ElementOp[]) => {
@@ -259,11 +266,22 @@ export interface RealtimeHandlers {
   /** Joined (or rejoined after a disconnect): time to catch up on missed changes. */
   onJoined: () => void;
   /** An "Ask AI" request on this board was created or changed status. */
-  onEdit: (request: EditRequest) => void;
+  onEdit?: (request: EditRequest) => void;
+  /** This tab lost the board: removed from it, or the public link was turned off or replaced. */
+  onRevoked?: () => void;
+  /** The user's role on the board changed. */
+  onAccessChanged?: () => void;
 }
 
-/** Joins the board's Socket.IO room for as long as the board is open. */
-export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
+/**
+ * Joins the board's Socket.IO room for as long as the board is open: as the signed-in user, or
+ * through a public link (`shareToken`), which only receives updates.
+ */
+export function useBoardRealtime(
+  boardId: string,
+  handlers: RealtimeHandlers,
+  { shareToken }: { shareToken?: string } = {},
+) {
   const latest = useRef(handlers);
   useEffect(() => {
     latest.current = handlers;
@@ -272,15 +290,26 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
   useEffect(() => {
     const socket = getSocket();
     const join = () => {
-      socket.emit("board:join", boardId, (ok) => {
+      const joined = (ok: boolean) => {
         if (ok) latest.current.onJoined();
-      });
+        else latest.current.onRevoked?.();
+      };
+      if (shareToken) socket.emit("share:join", shareToken, boardId, joined);
+      else socket.emit("board:join", boardId, joined);
     };
+    const onRevoked = (payload: { boardId: string }) => {
+      if (payload.boardId === boardId) latest.current.onRevoked?.();
+    };
+    const onAccess = (payload: { boardId: string }) => {
+      if (payload.boardId === boardId) latest.current.onAccessChanged?.();
+    };
+    socket.on("board:revoked", onRevoked);
+    socket.on("board:access", onAccess);
     const onOps = (payload: { boardId: string; ops: ElementOp[] }) => {
       if (payload.boardId === boardId) latest.current.onOps(payload.ops);
     };
     const onEdit = (request: EditRequest) => {
-      if (request.boardId === boardId) latest.current.onEdit(request);
+      if (request.boardId === boardId) latest.current.onEdit?.(request);
     };
     // An AI editor's export_image: this tab draws the board and replies with the picture.
     const onExportImage = (request: ExportImageRequest, ack: (reply: ExportImageReply) => void) => {
@@ -326,6 +355,8 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
     if (socket.connected) join();
     return () => {
       socket.off("connect", join);
+      socket.off("board:revoked", onRevoked);
+      socket.off("board:access", onAccess);
       socket.off("element:ops", onOps);
       socket.off("edit:update", onEdit);
       socket.off("export:image", onExportImage);
@@ -336,7 +367,7 @@ export function useBoardRealtime(boardId: string, handlers: RealtimeHandlers) {
       socket.off("layout:mindmap", onLayoutMindmap);
       socket.emit("board:leave", boardId);
     };
-  }, [boardId]);
+  }, [boardId, shareToken]);
 }
 
 /** Tells the server what this tab has selected, so AI editors can read it (get_selection). */

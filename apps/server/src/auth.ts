@@ -7,6 +7,7 @@ import { createAuthMiddleware } from "better-auth/api";
 import { jwt } from "better-auth/plugins";
 import { authPrisma } from "./db/auth-prisma.js";
 import { prisma } from "./db/client.js";
+import { claimInvites } from "./invites.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -120,6 +121,16 @@ export const auth = betterAuth({
   },
 
   databaseHooks: {
+    session: {
+      create: {
+        // Signing in with a verified email accepts the share invites sent to it.
+        after: async (session) => {
+          await claimInvites(session.userId).catch((error: unknown) =>
+            console.error("[Prism] Couldn't accept share invites:", error),
+          );
+        },
+      },
+    },
     account: {
       create: {
         // Someone may have signed up with this email and a password without owning the

@@ -4,13 +4,15 @@ import { Link } from "@tanstack/react-router";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { ctaVariants } from "@/components/cta";
+import { LeaveDialog } from "@/components/share/leave-dialog";
+import { ShareDialog } from "@/components/share/share-dialog";
 import { BoardPreview } from "./board-preview";
 import { DeleteItemDialog } from "./delete-item-dialog";
 import { ItemActionsMenu, type ItemAction } from "./item-actions-menu";
 import { ItemDialog, type ItemDialogTarget } from "./item-dialog";
 import { ProjectIcon } from "./new-menu";
 import { CanvasPreview, ItemDate } from "./workspace-item-parts";
-import { itemMeta, plural, type SortKey, type WorkspaceItem } from "./workspace-data";
+import { itemMeta, plural, sharedLabel, type SortKey, type WorkspaceItem } from "./workspace-data";
 
 /** Shows on row hover or keyboard focus; always on touch screens. */
 const revealOnHover =
@@ -46,11 +48,24 @@ export function ProjectDialog({
     open: false,
     item: null,
   });
+  const [sharing, setSharing] = useState<{ open: boolean; item: WorkspaceItem | null }>({
+    open: false,
+    item: null,
+  });
+  const [leaving, setLeaving] = useState<{ open: boolean; item: WorkspaceItem | null }>({
+    open: false,
+    item: null,
+  });
 
   const onAction = (action: ItemAction, item: WorkspaceItem) => {
     if (action === "edit") setItemDialog({ open: true, target: { mode: "edit", item } });
     else if (action === "delete") setDeleting({ open: true, item });
+    else if (action === "share") setSharing({ open: true, item });
+    else if (action === "leave") setLeaving({ open: true, item });
   };
+  // In a project shared with the user, boards can't move to other projects, and only editors add them.
+  const owned = project?.access === "owner";
+  const canAdd = project !== undefined && project.access !== "viewer";
   const createBoard = () => {
     if (project) {
       setItemDialog({
@@ -75,7 +90,9 @@ export function ProjectDialog({
                     {project.name}
                   </Dialog.Title>
                   <Dialog.Description className="mt-1 truncate text-sm text-muted-foreground">
-                    {project.description ?? plural(project.boardCount, "board")}
+                    {sharedLabel({ kind: "project", ...project })
+                      ? `Shared by ${sharedLabel({ kind: "project", ...project })}`
+                      : (project.description ?? plural(project.boardCount, "board"))}
                   </Dialog.Description>
                 </div>
                 <div className="-mt-0.5 flex shrink-0 items-center gap-1">
@@ -93,15 +110,17 @@ export function ProjectDialog({
                 <h3 className="font-mono text-3xs font-bold text-muted-foreground">
                   BOARDS · {boards.length}
                 </h3>
-                <button
-                  type="button"
-                  onClick={createBoard}
-                  aria-label={`New whiteboard in ${project.name}`}
-                  title="New whiteboard"
-                  className="flex size-9 items-center justify-center bg-brand text-slate transition-colors duration-150 ease-standard hover:bg-brand/80"
-                >
-                  <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />
-                </button>
+                {canAdd && (
+                  <button
+                    type="button"
+                    onClick={createBoard}
+                    aria-label={`New whiteboard in ${project.name}`}
+                    title="New whiteboard"
+                    className="flex size-9 items-center justify-center bg-brand text-slate transition-colors duration-150 ease-standard hover:bg-brand/80"
+                  >
+                    <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />
+                  </button>
+                )}
               </div>
 
               {boards.length > 0 ? (
@@ -137,20 +156,27 @@ export function ProjectDialog({
                         </span>
                         <ItemDate item={board} sort={sort} />
                       </Link>
-                      <ItemActionsMenu item={board} onAction={onAction} className={revealOnHover} />
+                      <ItemActionsMenu
+                        item={board}
+                        onAction={onAction}
+                        canLeave={false}
+                        className={revealOnHover}
+                      />
                     </li>
                   ))}
                 </ul>
               ) : (
                 <div className="flex flex-col items-center gap-5 px-6 pt-6 pb-10 text-center">
                   <p className="text-sm text-muted-foreground">No boards in this project yet.</p>
-                  <button
-                    type="button"
-                    onClick={createBoard}
-                    className={ctaVariants({ size: "sm" })}
-                  >
-                    New whiteboard
-                  </button>
+                  {canAdd && (
+                    <button
+                      type="button"
+                      onClick={createBoard}
+                      className={ctaVariants({ size: "sm" })}
+                    >
+                      New whiteboard
+                    </button>
+                  )}
                 </div>
               )}
             </>
@@ -163,12 +189,27 @@ export function ProjectDialog({
         open={itemDialog.open}
         target={itemDialog.target}
         onOpenChange={(next) => setItemDialog((d) => ({ ...d, open: next }))}
-        projects={projects}
+        projects={owned ? projects : []}
       />
       <DeleteItemDialog
         open={deleting.open}
         item={deleting.item}
         onOpenChange={(next) => setDeleting((d) => ({ ...d, open: next }))}
+      />
+      {sharing.item && (
+        <ShareDialog
+          kind={sharing.item.kind}
+          id={sharing.item.id}
+          name={sharing.item.name}
+          open={sharing.open}
+          onOpenChange={(next) => setSharing((d) => ({ ...d, open: next }))}
+        />
+      )}
+      <LeaveDialog
+        open={leaving.open}
+        item={leaving.item}
+        onOpenChange={(next) => setLeaving((d) => ({ ...d, open: next }))}
+        onLeft={() => onOpenChange(false)}
       />
     </Dialog.Root>
   );

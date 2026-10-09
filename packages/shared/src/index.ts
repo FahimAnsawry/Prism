@@ -5,6 +5,7 @@ export * from "./components.js";
 export * from "./elements.js";
 export * from "./layout.js";
 export * from "./mindmap.js";
+export * from "./sharing.js";
 export * from "./svg.js";
 export * from "./theme.js";
 export * from "./theme-code.js";

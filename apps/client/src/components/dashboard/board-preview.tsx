@@ -1,4 +1,4 @@
-import { hiddenMindNodes } from "@prism/shared";
+import { type BoardElement, hiddenMindNodes } from "@prism/shared";
 import { useQuery } from "@tanstack/react-query";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { byZ } from "@/components/board/board-model";
@@ -24,19 +24,22 @@ export function BoardPreview({
   itemCount,
   editedAt,
   className,
+  load,
 }: {
   boardId: string;
   itemCount: number;
   editedAt: string;
   className?: string;
+  /** Loads the elements another way than as the signed-in user (a public link). */
+  load?: () => Promise<BoardElement[]>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const near = useNearViewport(ref);
   const empty = itemCount === 0;
   const preview = useQuery({
-    queryKey: ["board-preview", boardId, editedAt],
+    queryKey: ["board-preview", boardId, editedAt, load ? "public" : "user"],
     queryFn: async () => {
-      const all = await fetchBoardElements(boardId);
+      const all = await (load ? load() : fetchBoardElements(boardId));
       // Folded mind map branches aren't shown on the board, so not here either.
       const hidden = hiddenMindNodes(all);
       const elements = byZ(all.filter((el) => !hidden.has(el.id)));

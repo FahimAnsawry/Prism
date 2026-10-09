@@ -16,7 +16,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as BoardBoardIdRouteImport } from './routes/board.$boardId'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as OauthConsentRouteImport } from './routes/oauth.consent'
+import { Route as STokenIndexRouteImport } from './routes/s.$token.index'
+import { Route as STokenBoardIdRouteImport } from './routes/s.$token.$boardId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -53,9 +56,24 @@ const BoardBoardIdRoute = BoardBoardIdRouteImport.update({
   path: '/board/$boardId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthConsentRoute = OauthConsentRouteImport.update({
   id: '/oauth/consent',
   path: '/oauth/consent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const STokenIndexRoute = STokenIndexRouteImport.update({
+  id: '/s/$token/',
+  path: '/s/$token/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const STokenBoardIdRoute = STokenBoardIdRouteImport.update({
+  id: '/s/$token/$boardId',
+  path: '/s/$token/$boardId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -67,7 +85,10 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/board/$boardId': typeof BoardBoardIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/oauth/consent': typeof OauthConsentRoute
+  '/s/$token/$boardId': typeof STokenBoardIdRoute
+  '/s/$token/': typeof STokenIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -77,7 +98,10 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/board/$boardId': typeof BoardBoardIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/oauth/consent': typeof OauthConsentRoute
+  '/s/$token/$boardId': typeof STokenBoardIdRoute
+  '/s/$token': typeof STokenIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -88,7 +112,10 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/board/$boardId': typeof BoardBoardIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/oauth/consent': typeof OauthConsentRoute
+  '/s/$token/$boardId': typeof STokenBoardIdRoute
+  '/s/$token/': typeof STokenIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -100,7 +127,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/board/$boardId'
+    | '/invite/$token'
     | '/oauth/consent'
+    | '/s/$token/$boardId'
+    | '/s/$token/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -110,7 +140,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/board/$boardId'
+    | '/invite/$token'
     | '/oauth/consent'
+    | '/s/$token/$boardId'
+    | '/s/$token'
   id:
     | '__root__'
     | '/'
@@ -120,7 +153,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/board/$boardId'
+    | '/invite/$token'
     | '/oauth/consent'
+    | '/s/$token/$boardId'
+    | '/s/$token/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -131,7 +167,10 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   BoardBoardIdRoute: typeof BoardBoardIdRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   OauthConsentRoute: typeof OauthConsentRoute
+  STokenBoardIdRoute: typeof STokenBoardIdRoute
+  STokenIndexRoute: typeof STokenIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -185,11 +224,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BoardBoardIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/consent': {
       id: '/oauth/consent'
       path: '/oauth/consent'
       fullPath: '/oauth/consent'
       preLoaderRoute: typeof OauthConsentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/s/$token/': {
+      id: '/s/$token/'
+      path: '/s/$token'
+      fullPath: '/s/$token/'
+      preLoaderRoute: typeof STokenIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/s/$token/$boardId': {
+      id: '/s/$token/$boardId'
+      path: '/s/$token/$boardId'
+      fullPath: '/s/$token/$boardId'
+      preLoaderRoute: typeof STokenBoardIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -203,7 +263,10 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   BoardBoardIdRoute: BoardBoardIdRoute,
+  InviteTokenRoute: InviteTokenRoute,
   OauthConsentRoute: OauthConsentRoute,
+  STokenBoardIdRoute: STokenBoardIdRoute,
+  STokenIndexRoute: STokenIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

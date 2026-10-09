@@ -15,6 +15,7 @@ import {
   type LayoutScreenRequest,
   layoutScreenReplySchema,
   type ServerToClientEvents,
+  showBoardReplySchema,
 } from "@prism/shared";
 import { fromNodeHeaders } from "better-auth/node";
 import { Server } from "socket.io";
@@ -22,14 +23,19 @@ import { z } from "zod";
 import { auth } from "./auth.js";
 import { prisma } from "./db/client.js";
 import { HttpError } from "./errors.js";
-import { liveBoardWhere } from "./routes/board-access.js";
+import { accessibleBoardWhere, boardForShareToken } from "./routes/board-access.js";
 
 // Real-time sync (tools.md §2): browsers join one room per board and receive the element ops
 // that other tabs and AI editors save. Saves still go through the REST route, which broadcasts
 // what it applied; the socket only carries updates out, plus each tab's selection in.
+// Public link viewers connect without an account: they join through the link's token and only
+// ever receive updates.
 
 interface SocketData {
-  userId: string;
+  /** Null for a public link's viewer (no session). */
+  userId: string | null;
+  /** Boards this tab joined through a public link, and the link's token. */
+  shareRooms: Map<string, string>;
 }
 
 type PrismServer = Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>;
@@ -47,6 +53,12 @@ interface TabSelection {
 }
 const selections = new Map<string, TabSelection>();
 
+/** When each connected tab was last focused, so board:show goes to the one the user is using. */
+const activeAt = new Map<string, number>();
+
+/** open_board calls waiting for a tab to finish opening their board. */
+const joinWaiters = new Set<{ userId: string; boardId: string; resolve: () => void }>();
+
 const selectionPayload = z.object({
   boardId: z.uuid(),
   elementIds: z.array(z.uuid()).max(5_000),
@@ -59,16 +71,14 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
     maxHttpBufferSize: 8e6,
   });
 
-  // Only signed-in browsers connect; AI editors use the REST API with a token.
+  // Signed-in browsers connect with their session; public link viewers without one, and can
+  // then only join boards through a link (share:join). AI editors use the REST API instead.
   io.use((socket, next) => {
     auth.api
       .getSession({ headers: fromNodeHeaders(socket.handshake.headers) })
       .then((session) => {
-        if (!session) {
-          next(new Error("Sign in to continue."));
-          return;
-        }
-        socket.data.userId = session.user.id;
+        socket.data.userId = session?.user.id ?? null;
+        socket.data.shareRooms = new Map();
         next();
       })
       .catch((error: unknown) => {
@@ -80,21 +90,33 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
   io.on("connection", (socket) => {
     const { userId } = socket.data;
 
+    socket.on("tab:active", () => {
+      activeAt.set(socket.id, Date.now());
+    });
+
     socket.on("board:join", (boardId, ack) => {
       const reply = typeof ack === "function" ? ack : () => {};
-      if (!z.uuid().safeParse(boardId).success) {
+      if (!userId || !z.uuid().safeParse(boardId).success) {
         reply(false);
         return;
       }
       prisma.board
-        .findFirst({ where: { id: boardId, ...liveBoardWhere(userId) }, select: { id: true } })
+        .findFirst({
+          where: { id: boardId, ...accessibleBoardWhere(userId) },
+          select: { id: true },
+        })
         .then(async (board) => {
           if (!board) {
             reply(false);
             return;
           }
           await socket.join(room(boardId));
+          // In as the user now, not through a link.
+          socket.data.shareRooms.delete(boardId);
           reply(true);
+          for (const waiter of joinWaiters) {
+            if (waiter.userId === userId && waiter.boardId === boardId) waiter.resolve();
+          }
         })
         .catch((error: unknown) => {
           console.error("[Prism] Couldn't join a board room:", error);
@@ -102,22 +124,80 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
         });
     });
 
+    // A public link's viewer: read-only, so this tab only receives the board's updates.
+    socket.on("share:join", (token, boardId, ack) => {
+      const reply = typeof ack === "function" ? ack : () => {};
+      boardForShareToken(token, boardId)
+        .then(async (board) => {
+          if (!board) {
+            reply(false);
+            return;
+          }
+          // A member's own join takes precedence over a link.
+          if (!socket.rooms.has(room(board.id))) socket.data.shareRooms.set(board.id, token);
+          await socket.join(room(board.id));
+          reply(true);
+        })
+        .catch((error: unknown) => {
+          console.error("[Prism] Couldn't join a shared board:", error);
+          reply(false);
+        });
+    });
+
     socket.on("board:leave", (boardId) => {
       if (typeof boardId !== "string") return;
       void socket.leave(room(boardId));
+      socket.data.shareRooms.delete(boardId);
       if (selections.get(socket.id)?.boardId === boardId) selections.delete(socket.id);
     });
 
     socket.on("selection:set", (payload) => {
       const parsed = selectionPayload.safeParse(payload);
-      if (!parsed.success || !socket.rooms.has(room(parsed.data.boardId))) return;
+      if (!userId || !parsed.success || !socket.rooms.has(room(parsed.data.boardId))) return;
       selections.set(socket.id, { userId, ...parsed.data, at: Date.now() });
     });
 
     socket.on("disconnect", () => {
       selections.delete(socket.id);
+      activeAt.delete(socket.id);
     });
   });
+}
+
+/**
+ * Takes boards away from tabs that lost access: a member's tabs (`userId`) or a public link's
+ * viewers (`shareToken`). They leave the rooms and are told, so the page can say so.
+ */
+export function revokeBoardTabs(
+  boardIds: string[],
+  who: { userId: string } | { shareToken: string },
+) {
+  if (!io || boardIds.length === 0) return;
+  for (const socket of io.sockets.sockets.values()) {
+    for (const boardId of boardIds) {
+      if (!socket.rooms.has(room(boardId))) continue;
+      const viaLink = socket.data.shareRooms.get(boardId);
+      const matches =
+        "userId" in who
+          ? socket.data.userId === who.userId && viaLink === undefined
+          : viaLink === who.shareToken;
+      if (!matches) continue;
+      void socket.leave(room(boardId));
+      socket.data.shareRooms.delete(boardId);
+      socket.emit("board:revoked", { boardId });
+    }
+  }
+}
+
+/** Tells the user's tabs on these boards that their access changed, so they reload it. */
+export function notifyAccessChanged(boardIds: string[], userId: string) {
+  if (!io || boardIds.length === 0) return;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.userId !== userId) continue;
+    for (const boardId of boardIds) {
+      if (socket.rooms.has(room(boardId))) socket.emit("board:access", { boardId });
+    }
+  }
 }
 
 /** Sends applied ops to every tab on the board except the one that saved them. */
@@ -169,11 +249,18 @@ async function drawOnTab<R extends TabReply>(
   ask: (tab: BoardTab) => Promise<unknown>,
   schema: { parse: (raw: unknown) => R },
 ): Promise<Extract<R, { ok: true }>> {
+  const browser = await showBoardInBrowser(userId, boardId);
   const tabs = boardTabs(userId, boardId);
+  if (browser === "asked") {
+    throw new HttpError(
+      409,
+      "The board isn't open in the user's browser, and images are drawn there. Their Prism tab is asking them to open it: tell them, then try again once they have.",
+    );
+  }
   if (tabs.length === 0) {
     throw new HttpError(
       409,
-      "The board isn't open in the user's browser, and images are drawn there. Give the user the board's URL (from open_board), ask them to open it, then try again.",
+      "The board isn't open in the user's browser, and images are drawn there. Give the user the board's URL (from open_board), ask them to open it (or to keep Prism open, so boards open by themselves), then try again.",
     );
   }
   for (const tab of tabs) {
@@ -279,6 +366,7 @@ async function askForLayout(
   boardId: string,
   ask: (tab: BoardTab) => Promise<unknown>,
 ) {
+  await showBoardInBrowser(userId, boardId);
   for (const tab of boardTabs(userId, boardId)) {
     try {
       const reply = layoutScreenReplySchema.parse(await ask(tab));
@@ -289,4 +377,80 @@ async function askForLayout(
     }
   }
   return null;
+}
+
+/** How long a tab gets to answer board:show. */
+const SHOW_TIMEOUT_MS = 5_000;
+/** How long a tab that switched gets to load the board and join its room. */
+const OPEN_TIMEOUT_MS = 15_000;
+
+/**
+ * Where the board is in the user's browser after showBoardInBrowser: already open in a tab,
+ * just opened in one, waiting for the user to accept (they were busy), or nowhere because no
+ * Prism tab could show it.
+ */
+export type BrowserBoardState = "open" | "opened" | "asked" | "no-tab";
+
+const onSomeBoard = (socket: { rooms: Set<string> }) =>
+  [...socket.rooms].some((name) => name.startsWith("board:"));
+
+/** Resolves when one of the user's tabs joins the board's room, or after `ms`. */
+function waitForJoin(userId: string, boardId: string, ms: number) {
+  const waiter = { userId, boardId, resolve: () => {} };
+  let timer: NodeJS.Timeout | undefined;
+  const joined = new Promise<void>((resolve) => {
+    waiter.resolve = resolve;
+    timer = setTimeout(resolve, ms);
+  });
+  joinWaiters.add(waiter);
+  return {
+    joined,
+    cancel: () => {
+      clearTimeout(timer);
+      joinWaiters.delete(waiter);
+    },
+  };
+}
+
+/**
+ * Brings the board up in the user's browser: the Prism tab they focused most recently switches
+ * to it, and this waits until it has joined the board. open_board may take a tab off another
+ * board (`fromOtherBoards`); tools that only need a tab to draw in take one that's on no board
+ * (the dashboard), so they never pull the user away from a board they went back to.
+ */
+export async function showBoardInBrowser(
+  userId: string,
+  boardId: string,
+  { fromOtherBoards = false } = {},
+): Promise<BrowserBoardState> {
+  if (!io) return "no-tab";
+  if (boardTabs(userId, boardId).length > 0) return "open";
+  const tabs = [...io.sockets.sockets.values()]
+    .filter((socket) => socket.data.userId === userId)
+    .filter((socket) => fromOtherBoards || !onSomeBoard(socket))
+    .sort((a, b) => (activeAt.get(b.id) ?? 0) - (activeAt.get(a.id) ?? 0));
+  if (tabs.length === 0) return "no-tab";
+  const board = await prisma.board.findFirst({
+    where: { id: boardId, ...accessibleBoardWhere(userId) },
+    select: { name: true },
+  });
+  if (!board) return "no-tab";
+
+  for (const tab of tabs) {
+    // Listen before asking: the tab may join before its reply arrives.
+    const wait = waitForJoin(userId, boardId, OPEN_TIMEOUT_MS);
+    try {
+      const reply = showBoardReplySchema.parse(
+        await tab.timeout(SHOW_TIMEOUT_MS).emitWithAck("board:show", { boardId, name: board.name }),
+      );
+      if (reply === "asked") return "asked";
+      await wait.joined;
+      return boardTabs(userId, boardId).length > 0 ? "opened" : "no-tab";
+    } catch (error) {
+      console.warn("[Prism] A tab didn't switch to the board:", error);
+    } finally {
+      wait.cancel();
+    }
+  }
+  return "no-tab";
 }
