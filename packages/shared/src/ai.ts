@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { BoardElement, ElementOp } from "./elements.js";
 import type { Components } from "./components.js";
+import type { ErDiagramOptions, ErRelationInput, ErTableInput } from "./er.js";
 import type { LayoutNode, LayoutOptions } from "./layout.js";
 import type { MindmapInput, MindmapOptions } from "./mindmap.js";
 import type { Theme, ThemeMode } from "./theme.js";
@@ -244,6 +245,14 @@ export const imageColorsReplySchema = z.discriminatedUnion("ok", [
 
 export type ImageColorsReply = z.infer<typeof imageColorsReplySchema>;
 
+/** An ER diagram for a board tab to size with the board's fonts (create_er_diagram). */
+export interface LayoutErRequest {
+  boardId: string;
+  tables: ErTableInput[];
+  relations: ErRelationInput[];
+  options: ErDiagramOptions;
+}
+
 /** Mind map nodes for a board tab to size with the board's fonts (create_mindmap). */
 export interface LayoutMindmapRequest {
   boardId: string;
@@ -274,6 +283,8 @@ export interface ServerToClientEvents {
     request: LayoutMindmapRequest,
     ack: (reply: LayoutScreenReply) => void,
   ) => void;
+  /** An AI editor's create_er_diagram: size the tables with real text measurements and reply. */
+  "layout:er": (request: LayoutErRequest, ack: (reply: LayoutScreenReply) => void) => void;
   /**
    * An AI editor opened a board (open_board): switch this tab to it. The reply says whether the
    * tab went there or, because the user was busy (typing, a dialog open), asked them first.

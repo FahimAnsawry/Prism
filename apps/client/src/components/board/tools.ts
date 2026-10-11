@@ -18,6 +18,7 @@ import {
   Shapes,
   Square,
   StickyNote,
+  Table2,
   Type,
 } from "lucide-react";
 
@@ -40,7 +41,8 @@ export type ToolId =
   | "image"
   | "svg"
   | "chart"
-  | "mindmap";
+  | "mindmap"
+  | "table";
 
 export interface Tool {
   id: ToolId;
@@ -79,7 +81,10 @@ export const TOOL_GROUPS: Tool[][] = [
     { id: "svg", label: "SVG", shortcut: "S", icon: FileCode },
     { id: "chart", label: "Chart", shortcut: "C", icon: ChartColumn },
   ],
-  [{ id: "mindmap", label: "Mind map", shortcut: "G", icon: Network }],
+  [
+    { id: "mindmap", label: "Mind map", shortcut: "G", icon: Network },
+    { id: "table", label: "Table (ER diagram)", shortcut: "Y", icon: Table2 },
+  ],
 ];
 
 export const TOOLS_BY_SHORTCUT = new Map(

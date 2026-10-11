@@ -1,4 +1,16 @@
+import { randomUUID } from "node:crypto";
 import {
+  buildErDiagram,
+  ER_RELATIONS_MAX,
+  ER_TABLES_MAX,
+  erInputProblems,
+  erRelationInputSchema,
+  erSchemaOf,
+  erTableInputSchema,
+  relationText,
+  SCHEMA_FORMATS,
+  schemaCode,
+  tableHeight,
   checkComponent,
   COMPONENTS_MAX,
   componentNameSchema,
@@ -79,6 +91,7 @@ import {
   requestHtmlScreen,
   requestImageColors,
   requestReferenceComparison,
+  requestErLayout,
   requestMindmapLayout,
   requestScreenLayout,
   showBoardInBrowser,
@@ -160,6 +173,16 @@ const hasTokens = (elements: BoardElement[]) => elements.some((el) => el.tokens)
 const COMPONENTS_NOTE =
   'Elements with the same groupId and a component ("Button:primary", "Sidebar > NavItem") are one instance of a project component (list_components): build each component once (at its code path if it has one) and reuse it, passing the instance\'s text as props.';
 const hasComponents = (elements: BoardElement[]) => elements.some((el) => el.component);
+
+/** Told with any read that shows ER diagram tables. */
+const TABLES_NOTE =
+  'Tables (ER diagram entities) read as their name and one line per column: "name type PK FK" (type ends in ? when nullable). Relations are arrows between two tables (relation: "Post.authorId → User.id (M To 1)": 1 To 1, 1 To M, M To 1 or M To M, read from the table holding the foreign key). To change a table, send update_elements table: { name, description?, columns: [{ name, type, pk?, fk?, nullable?, unique? }] } with every column. get_schema_code reads the diagram as Prisma, SQL or Drizzle.';
+
+/** Each ER relation arrow's text ("Post.authorId → User.id (M To 1)"), by arrow id. */
+const relationTexts = (elements: BoardElement[]) =>
+  new Map(
+    erSchemaOf(elements).relations.flatMap((r) => (r.id ? [[r.id, relationText(r)] as const] : [])),
+  );
 
 /** How get_screen_code's trees map to code, in any framework. */
 const LAYOUT_NOTE =
@@ -843,6 +866,7 @@ export function registerTools(server: McpServer, userId: string) {
           if (!frame) throw new HttpError(404, "No element with that frameId on this board.");
           elements = elements.filter((el) => el.id === frameId || insideFrame(el, frame));
         }
+        const relations = relationTexts(elements);
         return json({
           boardId: board.id,
           name: board.name,
@@ -851,9 +875,14 @@ export function registerTools(server: McpServer, userId: string) {
           frames: elements
             .filter((el) => el.type === "frame")
             .map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height })),
-          elements: elements.map((el) => view(el, theme)),
+          elements: elements.map((el) => {
+            const relation = relations.get(el.id);
+            return relation ? { ...view(el, theme), relation } : view(el, theme);
+          }),
+          ...(relations.size > 0 && { relations: [...relations.values()] }),
           ...(hasTokens(elements) && { tokens: TOKENS_NOTE }),
           ...(hasComponents(elements) && { components: COMPONENTS_NOTE }),
+          ...(elements.some((el) => el.type === "table") && { tables: TABLES_NOTE }),
         });
       }),
   );
@@ -887,9 +916,10 @@ export function registerTools(server: McpServer, userId: string) {
           throw new HttpError(404, "No frame with that frameId on this board.");
         }
         if (frames.length === 0) {
+          const tables = elements.some((el) => el.type === "table");
           throw new HttpError(
             404,
-            "This board has no frames. Screens are frames (create_screen draws one); read free-form boards with get_board.",
+            `This board has no frames. Screens are frames (create_screen draws one); read free-form boards with get_board.${tables ? " Its ER diagram tables read as code with get_schema_code." : ""}`,
           );
         }
         // Frames nested in another frame are part of it, not screens of their own.
@@ -911,6 +941,64 @@ export function registerTools(server: McpServer, userId: string) {
           tokens: TOKENS_NOTE,
           ...(hasComponents(elements) && { components: COMPONENTS_NOTE }),
         });
+      }),
+  );
+
+  server.registerTool(
+    "get_schema_code",
+    {
+      title: "Read an ER diagram as schema code",
+      description: [
+        "Read the ER diagram on a board (tables and the relations between them) as database schema code: a Prisma schema (models with @id, @unique, relation fields both ways), Postgres DDL (CREATE TABLE with primary keys, unique and foreign key constraints) or a Drizzle pg-core schema.",
+        "Use it to code a schema the user sketched or changed on the board; adapt names and types to the app's conventions, then write the migration with the app's own tools.",
+      ].join(" "),
+      inputSchema: z.object({
+        boardId,
+        format: z
+          .enum(SCHEMA_FORMATS)
+          .optional()
+          .describe('"prisma" (default), "sql" (Postgres) or "drizzle" (drizzle-orm/pg-core).'),
+        ids: z
+          .array(z.uuid())
+          .min(1)
+          .max(2_000)
+          .optional()
+          .describe(
+            "Only these tables (and relations, which bring both their tables). Default: every table on the board.",
+          ),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ boardId: id, format, ids }) =>
+      run(async () => {
+        const board = await boardFor(id, userId, "view");
+        const elements = await loadElements(board.id);
+        const schema = erSchemaOf(elements, ids);
+        if (schema.tables.length === 0) {
+          throw new HttpError(
+            404,
+            ids
+              ? "None of those ids is a table or a relation between two tables."
+              : "This board has no tables. Draw an ER diagram with create_er_diagram first.",
+          );
+        }
+        const loose = schema.relations.filter((r) => !r.from.column || !r.to.column).length;
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                format: format ?? "prisma",
+                tables: schema.tables.length,
+                relations: schema.relations.map(relationText),
+                ...(loose > 0 && {
+                  note: `${loose} relation${loose === 1 ? " doesn't" : "s don't"} end at a column on both tables, so ${loose === 1 ? "it isn't" : "they aren't"} in the code.`,
+                }),
+              }),
+            },
+            { type: "text", text: schemaCode(schema, format ?? "prisma") },
+          ],
+        };
       }),
   );
 
@@ -1018,11 +1106,11 @@ export function registerTools(server: McpServer, userId: string) {
       title: "Create elements",
       description: [
         "Create elements on a board. They appear live in open browser tabs, and the whole call is one undo step for the user.",
-        "Types: rect (boxes, buttons, cards, inputs), ellipse, diamond, text, sticky, list, line, arrow, mindnode (a mind map node; create_mindmap is easier), icon (a Lucide icon by name: set icon, stroke for its color, 16-24px for UI), emoji, chart, frame (a screen/artboard background), freehand.",
+        "Types: rect (boxes, buttons, cards, inputs), ellipse, diamond, text, sticky, list, line, arrow, mindnode (a mind map node; create_mindmap is easier), icon (a Lucide icon by name: set icon, stroke for its color, 16-24px for UI), emoji, chart, table (a database table in an ER diagram; create_er_diagram is easier), frame (a screen/artboard background), freehand.",
         "Coordinates are board px; x grows right, y grows down. List elements back to front: frames and backgrounds first, then content on top.",
         "For UI mockups use sketch: false, a radius on buttons/cards, groupId per component and a role (button, input, card, …).",
         "Text sizes itself when width is left out. Arrows: set startBinding/endBinding to element ids or to keys from this call.",
-        "Use the project theme's tokens ($primary, $border, $radius-lg, textStyle $h2; see get_theme). Text, lists and icons default to $foreground, text to textStyle $body, frames to a $background fill. A strict theme refuses plain colors, radius, fonts and text sizes on UI elements (not on stickies, arrows, mind maps or charts).",
+        "Use the project theme's tokens ($primary, $border, $radius-lg, textStyle $h2; see get_theme). Text, lists and icons default to $foreground, text to textStyle $body, frames to a $background fill. A strict theme refuses plain colors, radius, fonts and text sizes on UI elements (not on stickies, arrows, mind maps, charts or tables).",
       ].join(" "),
       inputSchema: z.object({
         boardId,
@@ -1411,6 +1499,95 @@ export function registerTools(server: McpServer, userId: string) {
   );
 
   server.registerTool(
+    "create_er_diagram",
+    {
+      title: "Create an ER diagram",
+      description: [
+        "Draw a database schema as an ER diagram: a table per model (its name, then its columns with a key icon on the primary key and a link icon on foreign keys) and a relation per foreign key, drawn in crow's-foot notation from the foreign key's row to the referenced column's row. Prism sizes the tables, lays them out by foreign key (referenced tables left of the tables that point at them) and routes the lines.",
+        "Read the schema yourself first (schema.prisma, SQL migrations, Drizzle or TypeORM models, …) and pass it as JSON: tables with their database columns, and one relation from each foreign key column to the column it references. Relation fields (Prisma's `author User`, back-relation lists like `posts Post[]`) are not columns. A many-to-many is its join table with two relations. Give each table a one-sentence description when the schema says what it's for (its comments): the user reads it in the table's details card.",
+        "Each end of a relation shows its cardinality as a crow's foot, and the line carries a pill saying what it is (1 To 1, 1 To M, M To 1, M To M); every relation gets its own color and its own lane between the columns of tables, never behind a table.",
+        'For a big schema pass compact: true: tables show only their key columns (and "+N more"), which keeps the diagram small; get_board and get_schema_code still read every column.',
+        "The whole diagram is one undo step. The user can keep editing it on the board (the Table tool, the table editor in the properties panel, crow's-foot ends on any arrow); get_schema_code reads it back as Prisma, SQL or Drizzle.",
+      ].join(" "),
+      inputSchema: z.object({
+        boardId,
+        tables: z.array(erTableInputSchema).min(1).max(ER_TABLES_MAX),
+        relations: z
+          .array(erRelationInputSchema)
+          .max(ER_RELATIONS_MAX)
+          .optional()
+          .describe("One per foreign key."),
+        route: z
+          .enum(["elbow", "straight"])
+          .optional()
+          .describe("Relation lines: elbow (right angles, default) or straight."),
+        compact: z
+          .boolean()
+          .optional()
+          .describe(
+            'Tables show only their primary and foreign key columns and a "+N more" row (default false). Good for 15+ tables.',
+          ),
+        x: z
+          .number()
+          .optional()
+          .describe("Left edge of the diagram. Default: right of the board's content."),
+        y: z.number().optional().describe("Top edge. Default: top of the board's content."),
+        font: fontFamilySchema.optional().describe('Default "sans".'),
+      }),
+      annotations: { openWorldHint: false },
+    },
+    (input) =>
+      run(async () => {
+        const relations = input.relations ?? [];
+        const problems = erInputProblems(input.tables, relations);
+        if (problems.length > 0) {
+          throw new HttpError(400, problems.slice(0, 20).join("\n"));
+        }
+        const board = await boardFor(input.boardId, userId, "edit");
+        const existing = await loadElements(board.id);
+        const content = boundsOf(existing);
+        const options = {
+          x: input.x ?? (content ? content.x + content.width + 160 : 0),
+          y: input.y ?? (content ? content.y : 0),
+          font: input.font ?? "sans",
+          route: input.route ?? ("elbow" as const),
+          compact: input.compact ?? false,
+        };
+        // An open tab sizes the tables with the board's fonts; otherwise the server estimates.
+        const measured = await requestErLayout(userId, {
+          boardId: board.id,
+          tables: input.tables,
+          relations,
+          options,
+        });
+        const built = measured ?? buildErDiagram(input.tables, relations, options, estimateText);
+        // One group: the diagram is one thing on the board.
+        const groupId = `er-${randomUUID()}`;
+        const created = buildElements(
+          built.map((el) => layoutElementInput.parse({ ...el, groupId })),
+          existing,
+        );
+        await save(
+          userId,
+          board.id,
+          created.map((element) => ({ op: "create", element })),
+        );
+        const texts = relationTexts([...existing, ...created]);
+        return json({
+          measured: measured ? "browser" : "estimated (no board tab open; table widths may be off)",
+          bounds: boundsOf(created),
+          tables: created
+            .filter((el) => el.type === "table")
+            .map((el) => ({ id: el.id, name: el.table?.name })),
+          relations: created
+            .filter((el) => el.type === "arrow")
+            .map((el) => ({ id: el.id, relation: texts.get(el.id) })),
+          next: "Check it with export_image (ids: the table and relation ids, or the whole board). get_schema_code reads it back as code.",
+        });
+      }),
+  );
+
+  server.registerTool(
     "update_elements",
     {
       title: "Update elements",
@@ -1458,6 +1635,14 @@ export function registerTools(server: McpServer, userId: string) {
           version: (current.get(elementId)?.version ?? 0) + 1,
           changes: elementChangesSchema.parse({
             ...themed(changes, theme, mode ?? "light", current.get(elementId)?.tokens),
+            // A table's height follows its columns (an open tab fits its width too).
+            ...((changes.table || changes.keysOnly !== undefined) &&
+              current.get(elementId)?.type === "table" && {
+                height: tableHeight(
+                  changes.table ?? current.get(elementId)?.table,
+                  changes.keysOnly ?? current.get(elementId)?.keysOnly ?? false,
+                ),
+              }),
             updatedBy: "ai_agent",
           }),
         }));

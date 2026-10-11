@@ -1,7 +1,17 @@
 // Board math (tools.md §2): bounds, hit-testing in each element's rotated local space, arrow
 // bindings and the resize / rotate transforms behind the selection handles.
 
-import { type BoardElement, BLUR_TYPES } from "@prism/shared";
+import {
+  type BoardElement,
+  BLUR_TYPES,
+  type ConnectorSide,
+  connectorPoints,
+  TABLE_HEADER_HEIGHT,
+  TABLE_ROW_HEIGHT,
+  tableAnchor,
+  tableRows,
+  tableSide,
+} from "@prism/shared";
 import { clampFontPx, fitTextBox, fontPx } from "./text-layout";
 
 export interface Point {
@@ -98,9 +108,9 @@ function boxAround(points: Point[]): Box {
   return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
 
-/** The axis-aligned box around the element as drawn (rotation included). */
+/** The axis-aligned box around the element as drawn (rotation and elbow turns included). */
 export function elementBounds(el: BoardElement): Box {
-  if (isLinear(el)) return boxAround([startPoint(el), endPoint(el)]);
+  if (isLinear(el)) return boxAround(connectorPoints(el));
   return boxAround(corners(el));
 }
 
@@ -143,7 +153,15 @@ export function boxFromPoints(a: Point, b: Point): Box {
 /** Whether `p` touches the element, within `tolerance` world units of its outline. */
 export function hitTest(el: BoardElement, p: Point, tolerance: number) {
   const reach = tolerance + el.strokeWidth / 2;
-  if (isLinear(el)) return distanceToSegment(p, startPoint(el), endPoint(el)) <= reach;
+  if (isLinear(el)) {
+    const points = connectorPoints(el);
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1];
+      const b = points[i];
+      if (a && b && distanceToSegment(p, a, b) <= reach) return true;
+    }
+    return false;
+  }
 
   const local = toLocal(el, p);
   if (el.type === "freehand") {
@@ -215,25 +233,186 @@ export function edgePoint(shape: BoardElement, toward: Point): Point {
   return rotatePoint({ x: c.x + ux * reach, y: c.y + uy * reach }, c, shape.rotation);
 }
 
-/** The arrow with its bound ends moved onto the outlines of the shapes they're attached to. */
+/** The side of `shape` that faces `toward` (in its local frame, so rotated shapes work). */
+function facingSide(shape: BoardElement, toward: Point): ConnectorSide {
+  const c = center(shape);
+  const local = toLocal(shape, toward);
+  const dx = (local.x - c.x) / Math.max(1, Math.abs(shape.width));
+  const dy = (local.y - c.y) / Math.max(1, Math.abs(shape.height));
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "right" : "left";
+  return dy >= 0 ? "bottom" : "top";
+}
+
+/** The middle of one side of `shape`, a small gap outside it. */
+function sideMidpoint(shape: BoardElement, side: ConnectorSide): Point {
+  const c = center(shape);
+  const hw = Math.abs(shape.width) / 2 + BINDING_GAP;
+  const hh = Math.abs(shape.height) / 2 + BINDING_GAP;
+  const local = {
+    left: { x: c.x - hw, y: c.y },
+    right: { x: c.x + hw, y: c.y },
+    top: { x: c.x, y: c.y - hh },
+    bottom: { x: c.x, y: c.y + hh },
+  }[side];
+  return rotatePoint(local, c, shape.rotation);
+}
+
+const pointBox = (p: Point): Box => ({ x: p.x, y: p.y, width: 0, height: 0 });
+
+/**
+ * The arrow with its bound ends moved onto the shapes they're attached to: a table's end goes to
+ * its column's row on the side facing the other end; another shape's end goes where the line
+ * toward the other end crosses its outline, or, on an elbow arrow, to the middle of the side
+ * facing it. Elbow arrows keep the sides their ends leave through.
+ */
 export function routeArrow(arrow: BoardElement, byId: Map<string, BoardElement>): BoardElement {
   const from = arrow.startBinding ? byId.get(arrow.startBinding) : undefined;
   const to = arrow.endBinding ? byId.get(arrow.endBinding) : undefined;
   if (!from && !to) return arrow;
+  const elbow = arrow.route === "elbow";
   const start = startPoint(arrow);
   const end = endPoint(arrow);
-  const s = from ? edgePoint(from, to ? center(to) : end) : start;
-  const e = to ? edgePoint(to, from ? center(from) : start) : end;
+  const fromBox = from ? elementBounds(from) : pointBox(start);
+  const toBox = to ? elementBounds(to) : pointBox(end);
+  const same = from !== undefined && from === to;
+  let s = start;
+  let e = end;
+  let startSide: ConnectorSide | null = null;
+  let endSide: ConnectorSide | null = null;
+
+  // Table ends first: they sit at a column's row wherever the other end is.
+  if (from?.type === "table") {
+    startSide = tableSide(fromBox, toBox, same);
+    s = tableAnchor(from, arrow.startColumn, startSide);
+  }
+  if (to?.type === "table") {
+    endSide = tableSide(toBox, fromBox, same);
+    e = tableAnchor(to, arrow.endColumn, endSide);
+  }
+  if (from && from.type !== "table") {
+    const toward = to ? (to.type === "table" ? e : center(to)) : end;
+    if (elbow) {
+      startSide = facingSide(from, toward);
+      s = sideMidpoint(from, startSide);
+    } else {
+      s = edgePoint(from, toward);
+    }
+  }
+  if (to && to.type !== "table") {
+    const toward = from ? (from.type === "table" ? s : center(from)) : start;
+    if (elbow) {
+      endSide = facingSide(to, toward);
+      e = sideMidpoint(to, endSide);
+    } else {
+      e = edgePoint(to, toward);
+    }
+  }
+
   const next = { x: s.x, y: s.y, width: e.x - s.x, height: e.y - s.y };
+  // Only elbow arrows keep sides; an end that isn't attached faces the other end when drawn.
+  const sides = elbow ? { startSide, endSide } : { startSide: null, endSide: null };
+  const lanes = elbow ? keptLanes(arrow.lanes, start, end, s, e, sides) : null;
   if (
     next.x === arrow.x &&
     next.y === arrow.y &&
     next.width === arrow.width &&
-    next.height === arrow.height
+    next.height === arrow.height &&
+    sides.startSide === (arrow.startSide ?? null) &&
+    sides.endSide === (arrow.endSide ?? null) &&
+    lanes === (arrow.lanes ?? null)
   ) {
     return arrow;
   }
-  return { ...arrow, ...next };
+  const routed: BoardElement = { ...arrow, ...next };
+  if (sides.startSide) routed.startSide = sides.startSide;
+  else delete routed.startSide;
+  if (sides.endSide) routed.endSide = sides.endSide;
+  else delete routed.endSide;
+  if (lanes) routed.lanes = lanes;
+  else delete routed.lanes;
+  return routed;
+}
+
+/** How far a lane must stay out from the side of the table it leaves or enters. */
+const LANE_CLEARANCE = 12;
+
+/**
+ * An elbow arrow's lanes (offsets from its start) once its ends move from `start` / `end` to `s` /
+ * `e`. Both ends moving together carry the lanes along; otherwise they stay where they are on the
+ * board, as long as the first and last still lie outside the sides the ends attach to, and the
+ * arrow goes back to a plain elbow when they don't.
+ */
+function keptLanes(
+  lanes: number[] | null | undefined,
+  start: Point,
+  end: Point,
+  s: Point,
+  e: Point,
+  sides: { startSide: ConnectorSide | null; endSide: ConnectorSide | null },
+): number[] | null {
+  if (!lanes || lanes.length % 2 === 0) return null;
+  const together =
+    Math.abs(s.x - start.x - (e.x - end.x)) < 0.5 && Math.abs(s.y - start.y - (e.y - end.y)) < 0.5;
+  if (together) return lanes;
+  const moved = lanes.map((v, i) => (i % 2 === 0 ? v + start.x - s.x : v + start.y - s.y));
+  const outside = (x: number, p: Point, side: ConnectorSide | null) =>
+    side === "right"
+      ? x >= p.x + LANE_CLEARANCE
+      : side === "left"
+        ? x <= p.x - LANE_CLEARANCE
+        : true;
+  const first = s.x + (moved[0] ?? 0);
+  const last = s.x + (moved[moved.length - 1] ?? 0);
+  return outside(first, s, sides.startSide) && outside(last, e, sides.endSide) ? moved : null;
+}
+
+/** Whether `el` is an ER relation: an arrow with a cardinality, or one joining two tables. */
+export function isRelation(el: BoardElement, byId: Map<string, BoardElement>) {
+  if (el.type !== "arrow") return false;
+  if (el.startHead || el.endHead) return true;
+  const a = el.startBinding ? byId.get(el.startBinding) : undefined;
+  const b = el.endBinding ? byId.get(el.endBinding) : undefined;
+  return a?.type === "table" && b?.type === "table";
+}
+
+/**
+ * What to show while tables or relations among `ids` are hovered or selected: each table with
+ * its relations and the tables at their other ends, each relation with its two tables. Null when
+ * none of `ids` is a table or a relation.
+ */
+export function erFocus(elements: BoardElement[], ids: Iterable<string>) {
+  const byId = new Map(elements.map((el) => [el.id, el]));
+  const focus = new Set<string>();
+  for (const id of ids) {
+    const el = byId.get(id);
+    if (!el) continue;
+    if (el.type === "table") {
+      focus.add(el.id);
+      for (const other of elements) {
+        if (
+          other.type !== "arrow" ||
+          (other.startBinding !== el.id && other.endBinding !== el.id)
+        ) {
+          continue;
+        }
+        focus.add(other.id);
+        if (other.startBinding) focus.add(other.startBinding);
+        if (other.endBinding) focus.add(other.endBinding);
+      }
+    } else if (isRelation(el, byId)) {
+      focus.add(el.id);
+      if (el.startBinding) focus.add(el.startBinding);
+      if (el.endBinding) focus.add(el.endBinding);
+    }
+  }
+  return focus.size > 0 ? focus : null;
+}
+
+/** The column of `table` whose row is under `p`, or null over its header (or outside it). */
+export function tableColumnAt(table: BoardElement, p: Point): string | null {
+  const local = toLocal(table, p);
+  const row = Math.floor((local.y - table.y - TABLE_HEADER_HEIGHT) / TABLE_ROW_HEIGHT);
+  return tableRows(table.table, table.keysOnly).shown[row]?.column.name ?? null;
 }
 
 /** Re-routes every attached arrow. Returns the same array if nothing moved. */
@@ -339,12 +518,21 @@ function scaleText(el: BoardElement, handle: Handle, p: Point, start: Point): Bo
  */
 export function resizeElement(
   el: BoardElement,
-  handle: Handle,
+  dragged: Handle,
   p: Point,
-  keepRatio: boolean,
+  dragRatio: boolean,
   /** Where the drag began; text scales relative to it. */
   start: Point = p,
 ): BoardElement {
+  let handle = dragged;
+  let keepRatio = dragRatio;
+  // A table's height follows its columns: only its width changes.
+  if (el.type === "table") {
+    const sideways = dragged.replace(/[ns]/g, "");
+    if (sideways !== "e" && sideways !== "w") return el;
+    handle = sideways;
+    keepRatio = false;
+  }
   if (scalesText(el, handle)) return scaleText(el, handle, p, start);
   const c = center(el);
   const local = rotatePoint(p, c, -el.rotation);

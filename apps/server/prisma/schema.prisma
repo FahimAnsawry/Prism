@@ -125,6 +125,7 @@ enum ElementType {
   frame
   icon
   mindnode
+  table
 }
 
 enum StrokeStyle {

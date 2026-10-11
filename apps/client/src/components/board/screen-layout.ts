@@ -2,8 +2,10 @@
 // open, so text is measured and wrapped exactly as the board will draw it.
 
 import {
+  buildErDiagram,
   buildMindMap,
   layoutFonts,
+  type LayoutErRequest,
   type LayoutMindmapRequest,
   layoutScreen,
   type LayoutScreenReply,
@@ -30,6 +32,27 @@ export async function layoutScreenOnTab(request: LayoutScreenRequest): Promise<L
 
 /** The fonts and weights mind map nodes use, by level. */
 const MIND_WEIGHTS = [400, 600, 700];
+
+/** Answers a create_er_diagram sizing request. Never throws: failures become a reply. */
+export async function layoutErOnTab(request: LayoutErRequest): Promise<LayoutScreenReply> {
+  try {
+    await loadFonts([
+      ...MIND_WEIGHTS.map((weight) => [request.options.font, weight] as const),
+      ["mono", 400] as const,
+    ]);
+    resetMeasurements();
+    return {
+      ok: true,
+      elements: buildErDiagram(request.tables, request.relations, request.options, boardMeasure),
+    };
+  } catch (error) {
+    console.error("[Prism] ER diagram layout failed:", error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message.slice(0, 500) : "Layout failed.",
+    };
+  }
+}
 
 /** Answers a create_mindmap sizing request. Never throws: failures become a reply. */
 export async function layoutMindmapOnTab(

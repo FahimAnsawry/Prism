@@ -11,6 +11,7 @@ import {
   type HtmlScreenRequest,
   imageColorsReplySchema,
   type ImageColorsRequest,
+  type LayoutErRequest,
   type LayoutMindmapRequest,
   type LayoutScreenRequest,
   layoutScreenReplySchema,
@@ -356,6 +357,13 @@ export function requestScreenLayout(userId: string, request: LayoutScreenRequest
 export function requestMindmapLayout(userId: string, request: LayoutMindmapRequest) {
   return askForLayout(userId, request.boardId, (tab) =>
     tab.timeout(LAYOUT_TIMEOUT_MS).emitWithAck("layout:mindmap", request),
+  );
+}
+
+/** Sizes create_er_diagram tables in an open board tab; null when none answers. */
+export function requestErLayout(userId: string, request: LayoutErRequest) {
+  return askForLayout(userId, request.boardId, (tab) =>
+    tab.timeout(LAYOUT_TIMEOUT_MS).emitWithAck("layout:er", request),
   );
 }
 

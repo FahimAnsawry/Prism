@@ -1,18 +1,34 @@
 import {
   type BoardElement,
+  type Cardinality,
   type ChartData,
+  columnTypeLabel,
+  connectorPoints,
   cornerRadii,
+  relationKind,
   type Gradient,
   GRADIENT_TYPES,
   IMAGE_FILL_TYPES,
   type ImageFill,
   MIND_PAD_X,
   MIND_TEXT_COLOR,
+  moreColumnsLabel,
   type Shadow,
   type ShadowPreset,
   SHADOW_TYPES,
   type StrokeStyle,
+  TABLE_HEADER_HEIGHT,
+  TABLE_ICON_SIZE,
+  TABLE_ICON_SPACE,
+  TABLE_PAD_X,
+  TABLE_ROW_HEIGHT,
+  TABLE_TEXT_COLOR,
+  TABLE_TEXT_PX,
+  TABLE_TITLE_PX,
+  TABLE_TYPE_PX,
+  tableRows,
 } from "@prism/shared";
+import { KeyRound, Link } from "lucide-react";
 import { Fragment, type SVGProps, useId } from "react";
 import { cn } from "@/lib/utils";
 import { assetUrl } from "./assets";
@@ -28,6 +44,7 @@ import {
   layoutSticky,
   layoutText,
   letterSpacingOf,
+  measure,
   LIST_BULLET_EM,
   LIST_INDENT_EM,
   STICKY_PADDING,
@@ -448,33 +465,63 @@ function Shape({
 
     case "line":
     case "arrow": {
-      const start = { x, y };
-      const end = { x: x + width, y: y + height };
+      const points = connectorPoints(el);
+      const first = points[0] ?? { x, y };
+      const second = points[1] ?? first;
+      const last = points[points.length - 1] ?? first;
+      const beforeLast = points[points.length - 2] ?? first;
       const isArrow = el.type === "arrow";
-      const angle = Math.atan2(height, width);
+      const startHead = isArrow ? (el.startHead ?? null) : null;
+      const endHead = isArrow ? (el.endHead ?? null) : null;
+      // Without a cardinality at its end, an arrow ends in an arrowhead.
+      const arrowhead = isArrow && !endHead && Math.hypot(width, height) > 0;
+      const angle = Math.atan2(last.y - beforeLast.y, last.x - beforeLast.x);
       const head = 8 + el.strokeWidth * 2;
       const half = 4 + el.strokeWidth;
       // The line stops at the arrowhead's base so a thick stroke doesn't poke through the tip.
-      const lineEnd = isArrow
-        ? { x: end.x - head * Math.cos(angle), y: end.y - head * Math.sin(angle) }
-        : end;
+      const lineEnd = arrowhead
+        ? { x: last.x - head * Math.cos(angle), y: last.y - head * Math.sin(angle) }
+        : last;
+      const drawn = [...points.slice(0, -1), lineEnd];
       const back = (offset: number) =>
         `${lineEnd.x - offset * Math.sin(angle)},${lineEnd.y + offset * Math.cos(angle)}`;
       return (
         <>
           {/* Wide invisible hit area so a 1px line is still easy to point at. */}
-          <line x1={x} y1={y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth={14} />
+          <path d={pathThrough(points)} fill="none" stroke="transparent" strokeWidth={14} />
           {el.sketch ? (
-            <path d={sketchLine(start, lineEnd, el.id, el.strokeWidth)} fill="none" {...stroke} />
+            <path
+              d={drawn
+                .slice(1)
+                .map((p, i) => sketchLine(drawn[i] ?? p, p, `${el.id}${i || ""}`, el.strokeWidth))
+                .join(" ")}
+              fill="none"
+              {...stroke}
+            />
           ) : (
-            <line x1={x} y1={y} x2={lineEnd.x} y2={lineEnd.y} {...stroke} />
+            <path d={pathThrough(drawn)} fill="none" {...stroke} />
           )}
-          {isArrow && Math.hypot(width, height) > 0 && (
+          {arrowhead && (
             <polygon
-              points={`${end.x},${end.y} ${back(half)} ${back(-half)}`}
+              points={`${last.x},${last.y} ${back(half)} ${back(-half)}`}
               strokeLinejoin="round"
               style={{ fill: ink, stroke: ink }}
               strokeWidth={1}
+            />
+          )}
+          {startHead && (
+            <CardinalityMark head={startHead} at={first} toward={second} ink={ink} el={el} />
+          )}
+          {endHead && (
+            <CardinalityMark head={endHead} at={last} toward={beforeLast} ink={ink} el={el} />
+          )}
+          {startHead && endHead && (
+            // Read from the table it points at (a relation starts at its foreign key): one user
+            // to many accounts is "1 To M".
+            <RelationPill
+              points={points}
+              label={relationKind(endHead, startHead) ?? ""}
+              ink={ink}
             />
           )}
         </>
@@ -608,6 +655,9 @@ function Shape({
     case "chart":
       return <Chart el={el} data={el.chart} />;
 
+    case "table":
+      return <Table el={el} ink={ink} outline={outline} />;
+
     case "mindnode": {
       const layout = layoutMind(el);
       const top = y + height / 2 - (layout.lines.length * layout.lineHeight) / 2;
@@ -685,6 +735,10 @@ function Shape({
       );
   }
 }
+
+/** A polyline's path. */
+const pathThrough = (points: Point[]) =>
+  points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
 
 type Corners = [number, number, number, number];
 
@@ -771,6 +825,319 @@ function TextLines({
         </tspan>
       ))}
     </text>
+  );
+}
+
+// ── ER diagrams (tools.md §1, tool 20) ──
+
+/** Half the width of a crow's foot and of a cardinality bar, and how far the foot reaches. */
+const MARK_HALF = 9;
+const FOOT_LENGTH = 18;
+const MARK_CIRCLE = 5.5;
+/** Room at a relation's ends kept clear for its crow's feet. */
+const MARK_ROOM = 34;
+
+/**
+ * An end of a relation in crow's-foot notation at `at` (where the line meets the table), facing
+ * along the line toward `toward`: a bar for one, a circle for zero, a three-pronged foot for many.
+ */
+function CardinalityMark({
+  head,
+  at,
+  toward,
+  ink,
+  el,
+}: {
+  head: Cardinality;
+  at: Point;
+  toward: Point;
+  ink: string;
+  el: BoardElement;
+}) {
+  const length = Math.hypot(toward.x - at.x, toward.y - at.y);
+  if (length < 1e-6) return null;
+  const u = { x: (toward.x - at.x) / length, y: (toward.y - at.y) / length };
+  const n = { x: -u.y, y: u.x };
+  const p = (along: number, across: number) =>
+    `${at.x + u.x * along + n.x * across},${at.y + u.y * along + n.y * across}`;
+  const bar = (along: number) => `M${p(along, -MARK_HALF)} L${p(along, MARK_HALF)}`;
+  const foot = `M${p(0, -MARK_HALF)} L${p(FOOT_LENGTH, 0)} L${p(0, MARK_HALF)}`;
+  const parts: string[] = [];
+  let circle: number | null = null;
+  switch (head) {
+    case "one":
+      parts.push(bar(9), bar(15));
+      break;
+    case "zero-or-one":
+      parts.push(bar(9));
+      circle = 14 + MARK_CIRCLE;
+      break;
+    case "many":
+      parts.push(foot);
+      break;
+    case "one-or-many":
+      parts.push(foot, bar(FOOT_LENGTH + 6));
+      break;
+    case "zero-or-many":
+      parts.push(foot);
+      circle = FOOT_LENGTH + 5 + MARK_CIRCLE;
+      break;
+  }
+  const width = Math.max(1.5, el.strokeWidth);
+  return (
+    <>
+      <path
+        d={parts.join(" ")}
+        fill="none"
+        strokeWidth={width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ stroke: ink }}
+      />
+      {circle !== null && (
+        <circle
+          cx={at.x + u.x * circle}
+          cy={at.y + u.y * circle}
+          r={MARK_CIRCLE}
+          strokeWidth={width}
+          style={{ fill: "var(--background)", stroke: ink }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The relation pill: text size, height and padding. */
+const PILL_PX = 11;
+const PILL_HEIGHT = 18;
+const PILL_PAD = 7;
+
+/**
+ * Where a relation's pill goes: on its first segment (the one leaving the foreign key's row, which
+ * no other relation shares) when the pill fits there past the crow's foot, else in the middle of
+ * its longest segment between the turns.
+ */
+function pillCenter(points: Point[], pillWidth: number): Point | null {
+  const segments = points.slice(1).map((b, i) => {
+    const a = points[i] as Point;
+    return { a, b, length: Math.hypot(b.x - a.x, b.y - a.y), i };
+  });
+  if (segments.length === 0) return null;
+  const last = segments.length - 1;
+  /** The stretch of a segment clear of the crow's feet at the relation's ends. */
+  const clear = (seg: (typeof segments)[number]) => {
+    const from = seg.i === 0 ? MARK_ROOM : 0;
+    const to = seg.length - (seg.i === last ? MARK_ROOM : 0);
+    return { from, to, room: to - from };
+  };
+  const at = (seg: (typeof segments)[number], along: number) => ({
+    x: seg.a.x + ((seg.b.x - seg.a.x) * along) / (seg.length || 1),
+    y: seg.a.y + ((seg.b.y - seg.a.y) * along) / (seg.length || 1),
+  });
+  const first = segments[0];
+  if (first && clear(first).room >= pillWidth + 8) {
+    const c = clear(first);
+    return at(first, (c.from + c.to) / 2);
+  }
+  const middle = segments.filter((seg) => seg.i !== 0 && seg.i !== last);
+  const pool = middle.length > 0 ? middle : segments;
+  const best = pool.reduce((a, b) => (clear(b).room > clear(a).room ? b : a));
+  const c = clear(best);
+  return at(best, c.room > 0 ? (c.from + c.to) / 2 : best.length / 2);
+}
+
+/** What a relation is, "1 To M" and the like, in a pill of its color on the line. */
+function RelationPill({ points, label, ink }: { points: Point[]; label: string; ink: string }) {
+  if (!label) return null;
+  const width = measure(label, "sans", PILL_PX, 700) + 2 * PILL_PAD;
+  const c = pillCenter(points, width);
+  if (!c) return null;
+  // Themed inks turn light on the night board, so their text takes the page color.
+  const text = ink.startsWith("var(") ? "var(--background)" : "#ffffff";
+  return (
+    <g>
+      <rect
+        x={c.x - width / 2}
+        y={c.y - PILL_HEIGHT / 2}
+        width={width}
+        height={PILL_HEIGHT}
+        rx={PILL_HEIGHT / 2}
+        strokeWidth={2}
+        style={{ fill: ink, stroke: "var(--background)" }}
+        paintOrder="stroke"
+      />
+      <text
+        x={c.x}
+        y={c.y}
+        fontSize={PILL_PX}
+        fontWeight={700}
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{ fill: text, fontFamily: fontStack("sans") }}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * A database table: a header tinted with the stroke color holding its name, then one row per
+ * column with a key (primary key) or link (foreign key) icon, its name, and its type on the right.
+ */
+function Table({ el, ink, outline }: { el: BoardElement; ink: string; outline: boolean }) {
+  const { x, y, width, height } = el;
+  const { shown, hidden } = tableRows(el.table, el.keysOnly);
+  const columns = shown.map((row) => row.column);
+  const radius = el.sketch ? 0 : 6;
+  const text = displayColor(el.textColor ?? TABLE_TEXT_COLOR);
+  const font = fontStack(el.font ?? "sans");
+  const box: Point[] = [
+    { x, y },
+    { x: x + width, y },
+    { x: x + width, y: y + height },
+    { x, y: y + height },
+  ];
+  const border = el.sketch ? (
+    <path
+      d={sketchPolygon(box, el.id, el.strokeWidth)}
+      fill="none"
+      strokeWidth={el.strokeWidth}
+      strokeLinecap="round"
+      style={{ stroke: ink }}
+    />
+  ) : (
+    <rect
+      x={x}
+      y={y}
+      width={width}
+      height={height}
+      rx={radius || undefined}
+      fill="none"
+      strokeWidth={el.strokeWidth}
+      style={{ stroke: ink }}
+    />
+  );
+  if (outline) return border;
+  return (
+    <>
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        rx={radius || undefined}
+        style={{ fill: el.fill ? displayColor(el.fill) : "var(--card)" }}
+      />
+      <path
+        d={roundedRectPath(x, y, width, TABLE_HEADER_HEIGHT, [radius, radius, 0, 0])}
+        fillOpacity={0.14}
+        style={{ fill: ink }}
+      />
+      <line
+        x1={x}
+        x2={x + width}
+        y1={y + TABLE_HEADER_HEIGHT}
+        y2={y + TABLE_HEADER_HEIGHT}
+        strokeWidth={el.strokeWidth}
+        strokeOpacity={0.5}
+        style={{ stroke: ink }}
+      />
+      <text
+        x={x + TABLE_PAD_X}
+        y={y + TABLE_HEADER_HEIGHT / 2}
+        fontSize={TABLE_TITLE_PX}
+        fontWeight={700}
+        dominantBaseline="central"
+        style={{ fill: text, fontFamily: font }}
+      >
+        {el.table?.name ?? ""}
+      </text>
+      {hidden > 0 && (
+        <text
+          x={x + TABLE_PAD_X + TABLE_ICON_SPACE}
+          y={y + TABLE_HEADER_HEIGHT + (columns.length + 0.5) * TABLE_ROW_HEIGHT}
+          fontSize={TABLE_TEXT_PX}
+          fontStyle="italic"
+          dominantBaseline="central"
+          style={{ fill: "var(--muted-foreground)", fontFamily: font }}
+        >
+          {moreColumnsLabel(hidden)}
+        </text>
+      )}
+      {hidden > 0 && columns.length > 0 && (
+        <line
+          x1={x + 1}
+          x2={x + width - 1}
+          y1={y + TABLE_HEADER_HEIGHT + columns.length * TABLE_ROW_HEIGHT}
+          y2={y + TABLE_HEADER_HEIGHT + columns.length * TABLE_ROW_HEIGHT}
+          strokeWidth={1}
+          style={{ stroke: "var(--divider)" }}
+        />
+      )}
+      {columns.length === 0 && hidden === 0 && (
+        <text
+          x={x + TABLE_PAD_X}
+          y={y + TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT / 2}
+          fontSize={TABLE_TEXT_PX}
+          dominantBaseline="central"
+          style={{ fill: "var(--muted-foreground)", fontFamily: font }}
+        >
+          No columns
+        </text>
+      )}
+      {columns.map((column, i) => {
+        const top = y + TABLE_HEADER_HEIGHT + i * TABLE_ROW_HEIGHT;
+        const middle = top + TABLE_ROW_HEIGHT / 2;
+        const Glyph = column.pk ? KeyRound : column.fk ? Link : null;
+        return (
+          <g key={i}>
+            {i > 0 && (
+              <line
+                x1={x + 1}
+                x2={x + width - 1}
+                y1={top}
+                y2={top}
+                strokeWidth={1}
+                style={{ stroke: "var(--divider)" }}
+              />
+            )}
+            {Glyph && (
+              <Glyph
+                x={x + TABLE_PAD_X}
+                y={middle - TABLE_ICON_SIZE / 2}
+                width={TABLE_ICON_SIZE}
+                height={TABLE_ICON_SIZE}
+                strokeWidth={2.25}
+                aria-hidden="true"
+                style={{ color: column.pk ? "#e5a400" : "var(--muted-foreground)" }}
+              />
+            )}
+            <text
+              x={x + TABLE_PAD_X + TABLE_ICON_SPACE}
+              y={middle}
+              fontSize={TABLE_TEXT_PX}
+              fontWeight={column.pk ? 600 : 400}
+              dominantBaseline="central"
+              style={{ fill: text, fontFamily: font }}
+            >
+              {column.name}
+            </text>
+            <text
+              x={x + width - TABLE_PAD_X}
+              y={middle}
+              fontSize={TABLE_TYPE_PX}
+              textAnchor="end"
+              dominantBaseline="central"
+              style={{ fill: "var(--muted-foreground)", fontFamily: fontStack("mono") }}
+            >
+              {columnTypeLabel(column)}
+            </text>
+          </g>
+        );
+      })}
+      {border}
+    </>
   );
 }
 

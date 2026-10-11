@@ -16,6 +16,7 @@ import {
   type HtmlScreenRequest,
   type ImageColorsReply,
   type ImageColorsRequest,
+  type LayoutErRequest,
   type LayoutMindmapRequest,
   type LayoutScreenReply,
   type LayoutScreenRequest,
@@ -31,7 +32,7 @@ import { compareReference } from "./compare-reference";
 import { exportBoardImage } from "./export-image";
 import { htmlScreenOnTab } from "./html-screen";
 import { imageColorsOnTab } from "./image-colors";
-import { layoutMindmapOnTab, layoutScreenOnTab } from "./screen-layout";
+import { layoutErOnTab, layoutMindmapOnTab, layoutScreenOnTab } from "./screen-layout";
 
 const elementsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}/elements`;
 
@@ -352,6 +353,11 @@ export function useBoardRealtime(
       if (request.boardId === boardId) void layoutMindmapOnTab(request).then(ack);
     };
     socket.on("layout:mindmap", onLayoutMindmap);
+    // An AI editor's create_er_diagram: this tab sizes the tables with the board's fonts.
+    const onLayoutEr = (request: LayoutErRequest, ack: (reply: LayoutScreenReply) => void) => {
+      if (request.boardId === boardId) void layoutErOnTab(request).then(ack);
+    };
+    socket.on("layout:er", onLayoutEr);
     if (socket.connected) join();
     return () => {
       socket.off("connect", join);
@@ -365,6 +371,7 @@ export function useBoardRealtime(
       socket.off("html:screen", onHtmlScreen);
       socket.off("image:colors", onImageColors);
       socket.off("layout:mindmap", onLayoutMindmap);
+      socket.off("layout:er", onLayoutEr);
       socket.emit("board:leave", boardId);
     };
   }, [boardId, shareToken]);

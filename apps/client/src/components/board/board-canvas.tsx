@@ -18,6 +18,7 @@ import {
   backdropOf,
   distance,
   elementBounds,
+  erFocus,
   type Frame,
   handleAt,
   handleCursor,
@@ -30,6 +31,8 @@ import { type Gesture, isTextual, type Overlay, placeText, startGesture } from "
 import type { ToolId } from "./tools";
 
 const SELECTION = "#5882ff"; // --color-blue
+/** How long the pointer rests on an ER table or relation before it lights up (and a table's card shows). */
+const DWELL_MS = 1000;
 
 const TOOL_CURSORS: Partial<Record<ToolId, string>> = {
   text: "cursor-text",
@@ -65,6 +68,7 @@ export function BoardCanvas({
   onToolDone,
   onPointerWorld,
   onDropFiles,
+  onHoverTable,
 }: {
   state: BoardState;
   dispatch: Dispatch<BoardAction>;
@@ -86,6 +90,8 @@ export function BoardCanvas({
   /** The pointer's last world position, for pasting where the user is looking. */
   onPointerWorld: (p: Point) => void;
   onDropFiles: (files: File[], p: Point) => void;
+  /** The ER table under the pointer (null when there's none), for its details card. */
+  onHoverTable?: (id: string | null) => void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const pan = useRef<{ x: number; y: number; camera: Camera } | null>(null);
@@ -101,6 +107,36 @@ export function BoardCanvas({
   const [hoverCursor, setHoverCursor] = useState<string | undefined>();
   /** The mind map node under the pointer: its fold toggle shows, as on a selected node. */
   const [hoverMindId, setHoverMindId] = useState<string | null>(null);
+  /**
+   * The ER table or relation the pointer rested on for DWELL_MS: it lights up with what it connects
+   * (a table also shows its details card) until a click on empty canvas, or a rest on another one.
+   */
+  const [pinnedEr, setPinnedEr] = useState<string | null>(null);
+  const pinned = useRef<string | null>(null);
+  /** What the pointer is resting on now, and the timer that pins it. */
+  const dwell = useRef<{ id: string | null; timer: number | null }>({ id: null, timer: null });
+  const pin = (id: string | null, table: boolean) => {
+    pinned.current = id;
+    setPinnedEr(id);
+    onHoverTable?.(id && table ? id : null);
+  };
+  /** Starts (or keeps) the wait on `id`; a different id, or none, cancels the wait. */
+  const restOn = (id: string | null, table: boolean) => {
+    if (dwell.current.id === id) return;
+    if (dwell.current.timer !== null) window.clearTimeout(dwell.current.timer);
+    dwell.current = { id, timer: null };
+    if (!id || id === pinned.current) return;
+    dwell.current.timer = window.setTimeout(() => {
+      dwell.current.timer = null;
+      pin(id, table);
+    }, DWELL_MS);
+  };
+  useEffect(
+    () => () => {
+      if (dwell.current.timer !== null) window.clearTimeout(dwell.current.timer);
+    },
+    [],
+  );
   const spaceHeld = useHeldSpace();
   const { elements, selectedIds } = state;
   // Nodes inside folded mind map branches aren't drawn, hit or selected.
@@ -111,6 +147,9 @@ export function BoardCanvas({
     ? []
     : mindToggles(elements, ordered, hoverMindId ? [...selectedIds, hoverMindId] : selectedIds);
   const frame = editingId ? null : selectionFrame(selected, camera.zoom);
+  // A hovered or selected table or relation shows what it connects and dims the rest (only here
+  // on screen: exports and previews draw everything as it is).
+  const focus = erFocus(elements, pinnedEr ? [...selectedIds, pinnedEr] : selectedIds);
 
   const borrowingHand = spaceHeld || panning;
   useEffect(() => {
@@ -197,6 +236,16 @@ export function BoardCanvas({
       return;
     }
     keepEditorFocus.current = false;
+    // A click on empty canvas lets go of the lit-up table or relation (and closes its card).
+    if (
+      tool === "select" &&
+      pinned.current &&
+      !topHit(ordered, toWorld(event), 6 / camera.zoom) &&
+      !handleAt(frame, toWorld(event), camera.zoom)
+    ) {
+      restOn(null, false);
+      pin(null, false);
+    }
     const next = startGesture(tool, context, toWorld(event), event.nativeEvent);
     if (next) {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -218,10 +267,22 @@ export function BoardCanvas({
     onPointerWorld(p);
     if (gesture.current) {
       gesture.current.move(p, event.nativeEvent);
+      restOn(null, false);
       return;
     }
     if (tool === "select") setHoverCursor(cursorAt(p));
     setHoverMindId(tool === "select" ? mindHoverAt(p) : null);
+    const erHover = tool === "select" ? erHoverAt(p) : null;
+    restOn(erHover, !!erHover && elements.find((el) => el.id === erHover)?.type === "table");
+  };
+
+  /** The table or relation under `p`, if that's what the pointer is over. */
+  const erHoverAt = (p: Point) => {
+    const hit = topHit(ordered, p, 6 / camera.zoom);
+    if (!hit) return null;
+    return hit.type === "table" || (hit.type === "arrow" && erFocus(elements, [hit.id]))
+      ? hit.id
+      : null;
   };
 
   /** A toggle under `p`; the toggles past a node's edge belong to that node. */
@@ -292,7 +353,10 @@ export function BoardCanvas({
       onPointerMove={onPointerMove}
       onPointerUp={endPointer}
       onPointerCancel={endPointer}
-      onPointerLeave={() => setHoverMindId(null)}
+      onPointerLeave={() => {
+        setHoverMindId(null);
+        restOn(null, false);
+      }}
       onDoubleClick={onDoubleClick}
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes("Files")) event.preventDefault();
@@ -329,10 +393,26 @@ export function BoardCanvas({
         <MindBranches elements={ordered} />
 
         {ordered.map((el, i) => (
-          <g key={el.id} data-id={el.id} opacity={overlay?.erasing?.has(el.id) ? 0.25 : undefined}>
+          <g
+            key={el.id}
+            data-id={el.id}
+            opacity={
+              overlay?.erasing?.has(el.id) ? 0.25 : focus && !focus.has(el.id) ? 0.18 : undefined
+            }
+          >
             <ElementShape el={el} hidden={el.id === editingId} below={backdropOf(ordered, i)} />
           </g>
         ))}
+
+        {/* The focused relations again on top, so none hides behind a table. */}
+        {focus &&
+          ordered
+            .filter((el) => el.type === "arrow" && focus.has(el.id))
+            .map((el) => (
+              <g key={`focus-${el.id}`} pointerEvents="none">
+                <ElementShape el={el} />
+              </g>
+            ))}
 
         <MindToggles toggles={toggles} zoom={camera.zoom} />
 

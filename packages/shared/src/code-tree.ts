@@ -27,7 +27,17 @@ export interface CodeNode {
    * frame: the screen. box: a painted container. group: an unpainted wrapper (a flex div).
    * component: an instance of a project component. text, icon, image, divider, shape: leaves.
    */
-  kind: "frame" | "box" | "group" | "component" | "text" | "icon" | "image" | "divider" | "shape";
+  kind:
+    | "frame"
+    | "box"
+    | "group"
+    | "component"
+    | "text"
+    | "icon"
+    | "image"
+    | "divider"
+    | "shape"
+    | "table";
   id?: string;
   /** The design's name for it (its groupId without the suffix): "Hero", "Navbar". */
   name?: string;
@@ -617,6 +627,8 @@ export function screenTree(
       case "image":
       case "svg":
         return { kind: "image", style };
+      case "table":
+        return { kind: "table", style };
       default:
         return { kind: el.fillImage ? "image" : el.type === "rect" ? "box" : "shape", style };
     }

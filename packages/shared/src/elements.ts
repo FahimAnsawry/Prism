@@ -20,6 +20,7 @@ export const ELEMENT_TYPES = [
   "frame",
   "icon",
   "mindnode",
+  "table",
 ] as const;
 
 export const elementTypeSchema = z.enum(ELEMENT_TYPES);
@@ -160,6 +161,7 @@ export const SHADOW_TYPES: readonly ElementType[] = [
   "image",
   "svg",
   "chart",
+  "table",
 ];
 /** A Lucide icon name in kebab case, e.g. "search" or "arrow-right" (https://lucide.dev/icons). */
 export const iconNameSchema = z
@@ -179,6 +181,37 @@ export const chartDataSchema = z.object({
     .min(1)
     .max(50),
 });
+
+/** One column of an ER diagram table. `type` is free text: "String", "uuid", "varchar(255)", an enum. */
+export const tableColumnSchema = z.object({
+  name: z.string().min(1).max(64),
+  type: z.string().max(64),
+  pk: z.boolean().optional(),
+  fk: z.boolean().optional(),
+  nullable: z.boolean().optional(),
+  unique: z.boolean().optional(),
+});
+/** Most columns one table can have, and the longest description. */
+export const TABLE_COLUMNS_MAX = 100;
+export const TABLE_DESCRIPTION_MAX = 500;
+/** A database table drawn as an ER diagram entity: its name and its columns, top to bottom. */
+export const tableDataSchema = z.object({
+  name: z.string().min(1).max(64),
+  /** What the table holds, in a sentence or two (shown in its details card). */
+  description: z.string().max(TABLE_DESCRIPTION_MAX).optional(),
+  columns: z.array(tableColumnSchema).max(TABLE_COLUMNS_MAX),
+});
+
+/**
+ * How many rows an end of an ER relation stands for, drawn in crow's-foot notation where the
+ * line meets the table: a bar for one, a circle for zero, a three-pronged foot for many.
+ */
+export const CARDINALITIES = ["one", "many", "zero-or-one", "zero-or-many", "one-or-many"] as const;
+export const cardinalitySchema = z.enum(CARDINALITIES);
+/** An arrow's path: one straight segment, or right-angle segments (elbow). */
+export const connectorRouteSchema = z.enum(["straight", "elbow"]);
+/** The side of a shape an elbow arrow leaves or enters it through. */
+export const connectorSideSchema = z.enum(["left", "right", "top", "bottom"]);
 
 const color = z.string().max(64);
 const elementRef = z.string().max(64);
@@ -252,6 +285,20 @@ const propFields = {
   // arrow: the elements its ends are attached to
   startBinding: elementRef.nullable().optional(),
   endBinding: elementRef.nullable().optional(),
+  // arrow attached to a table: the column whose row each end meets (else the table's header)
+  startColumn: z.string().max(64).nullable().optional(),
+  endColumn: z.string().max(64).nullable().optional(),
+  // arrow: crow's-foot cardinality at each end (an ER relation); an end without one draws the
+  // usual arrowhead at the end and nothing at the start
+  startHead: cardinalitySchema.nullable().optional(),
+  endHead: cardinalitySchema.nullable().optional(),
+  // arrow: straight (default) or elbow; an elbow arrow's sides are set where its ends attach
+  route: connectorRouteSchema.nullable().optional(),
+  startSide: connectorSideSchema.nullable().optional(),
+  endSide: connectorSideSchema.nullable().optional(),
+  // elbow arrow: the lanes it turns in, from its start: x, y, x, … offsets (an odd count), so the
+  // path runs across to the first x, along to the next y, and so on, then into its end
+  lanes: z.array(z.number()).max(15).nullable().optional(),
   // image, svg: the uploaded file, served at /uploads/<assetKey>
   assetKey: z.string().max(200).optional(),
   // rect, frame: corner radius in px, one or per corner (capped at half the shorter side when drawn)
@@ -266,8 +313,14 @@ const propFields = {
   shadow: shadowSchema.nullable().optional(),
   // chart
   chart: chartDataSchema.optional(),
+  // table: an ER diagram entity (stroke is its border and header tint, fill its body, textColor
+  // its text; the height follows the column count)
+  table: tableDataSchema.optional(),
+  // table: shows only its primary and foreign key columns, and a "+N more" row for the rest
+  keysOnly: z.boolean().optional(),
   // mindnode: the node it branches from (none for a central topic), whether its branch is
-  // folded away, and its text color (stroke is its branch color, fill its background)
+  // folded away, and its text color (stroke is its branch color, fill its background); table:
+  // its text color
   parentId: elementRef.nullable().optional(),
   collapsed: z.boolean().optional(),
   textColor: color.optional(),
@@ -340,6 +393,11 @@ export type Gradient = z.infer<typeof gradientSchema>;
 export type ImageFill = z.infer<typeof imageFillSchema>;
 export type GradientStop = z.infer<typeof gradientStopSchema>;
 export type ChartData = z.infer<typeof chartDataSchema>;
+export type TableColumn = z.infer<typeof tableColumnSchema>;
+export type TableData = z.infer<typeof tableDataSchema>;
+export type Cardinality = z.infer<typeof cardinalitySchema>;
+export type ConnectorRoute = z.infer<typeof connectorRouteSchema>;
+export type ConnectorSide = z.infer<typeof connectorSideSchema>;
 export type ListItem = z.infer<typeof listItemSchema>;
 export type TokenField = (typeof TOKEN_FIELDS)[number];
 export type ElementTokens = z.infer<typeof elementTokensSchema>;

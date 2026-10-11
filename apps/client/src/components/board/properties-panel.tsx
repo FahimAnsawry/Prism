@@ -1,8 +1,11 @@
 import {
+  type Cardinality,
+  CARDINALITIES,
   type ChartData,
   BACKDROP_BLUR_MAX,
   BLUR_TYPES,
   type ChartKind,
+  type ConnectorRoute,
   CUSTOM_COLORS_MAX,
   type Gradient,
   GRADIENT_TYPES,
@@ -18,9 +21,14 @@ import {
   type Radius,
   type Shadow,
   SHADOW_TYPES,
+  TABLE_COLUMNS_MAX,
+  TABLE_DESCRIPTION_MAX,
+  TABLE_TEXT_COLOR,
+  type TableColumn,
+  type TableData,
   type UpdateBoardStyleInput,
 } from "@prism/shared";
-import { Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -99,14 +107,14 @@ const SHADOW_PRESETS: Record<ShadowOption, Shadow | null> = {
 const APPLIES_TO: Partial<Record<keyof BoardElement, ElementType[]>> = {
   // On text and lists the stroke is the text color; on icons, the icon's color.
   // On mind map nodes it's the branch color, and the fill is the node's background.
-  stroke: [...SHAPES, "line", "arrow", "freehand", "text", "list", "icon", "mindnode"],
-  fill: [...SHAPES, "sticky", "icon", "mindnode", "frame"],
+  stroke: [...SHAPES, "line", "arrow", "freehand", "text", "list", "icon", "mindnode", "table"],
+  fill: [...SHAPES, "sticky", "icon", "mindnode", "frame", "table"],
   gradient: [...GRADIENT_TYPES],
   fillImage: [...IMAGE_FILL_TYPES],
   backdropBlur: [...BLUR_TYPES],
-  strokeWidth: [...SHAPES, "line", "arrow", "freehand", "icon", "mindnode"],
+  strokeWidth: [...SHAPES, "line", "arrow", "freehand", "icon", "mindnode", "table"],
   strokeStyle: [...SHAPES, "line", "arrow"],
-  sketch: [...SHAPES, "line", "arrow"],
+  sketch: [...SHAPES, "line", "arrow", "table"],
   radius: ["rect", "frame"],
   shadow: [...SHADOW_TYPES],
   font: ["text", "sticky", "list", "mindnode"],
@@ -116,9 +124,14 @@ const APPLIES_TO: Partial<Record<keyof BoardElement, ElementType[]>> = {
   textAlign: ["text", "sticky", "list"],
   lineHeight: ["text", "sticky", "list"],
   letterSpacing: ["text", "sticky", "list"],
-  textColor: ["mindnode"],
+  textColor: ["mindnode", "table"],
   chart: ["chart"],
   icon: ["icon"],
+  table: ["table"],
+  keysOnly: ["table"],
+  route: ["arrow"],
+  startHead: ["arrow"],
+  endHead: ["arrow"],
 };
 
 const applies = (key: keyof BoardElement, el: BoardElement) =>
@@ -198,6 +211,8 @@ export function PropertiesPanel({
     );
   const textEl = source("font");
   const chartEl = elements.length === 1 && first.type === "chart" ? first : undefined;
+  const tableEl = elements.length === 1 && first.type === "table" ? first : undefined;
+  const arrowEl = source("route");
   const iconEl = source("icon");
   const width = widthEl
     ? (Object.keys(STROKE_WIDTHS) as (keyof typeof STROKE_WIDTHS)[]).find(
@@ -213,13 +228,16 @@ export function PropertiesPanel({
   const onlyText = inked.every((el) => el.type === "text" || el.type === "list");
   const onlyIcons = inked.every((el) => el.type === "icon");
   const onlyMind = inked.every((el) => el.type === "mindnode");
+  const onlyTables = inked.every((el) => el.type === "table");
   const strokeLabel = onlyText
     ? "Text color"
     : onlyIcons
       ? "Icon color"
       : onlyMind
         ? "Branch color"
-        : "Stroke color";
+        : onlyTables
+          ? "Border color"
+          : "Stroke color";
   const mindEl = source("textColor");
   const font = textEl?.font ?? "sans";
 
@@ -263,7 +281,7 @@ export function PropertiesPanel({
         {stroke || fill || radiusEl || shadowEl ? (
           <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-2.5 pb-6">
             {stroke && (
-              <Row label={onlyText || onlyIcons || onlyMind ? strokeLabel : "Stroke"}>
+              <Row label={onlyText || onlyIcons || onlyMind || onlyTables ? strokeLabel : "Stroke"}>
                 <ColorChoices
                   label={strokeLabel}
                   value={stroke.stroke}
@@ -538,7 +556,9 @@ export function PropertiesPanel({
             <Row label="Text color">
               <ColorChoices
                 label="Text color"
-                value={mindEl.textColor ?? MIND_TEXT_COLOR}
+                value={
+                  mindEl.textColor ?? (mindEl.type === "table" ? TABLE_TEXT_COLOR : MIND_TEXT_COLOR)
+                }
                 presets={MIND_TEXT_COLORS}
                 custom={customColors}
                 disabled={locked}
@@ -550,13 +570,15 @@ export function PropertiesPanel({
                 onRemove={removeColor}
               />
             </Row>
-            <button
-              type="button"
-              onClick={() => onTidy(mindEl.id)}
-              className="h-8 bg-background font-mono text-2xs text-foreground transition-colors duration-150 ease-standard hover:bg-divider"
-            >
-              Tidy up the map
-            </button>
+            {mindEl.type === "mindnode" && (
+              <button
+                type="button"
+                onClick={() => onTidy(mindEl.id)}
+                className="h-8 bg-background font-mono text-2xs text-foreground transition-colors duration-150 ease-standard hover:bg-divider"
+              >
+                Tidy up the map
+              </button>
+            )}
           </section>
         )}
 
@@ -575,6 +597,45 @@ export function PropertiesPanel({
 
         {chartEl?.chart && (
           <ChartEditor chart={chartEl.chart} onChange={(chart) => onChange({ chart })} />
+        )}
+
+        {tableEl?.table && (
+          <TableEditor
+            table={tableEl.table}
+            keysOnly={!!tableEl.keysOnly}
+            onChange={(table) => onChange({ table })}
+            onKeysOnly={(keysOnly) => onChange({ keysOnly })}
+          />
+        )}
+
+        {arrowEl && (
+          <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-4.5 pb-6">
+            <Row label="Route">
+              <Segmented<ConnectorRoute>
+                options={["straight", "elbow"]}
+                value={arrowEl.route ?? "straight"}
+                onChange={(route) => onChange({ route })}
+              />
+            </Row>
+            <div className="grid grid-cols-2 gap-3">
+              <Row label="Start">
+                <HeadPicker
+                  label="Start of the line"
+                  value={arrowEl.startHead ?? null}
+                  none="None"
+                  onChange={(startHead) => onChange({ startHead })}
+                />
+              </Row>
+              <Row label="End">
+                <HeadPicker
+                  label="End of the line"
+                  value={arrowEl.endHead ?? null}
+                  none="Arrow"
+                  onChange={(endHead) => onChange({ endHead })}
+                />
+              </Row>
+            </div>
+          </section>
         )}
       </fieldset>
 
@@ -1078,10 +1139,249 @@ function ChartEditor({
   );
 }
 
+const HEAD_NAMES: Record<Cardinality, string> = {
+  one: "One",
+  many: "Many",
+  "zero-or-one": "Zero or one",
+  "zero-or-many": "Zero or many",
+  "one-or-many": "One or many",
+};
+
+/** An arrow end: its plain look (`none`), or a crow's-foot cardinality for an ER relation. */
+function HeadPicker({
+  label,
+  value,
+  none,
+  onChange,
+}: {
+  label: string;
+  value: Cardinality | null;
+  none: string;
+  onChange: (head: Cardinality | null) => void;
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={value ?? ""}
+      onChange={(event) => {
+        const head = CARDINALITIES.find((c) => c === event.target.value);
+        onChange(head ?? null);
+      }}
+      className="h-7 w-full border border-divider bg-background px-1.5 font-mono text-2xs text-foreground outline-none focus:border-foreground"
+    >
+      <option value="">{none}</option>
+      {CARDINALITIES.map((head) => (
+        <option key={head} value={head}>
+          {HEAD_NAMES[head]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Column flags, as the table editor toggles them. */
+const COLUMN_FLAGS = [
+  { key: "pk", label: "PK", title: "Primary key" },
+  { key: "fk", label: "FK", title: "Foreign key" },
+  { key: "nullable", label: "Null", title: "Nullable" },
+  { key: "unique", label: "Uniq", title: "Unique" },
+] as const;
+
+/**
+ * A name that can't be empty: while the field is cleared to type a new one, the old name stays;
+ * leaving it empty puts the old name back.
+ */
+function NameInput({
+  label,
+  value,
+  onChange,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (name: string) => void;
+  className: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  // A name changed elsewhere (undo, another tab) replaces the draft.
+  const [shown, setShown] = useState(value);
+  if (value !== shown) {
+    setShown(value);
+    setDraft(value);
+  }
+  return (
+    <input
+      aria-label={label}
+      value={draft}
+      maxLength={64}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        if (event.target.value.trim()) onChange(event.target.value);
+      }}
+      onBlur={() => {
+        if (!draft.trim()) setDraft(value);
+      }}
+      className={className}
+    />
+  );
+}
+
+/** A table's name and columns as plain inputs (tools.md §1, tool 20). */
+function TableEditor({
+  table,
+  keysOnly,
+  onChange,
+  onKeysOnly,
+}: {
+  table: TableData;
+  keysOnly: boolean;
+  onChange: (table: TableData) => void;
+  /** Shows only the key columns on the board (and "+N more"); the rest stay in the table. */
+  onKeysOnly: (keysOnly: boolean) => void;
+}) {
+  const columns = table.columns;
+  const setColumns = (next: TableColumn[]) => onChange({ ...table, columns: next });
+  const setColumn = (i: number, changes: Partial<TableColumn>) =>
+    setColumns(
+      columns.map((column, j) => {
+        if (j !== i) return column;
+        const next: TableColumn = { ...column, ...changes };
+        // Flags are stored only when on.
+        for (const flag of COLUMN_FLAGS) if (!next[flag.key]) delete next[flag.key];
+        return next;
+      }),
+    );
+  const move = (i: number, by: number) => {
+    const next = [...columns];
+    const [column] = next.splice(i, 1);
+    if (column) next.splice(i + by, 0, column);
+    setColumns(next);
+  };
+  const freeName = () => {
+    let n = columns.length + 1;
+    while (columns.some((c) => c.name === `column${n}`)) n++;
+    return `column${n}`;
+  };
+  const cell =
+    "h-7 w-full min-w-0 border border-divider bg-background px-1.5 text-xs text-foreground outline-none focus:border-foreground";
+  const iconButton =
+    "flex size-7 shrink-0 items-center justify-center text-muted-foreground hover:bg-background hover:text-ink disabled:opacity-40";
+
+  return (
+    <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-4.5 pb-6">
+      <Row label="Table name">
+        <NameInput
+          label="Table name"
+          value={table.name}
+          onChange={(name) => onChange({ ...table, name })}
+          className={cell}
+        />
+      </Row>
+      <Row label="Description">
+        <textarea
+          aria-label="Table description"
+          value={table.description ?? ""}
+          maxLength={TABLE_DESCRIPTION_MAX}
+          rows={3}
+          placeholder="What this table holds"
+          onChange={(event) => {
+            const { description: _old, ...rest } = table;
+            const description = event.target.value;
+            onChange(description.trim() ? { ...rest, description } : rest);
+          }}
+          className="w-full resize-y border border-divider bg-background px-1.5 py-1 text-xs leading-relaxed text-foreground outline-none focus:border-foreground"
+        />
+      </Row>
+      <Toggle label="Keys only" checked={keysOnly} onChange={onKeysOnly} />
+      <Row label="Columns">
+        <ol className="flex flex-col gap-2.5">
+          {columns.map((column, i) => (
+            <li key={i} className="flex flex-col gap-1">
+              <div className="flex gap-1">
+                <NameInput
+                  label={`Column ${i + 1} name`}
+                  value={column.name}
+                  onChange={(name) => setColumn(i, { name })}
+                  className={cn(cell, column.pk && "font-semibold")}
+                />
+                <input
+                  aria-label={`Column ${i + 1} type`}
+                  value={column.type}
+                  maxLength={64}
+                  onChange={(event) => setColumn(i, { type: event.target.value })}
+                  className={cn(cell, "w-[82px] shrink-0 font-mono text-2xs")}
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                {COLUMN_FLAGS.map((flag) => (
+                  <button
+                    key={flag.key}
+                    type="button"
+                    title={flag.title}
+                    aria-pressed={!!column[flag.key]}
+                    aria-label={`${flag.title}: ${column.name}`}
+                    onClick={() => setColumn(i, { [flag.key]: !column[flag.key] })}
+                    className={cn(
+                      segmentButton,
+                      "min-w-0 flex-1 px-0.5",
+                      column[flag.key]
+                        ? "bg-secondary text-secondary-foreground"
+                        : "bg-background text-foreground hover:bg-divider",
+                    )}
+                  >
+                    {flag.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  aria-label={`Move ${column.name} up`}
+                  disabled={i === 0}
+                  onClick={() => move(i, -1)}
+                  className={iconButton}
+                >
+                  <ArrowUp aria-hidden="true" className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Move ${column.name} down`}
+                  disabled={i === columns.length - 1}
+                  onClick={() => move(i, 1)}
+                  className={iconButton}
+                >
+                  <ArrowDown aria-hidden="true" className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Remove ${column.name}`}
+                  onClick={() => setColumns(columns.filter((_, j) => j !== i))}
+                  className={iconButton}
+                >
+                  <X aria-hidden="true" className="size-3.5" />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <button
+          type="button"
+          disabled={columns.length >= TABLE_COLUMNS_MAX}
+          onClick={() => setColumns([...columns, { name: freeName(), type: "text" }])}
+          className={cn(
+            segmentButton,
+            "mt-2.5 w-full bg-background text-foreground hover:bg-divider",
+          )}
+        >
+          + Add column
+        </button>
+      </Row>
+    </section>
+  );
+}
+
 const segmentButton =
   "h-7 font-mono text-2xs transition-colors duration-150 ease-standard disabled:pointer-events-none disabled:opacity-60";
 
-function Row({
+export function Row({
   label,
   children,
   className,

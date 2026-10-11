@@ -38,6 +38,7 @@ import type { Point } from "@/components/board/geometry";
 import { isTextual } from "@/components/board/gestures";
 import { applicableChanges, PropertiesPanel } from "@/components/board/properties-panel";
 import { ShortcutsDialog } from "@/components/board/shortcuts-dialog";
+import { TableDetails } from "@/components/board/table-details";
 import { TextEditor } from "@/components/board/text-editor";
 import { fitTextBox, loadBoardFonts } from "@/components/board/text-layout";
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
@@ -50,6 +51,7 @@ import { boardEditsQuery, useMergeEdit } from "@/lib/ai";
 import { ApiError, apiErrorMessage } from "@/lib/api";
 import { requireSession } from "@/lib/auth-client";
 import { isTyping } from "@/lib/keyboard";
+import { cn } from "@/lib/utils";
 import { allBoards, boardQuery, useUpdateBoardStyle, workspaceQuery } from "@/lib/workspace";
 
 export const Route = createFileRoute("/board/$boardId")({
@@ -167,6 +169,8 @@ function BoardEditor({
   const [icon, setIcon] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sharing, setSharing] = useState(false);
+  /** The table whose details card shows: the one the pointer rested on (BoardCanvas pins it). */
+  const [cardTable, setCardTable] = useState<string | null>(null);
   const viewport = useRef<HTMLElement>(null);
   const size = useElementSize(viewport);
   const pointer = useRef<Point | null>(null);
@@ -557,6 +561,7 @@ function BoardEditor({
             pointer.current = p;
           }}
           onDropFiles={(files, p) => void addFiles(files, p)}
+          onHoverTable={setCardTable}
         />
 
         {editingEl && (
@@ -581,6 +586,27 @@ function BoardEditor({
 
         {tool === "emoji" && <EmojiPicker value={emoji} onPick={setEmoji} />}
         {tool === "icon" && <IconPicker value={icon} onPick={setIcon} />}
+
+        {(() => {
+          const table = cardTable ? state.elements.find((el) => el.id === cardTable) : undefined;
+          if (table?.type !== "table" || editing) return null;
+          // Beside the properties panel when it's open, in its place otherwise.
+          return (
+            <aside
+              aria-label={`${table.table?.name ?? "Table"} details`}
+              className={cn(
+                "absolute top-6 z-20 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-lg",
+                selected.length > 0 ? "right-[18rem] md:right-[18.5rem]" : "right-4 md:right-6",
+              )}
+            >
+              <TableDetails
+                table={table}
+                board={state.elements}
+                onSelect={(ids) => dispatch({ type: "select", ids })}
+              />
+            </aside>
+          );
+        })()}
 
         {selected.length > 0 && !editing && (
           <PropertiesPanel

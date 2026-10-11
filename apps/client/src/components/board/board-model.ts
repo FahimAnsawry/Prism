@@ -10,6 +10,7 @@ import {
   mindDescendants,
   mindRoot,
   mindStyle,
+  TABLE_STYLE,
   tidyMindMap,
 } from "@prism/shared";
 import { isHandwriting } from "./fonts";
@@ -100,6 +101,18 @@ const DEFAULTS: Partial<Record<ElementType, Partial<BoardElement>>> = {
         { label: "Tue", value: 19 },
         { label: "Wed", value: 8 },
         { label: "Thu", value: 15 },
+      ],
+    },
+  },
+  table: {
+    ...TABLE_STYLE,
+    autoWidth: true,
+    table: {
+      name: "table",
+      columns: [
+        { name: "id", type: "uuid", pk: true },
+        { name: "name", type: "text" },
+        { name: "createdAt", type: "timestamp" },
       ],
     },
   },
@@ -231,6 +244,48 @@ export function deleteElements(elements: BoardElement[], ids: Iterable<string>) 
       !(el.startBinding && doomed.has(el.startBinding)) &&
       !(el.endBinding && doomed.has(el.endBinding)),
   );
+}
+
+/**
+ * Arrows attached to a table column that was renamed follow the new name; ends at a removed
+ * column move to the table's header. A column counts as renamed when the table kept its column
+ * count and the old name is gone from that position.
+ */
+function followColumns(before: BoardElement[], after: BoardElement[]) {
+  const previous = new Map(before.map((el) => [el.id, el]));
+  const renames = new Map<string, Map<string, string | null>>();
+  for (const el of after) {
+    const old = previous.get(el.id)?.table;
+    if (el.type !== "table" || !el.table || !old || old === el.table) continue;
+    const oldNames = old.columns.map((c) => c.name);
+    const newNames = el.table.columns.map((c) => c.name);
+    const moved = new Map<string, string | null>();
+    oldNames.forEach((name, i) => {
+      if (newNames.includes(name)) return;
+      const renamed = oldNames.length === newNames.length ? newNames[i] : undefined;
+      moved.set(name, renamed !== undefined && !oldNames.includes(renamed) ? renamed : null);
+    });
+    if (moved.size > 0) renames.set(el.id, moved);
+  }
+  if (renames.size === 0) return after;
+  const follow = (table: string | null | undefined, column: string | null | undefined) =>
+    table && column ? renames.get(table)?.get(column) : undefined;
+  return after.map((el) => {
+    if (el.type !== "arrow") return el;
+    const start = follow(el.startBinding, el.startColumn);
+    const end = follow(el.endBinding, el.endColumn);
+    if (start === undefined && end === undefined) return el;
+    const next = { ...el };
+    if (start !== undefined) {
+      if (start) next.startColumn = start;
+      else delete next.startColumn;
+    }
+    if (end !== undefined) {
+      if (end) next.endColumn = end;
+      else delete next.endColumn;
+    }
+    return next;
+  });
 }
 
 /** Whether a text-like element has no text left. */
@@ -366,11 +421,15 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
         return fitTextBox({ ...el, ...changes });
       });
       if (!changed) return state;
-      // A mind map node whose text size changed makes room for itself.
+      // A mind map node whose text size changed makes room for itself; relations follow a
+      // table's renamed columns.
       return commit(
         state,
         state.elements,
-        tidyMindMaps(updateBindings(next), Object.keys(action.patches)),
+        tidyMindMaps(
+          updateBindings(followColumns(state.elements, next)),
+          Object.keys(action.patches),
+        ),
       );
     }
 
@@ -511,10 +570,12 @@ const LABELS: Record<ElementType, string> = {
   frame: "Frame",
   icon: "Icon",
   mindnode: "Mind map node",
+  table: "Table",
 };
 
 /** The display name the properties panel uses as its title. */
 export function elementLabel(el: BoardElement) {
   if (el.type === "text" && isHandwriting(el.font)) return "Handwriting";
+  if (el.type === "arrow" && (el.startHead || el.endHead)) return "Relation";
   return LABELS[el.type];
 }
