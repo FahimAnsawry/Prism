@@ -1,4 +1,5 @@
 import { arrowRelation, relationKind } from "@prism/shared";
+import { Expand } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type BoardElement, displayColor } from "./board-model";
 import { Row } from "./properties-panel";
@@ -26,10 +27,13 @@ export function TableDetails({
   table,
   board,
   onSelect,
+  onOpenFocus,
 }: {
   table: BoardElement;
   board: BoardElement[];
   onSelect: (ids: string[]) => void;
+  /** Opens the table's focus view (ErFocusDialog). */
+  onOpenFocus?: () => void;
 }) {
   const byId = new Map(board.map((el) => [el.id, el]));
   const references: TableLink[] = [];
@@ -104,13 +108,26 @@ export function TableDetails({
   );
   return (
     <section aria-label="Table details" className="flex flex-col gap-3 px-4 pt-3.5 pb-5">
-      <div>
-        <p className="truncate text-sm font-bold text-ink">{table.table?.name}</p>
-        <p className="font-mono text-3xs text-muted-foreground">
-          {columns} {columns === 1 ? "column" : "columns"} ·{" "}
-          {references.length + referencedBy.length}{" "}
-          {references.length + referencedBy.length === 1 ? "relation" : "relations"}
-        </p>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-ink">{table.table?.name}</p>
+          <p className="font-mono text-3xs text-muted-foreground">
+            {columns} {columns === 1 ? "column" : "columns"} ·{" "}
+            {references.length + referencedBy.length}{" "}
+            {references.length + referencedBy.length === 1 ? "relation" : "relations"}
+          </p>
+        </div>
+        {onOpenFocus && (
+          <button
+            type="button"
+            onClick={onOpenFocus}
+            aria-label="Open focus view"
+            title="Focus view · F"
+            className="-mt-1 -mr-2 flex size-8 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-standard hover:text-ink"
+          >
+            <Expand aria-hidden="true" className="size-4" />
+          </button>
+        )}
       </div>
       <p
         className={cn(

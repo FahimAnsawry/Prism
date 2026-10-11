@@ -32,7 +32,7 @@ import type { ToolId } from "./tools";
 
 const SELECTION = "#5882ff"; // --color-blue
 /** How long the pointer rests on an ER table or relation before it lights up (and a table's card shows). */
-const DWELL_MS = 1000;
+const DWELL_MS = 500;
 
 const TOOL_CURSORS: Partial<Record<ToolId, string>> = {
   text: "cursor-text",
@@ -69,6 +69,7 @@ export function BoardCanvas({
   onPointerWorld,
   onDropFiles,
   onHoverTable,
+  focusOpen = false,
 }: {
   state: BoardState;
   dispatch: Dispatch<BoardAction>;
@@ -92,6 +93,8 @@ export function BoardCanvas({
   onDropFiles: (files: File[], p: Point) => void;
   /** The ER table under the pointer (null when there's none), for its details card. */
   onHoverTable?: (id: string | null) => void;
+  /** True while a table's focus view is open over the board; closing it lets go of the table. */
+  focusOpen?: boolean;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const pan = useRef<{ x: number; y: number; camera: Camera } | null>(null);
@@ -137,6 +140,22 @@ export function BoardCanvas({
     },
     [],
   );
+  /**
+   * False just after the focus view closes: the table the pointer is on then doesn't count as a
+   * new rest (or the view would open again at once); leaving it and coming back does.
+   */
+  const armed = useRef(true);
+  const wasOpen = useRef(focusOpen);
+  useEffect(() => {
+    if (wasOpen.current && !focusOpen) {
+      // Closing the focus view lets go of its table, so resting on it again reopens it.
+      pin(null, false);
+      armed.current = false;
+    }
+    wasOpen.current = focusOpen;
+    // pin only sets state and calls back; it's fine to use the one from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusOpen]);
   const spaceHeld = useHeldSpace();
   const { elements, selectedIds } = state;
   // Nodes inside folded mind map branches aren't drawn, hit or selected.
@@ -273,6 +292,11 @@ export function BoardCanvas({
     if (tool === "select") setHoverCursor(cursorAt(p));
     setHoverMindId(tool === "select" ? mindHoverAt(p) : null);
     const erHover = tool === "select" ? erHoverAt(p) : null;
+    if (!armed.current) {
+      armed.current = true;
+      dwell.current = { id: erHover, timer: null };
+      return;
+    }
     restOn(erHover, !!erHover && elements.find((el) => el.id === erHover)?.type === "table");
   };
 

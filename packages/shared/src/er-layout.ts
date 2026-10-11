@@ -55,8 +55,30 @@ const SWEEPS = 8;
 const ALIGN_ROUNDS = 12;
 /** The width : height a diagram aims for when it splits tall columns. */
 const TARGET_ASPECT = 2;
+/** What each extra sub-column costs against the aspect, and the most one rank splits into. */
+const COLUMN_COST = 1;
+const MAX_SPLIT = 4;
 
-export function layoutErDiagram(nodes: ErLayoutNode[], edges: ErLayoutEdge[]): ErLayout {
+/** How tall columns split: create_er_diagram uses the defaults; a view can fit its own space. */
+export interface ErLayoutOptions {
+  /** The width : height to aim for (TARGET_ASPECT). */
+  aspect?: number;
+  /**
+   * A space to show the diagram in, in px: instead of aiming for an aspect, columns split only
+   * as far as that shows it larger (never past full size).
+   */
+  fit?: { width: number; height: number };
+  /** What each extra sub-column costs (COLUMN_COST); lower splits more readily. */
+  columnCost?: number;
+  /** The most sub-columns one rank splits into (MAX_SPLIT). */
+  maxSplit?: number;
+}
+
+export function layoutErDiagram(
+  nodes: ErLayoutNode[],
+  edges: ErLayoutEdge[],
+  options: ErLayoutOptions = {},
+): ErLayout {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const parents = new Map<string, Set<string>>();
   const children = new Map<string, Set<string>>();
@@ -143,7 +165,7 @@ export function layoutErDiagram(nodes: ErLayoutNode[], edges: ErLayoutEdge[]): E
   // ── Split ranks much taller than the diagram is wide into sub-columns ──
   const rankIndex = new Map<string, number>();
   layers.forEach((layer, r) => layer.forEach((node) => rankIndex.set(node.id, r)));
-  const splits = chooseSplits(layers, stackHeight);
+  const splits = chooseSplits(layers, stackHeight, options);
   const columns: ErLayoutNode[][] = [];
   layers.forEach((layer, r) => {
     const k = splits[r] ?? 1;
@@ -485,15 +507,19 @@ function orderLanes<T extends LaneGroup>(groups: T[]): T[] {
 
 /**
  * How many sub-columns each rank becomes: none, unless splitting the tallest ones brings the
- * diagram closer to TARGET_ASPECT (each extra column costs a little, since its relations get longer).
+ * diagram closer to the aspect (each extra column costs a little, since its relations get longer).
  */
-function chooseSplits(layers: ErLayoutNode[][], stackHeight: (list: ErLayoutNode[]) => number) {
+function chooseSplits(
+  layers: ErLayoutNode[][],
+  stackHeight: (list: ErLayoutNode[]) => number,
+  { aspect = TARGET_ASPECT, columnCost = COLUMN_COST, maxSplit = MAX_SPLIT, fit }: ErLayoutOptions,
+) {
   const heights = layers.map(stackHeight);
   const widths = layers.map((layer) => Math.max(...layer.map((node) => node.width)));
   const tallestNode = Math.max(0, ...layers.flat().map((node) => node.height));
   const candidates = new Set<number>();
   for (const h of heights)
-    for (let k = 1; k <= 4; k++) candidates.add(Math.max(tallestNode, h / k));
+    for (let k = 1; k <= maxSplit; k++) candidates.add(Math.max(tallestNode, h / k));
   let best = layers.map(() => 1);
   let bestScore = Infinity;
   for (const limit of [...candidates].sort((a, b) => b - a)) {
@@ -505,7 +531,10 @@ function chooseSplits(layers: ErLayoutNode[][], stackHeight: (list: ErLayoutNode
       splits.reduce((sum, k, r) => sum + k * (widths[r] ?? 0), 0) + ER_GAP_X * 1.4 * (count - 1);
     const height = Math.max(...splits.map((k, r) => (heights[r] ?? 0) / k));
     const extra = count - layers.length;
-    const score = Math.abs(Math.log(width / Math.max(1, height) / TARGET_ASPECT)) + 1.0 * extra;
+    const shape = fit
+      ? -Math.log(Math.min(1, fit.width / Math.max(1, width), fit.height / Math.max(1, height)))
+      : Math.abs(Math.log(width / Math.max(1, height) / aspect));
+    const score = shape + columnCost * extra;
     if (score < bestScore - 1e-9) {
       bestScore = score;
       best = splits;

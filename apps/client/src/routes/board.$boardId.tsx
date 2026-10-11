@@ -32,6 +32,7 @@ import {
   serializeElements,
 } from "@/components/board/clipboard";
 import { EmojiPicker } from "@/components/board/emoji-picker";
+import { ErFocusDialog } from "@/components/board/er-focus-dialog";
 import { IconPicker } from "@/components/board/icon-picker";
 import { googleFontId, loadFont } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
@@ -171,6 +172,8 @@ function BoardEditor({
   const [sharing, setSharing] = useState(false);
   /** The table whose details card shows: the one the pointer rested on (BoardCanvas pins it). */
   const [cardTable, setCardTable] = useState<string | null>(null);
+  /** The table whose focus view (ErFocusDialog) is open. */
+  const [focusTable, setFocusTable] = useState<string | null>(null);
   const viewport = useRef<HTMLElement>(null);
   const size = useElementSize(viewport);
   const pointer = useRef<Point | null>(null);
@@ -453,6 +456,11 @@ function BoardEditor({
       const key = event.key.toLowerCase();
       const mod = event.ctrlKey || event.metaKey;
       const ids = state.selectedIds;
+      const focusTarget = () => {
+        const chosen = cardTable ?? (ids.length === 1 ? ids[0] : undefined);
+        const el = chosen ? state.elements.find((e) => e.id === chosen) : undefined;
+        return el?.type === "table" ? el.id : null;
+      };
 
       // Ctrl +/−/0 would zoom the whole page; here they zoom the board.
       if (mod && (key === "=" || key === "+")) {
@@ -471,6 +479,10 @@ function BoardEditor({
       } else if (key === "?" && !mod) {
         event.preventDefault();
         setShortcutsOpen(true);
+      } else if (key === "f" && !mod && !event.altKey && !event.shiftKey && focusTarget()) {
+        // F: the focus view of the table the pointer rested on, or else the one selected table.
+        event.preventDefault();
+        setFocusTable(focusTarget());
       } else if (mod && key === "z") {
         event.preventDefault();
         dispatch({ type: event.shiftKey ? "redo" : "undo" });
@@ -521,7 +533,7 @@ function BoardEditor({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [state.selectedIds, state.elements, size, chooseTool, startEditing]);
+  }, [state.selectedIds, state.elements, size, chooseTool, startEditing, cardTable]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
@@ -561,7 +573,12 @@ function BoardEditor({
             pointer.current = p;
           }}
           onDropFiles={(files, p) => void addFiles(files, p)}
-          onHoverTable={setCardTable}
+          focusOpen={focusTable !== null}
+          onHoverTable={(id) => {
+            setCardTable(id);
+            // Resting on a table for half a second opens its focus view (not while text is edited).
+            if (id && !latest.current.editing) setFocusTable(id);
+          }}
         />
 
         {editingEl && (
@@ -589,7 +606,8 @@ function BoardEditor({
 
         {(() => {
           const table = cardTable ? state.elements.find((el) => el.id === cardTable) : undefined;
-          if (table?.type !== "table" || editing) return null;
+          // While the table's focus view is open its details show there instead.
+          if (table?.type !== "table" || editing || focusTable) return null;
           // Beside the properties panel when it's open, in its place otherwise.
           return (
             <aside
@@ -603,6 +621,7 @@ function BoardEditor({
                 table={table}
                 board={state.elements}
                 onSelect={(ids) => dispatch({ type: "select", ids })}
+                onOpenFocus={() => setFocusTable(table.id)}
               />
             </aside>
           );
@@ -677,6 +696,22 @@ function BoardEditor({
       </main>
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <ErFocusDialog
+        tableId={focusTable}
+        elements={state.elements}
+        onClose={(lastId) => {
+          // Coming back from another table than the one it opened on, the board shows that one.
+          const last = lastId !== focusTable && state.elements.find((el) => el.id === lastId);
+          if (last) {
+            setCamera((c) => ({
+              ...c,
+              x: -c.zoom * (last.x + last.width / 2 - size.width / 2),
+              y: -c.zoom * (last.y + last.height / 2 - size.height / 2),
+            }));
+          }
+          setFocusTable(null);
+        }}
+      />
       {board?.access === "owner" && (
         <ShareDialog
           kind="board"

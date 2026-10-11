@@ -1,5 +1,5 @@
 import type { BoardElement, ElementOp } from "@prism/shared";
-import { Eye, Grid2x2, Maximize, Minus, Plus } from "lucide-react";
+import { Eye, Grid2x2, Hand, Maximize, Minus, MousePointer2, Plus } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -16,7 +16,11 @@ import { BoardCanvas } from "./board-canvas";
 import { type BoardAction, boardReducer, initialBoardState } from "./board-model";
 import { useBoardRealtime, useBoardSaver } from "./board-sync";
 import { type Camera, fitCamera, stepZoom, zoomAt } from "./camera";
+import { ErFocusDialog } from "./er-focus-dialog";
+import { TableSwitcher } from "./er-table-switcher";
 import { loadFont } from "./fonts";
+import { TableDetails } from "./table-details";
+import type { ToolId } from "./tools";
 import { useElementSize } from "./use-element-size";
 
 /** Zoom buttons and keys zoom around the middle of the view. */
@@ -41,6 +45,7 @@ export function BoardViewer({
   leading,
   onRevoked,
   onAccessChanged,
+  onSwitchToFocus,
 }: {
   boardId: string;
   initial: BoardElement[];
@@ -55,16 +60,27 @@ export function BoardViewer({
   leading?: ReactNode;
   onRevoked: () => void;
   onAccessChanged?: () => void;
+  onSwitchToFocus?: () => void;
 }) {
   const [state, rawDispatch] = useReducer(boardReducer, initial, initialBoardState);
   const dispatch = useCallback((action: BoardAction) => {
     if (ALLOWED.has(action.type)) rawDispatch(action);
   }, []);
+  const hasTables = state.elements.some((el) => el.type === "table");
+  const [tool, setTool] = useState<ToolId>(hasTables ? "select" : "hand");
+  const [cardTable, setCardTable] = useState<string | null>(null);
+  const [focusTable, setFocusTable] = useState<string | null>(null);
+  const switcher = useRef<HTMLButtonElement>(null);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [grid, setGrid] = useState(true);
   const viewport = useRef<HTMLElement>(null);
   const size = useElementSize(viewport);
   const { receive, resync } = useBoardSaver(boardId, initial, state.elements, { readOnly: true });
+
+  const chosenTableId = cardTable ?? (state.selectedIds.length === 1 ? state.selectedIds[0] : null);
+  const selectedTable = chosenTableId
+    ? state.elements.find((el) => el.id === chosenTableId)
+    : undefined;
 
   const applyRemote = useCallback(
     (ops: ElementOp[]) => {
@@ -117,7 +133,29 @@ export function BoardViewer({
       if (isTyping(event.target)) return;
       const key = event.key.toLowerCase();
       const mod = event.ctrlKey || event.metaKey;
-      if (mod && (key === "=" || key === "+")) {
+      const ids = state.selectedIds;
+      const focusTarget = () => {
+        const chosen = cardTable ?? (ids.length === 1 ? ids[0] : undefined);
+        const el = chosen ? state.elements.find((e) => e.id === chosen) : undefined;
+        return el?.type === "table" ? el.id : null;
+      };
+
+      if (event.key === "/" || (mod && event.key.toLowerCase() === "k")) {
+        if (hasTables) {
+          event.preventDefault();
+          switcher.current?.click();
+        }
+      } else if (key === "f" && !mod && !event.altKey && !event.shiftKey && focusTarget()) {
+        event.preventDefault();
+        setFocusTable(focusTarget());
+      } else if (key === "escape") {
+        dispatch({ type: "select", ids: [] });
+        setCardTable(null);
+      } else if (key === "v" && !mod && !event.altKey) {
+        setTool("select");
+      } else if (key === "h" && !mod && !event.altKey) {
+        setTool("hand");
+      } else if (mod && (key === "=" || key === "+")) {
         event.preventDefault();
         setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
       } else if (mod && key === "-") {
@@ -133,7 +171,7 @@ export function BoardViewer({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [fit]);
+  }, [fit, cardTable, state.selectedIds, state.elements, hasTables, dispatch]);
 
   const chrome = "border border-chrome bg-card text-foreground";
   return (
@@ -156,6 +194,55 @@ export function BoardViewer({
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          {hasTables && (
+            <TableSwitcher
+              elements={state.elements}
+              currentId={chosenTableId ?? ""}
+              triggerRef={switcher}
+              onPick={(id) => setFocusTable(id)}
+            />
+          )}
+          {hasTables && (
+            <div className={cn("flex h-9 items-stretch", chrome)}>
+              <button
+                type="button"
+                aria-label="Select / Inspect (V)"
+                title="Select · V"
+                onClick={() => setTool("select")}
+                className={cn(
+                  "flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background",
+                  tool === "select" && "bg-background text-ink",
+                )}
+              >
+                <MousePointer2 aria-hidden="true" className="size-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Hand / Pan (H)"
+                title="Pan · H"
+                onClick={() => setTool("hand")}
+                className={cn(
+                  "flex w-9 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard hover:bg-background",
+                  tool === "hand" && "bg-background text-ink",
+                )}
+              >
+                <Hand aria-hidden="true" className="size-4" />
+              </button>
+            </div>
+          )}
+          {hasTables && onSwitchToFocus && (
+            <button
+              type="button"
+              onClick={onSwitchToFocus}
+              aria-label="Focus view"
+              title="Focus view"
+              className={cn(
+                "hidden h-9 items-center gap-1.5 border border-chrome bg-card px-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-standard hover:bg-background md:flex",
+              )}
+            >
+              Focus view
+            </button>
+          )}
           <button
             type="button"
             aria-label="Dot grid"
@@ -217,7 +304,7 @@ export function BoardViewer({
         <BoardCanvas
           state={state}
           dispatch={dispatch}
-          tool="hand"
+          tool={tool}
           grid={grid}
           camera={camera}
           editingId={null}
@@ -230,13 +317,49 @@ export function BoardViewer({
           onToolDone={noop}
           onPointerWorld={noop}
           onDropFiles={noop}
+          focusOpen={focusTable !== null}
+          onHoverTable={(id) => {
+            setCardTable(id);
+            // Resting on a table for half a second opens its focus view
+            if (id) setFocusTable(id);
+          }}
         />
+        {selectedTable?.type === "table" && !focusTable && (
+          <aside
+            aria-label={`${selectedTable.table?.name ?? "Table"} details`}
+            className="absolute top-6 right-4 z-20 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-lg"
+          >
+            <TableDetails
+              table={selectedTable}
+              board={state.elements}
+              onSelect={(ids) => dispatch({ type: "select", ids })}
+              onOpenFocus={() => setFocusTable(selectedTable.id)}
+            />
+          </aside>
+        )}
         {state.elements.length === 0 && (
           <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-24 text-center text-sm text-muted-foreground">
             This board is empty.
           </p>
         )}
       </main>
+
+      <ErFocusDialog
+        tableId={focusTable}
+        elements={state.elements}
+        onClose={(lastId) => {
+          // Coming back from another table than the one it opened on, the board shows that one.
+          const last = lastId !== focusTable && state.elements.find((el) => el.id === lastId);
+          if (last) {
+            setCamera((c) => ({
+              ...c,
+              x: -c.zoom * (last.x + last.width / 2 - size.width / 2),
+              y: -c.zoom * (last.y + last.height / 2 - size.height / 2),
+            }));
+          }
+          setFocusTable(null);
+        }}
+      />
     </div>
   );
 }

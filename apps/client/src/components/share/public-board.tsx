@@ -4,6 +4,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { BoardViewer } from "@/components/board/board-viewer";
+import { ErFocusScreen } from "@/components/board/er-focus-screen";
 import { loadBoardFonts } from "@/components/board/text-layout";
 import { ctaVariants } from "@/components/cta";
 import { ErrorScreen } from "@/components/feedback/error-page";
@@ -31,6 +32,8 @@ export function LinkGoneScreen() {
 /**
  * One board behind a public link: view only, live. `fromProject` means it was opened from a
  * shared project's list, which the back arrow returns to.
+ * ER diagrams render directly in Focus View: all tables shown initially, and selecting a table
+ * focuses that table and its relational tables.
  */
 export function PublicBoard({
   token,
@@ -52,6 +55,7 @@ export function PublicBoard({
     staleTime: Infinity,
   });
   const [revoked, setRevoked] = useState(false);
+  const [viewMode, setViewMode] = useState<"focus" | "board">("focus");
   const navigate = useNavigate();
 
   if (revoked || (data.error instanceof ApiError && data.error.status === 404)) {
@@ -70,6 +74,32 @@ export function PublicBoard({
 
   const { board, projectName } = data.data;
   const context = [projectName, ownerName && `Shared by ${ownerName}`].filter(Boolean).join(" · ");
+  const hasTables = elements?.some((el) => el.type === "table") ?? false;
+
+  const leadingBack = fromProject ? (
+    <Link
+      to="/s/$token"
+      params={{ token }}
+      aria-label={`Back to ${projectName ?? "the project"}`}
+      className="flex size-8 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-background"
+    >
+      <ArrowLeft aria-hidden="true" className="size-[18px]" />
+    </Link>
+  ) : undefined;
+
+  if (hasTables && viewMode === "focus") {
+    return (
+      <ErFocusScreen
+        key={boardId}
+        elements={data.data.elements}
+        title={board.name}
+        context={context || undefined}
+        leading={leadingBack}
+        onSwitchToBoard={() => setViewMode("board")}
+      />
+    );
+  }
+
   return (
     <BoardViewer
       key={boardId}
@@ -79,19 +109,9 @@ export function PublicBoard({
       fetchElements={() => fetchPublicBoardElements(token, boardId)}
       title={board.name}
       context={context || undefined}
-      leading={
-        fromProject ? (
-          <Link
-            to="/s/$token"
-            params={{ token }}
-            aria-label={`Back to ${projectName ?? "the project"}`}
-            className="flex size-8 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-background"
-          >
-            <ArrowLeft aria-hidden="true" className="size-[18px]" />
-          </Link>
-        ) : undefined
-      }
+      leading={leadingBack}
       onRevoked={() => setRevoked(true)}
+      onSwitchToFocus={() => setViewMode("focus")}
     />
   );
 }
