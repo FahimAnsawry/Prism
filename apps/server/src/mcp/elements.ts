@@ -6,7 +6,11 @@ import {
   BACKDROP_BLUR_MAX,
   boardElementSchema,
   boundTokens,
+  cardinalitySchema,
   chartDataSchema,
+  columnTypeLabel,
+  connectorRouteSchema,
+  connectorSideSchema,
   elementTokensSchema,
   elementTypeSchema,
   fontFamilySchema,
@@ -22,6 +26,9 @@ import {
   listItemSchema,
   shadowSchema,
   strokeStyleSchema,
+  TABLE_STYLE,
+  tableDataSchema,
+  tableSize,
   textAlignSchema,
   themeRefSchema,
   type BoardElement,
@@ -191,6 +198,29 @@ export const fieldShape = {
     .max(64)
     .nullable()
     .describe("Arrow only: id (or key from the same call) of the element the arrow points to."),
+  startColumn: z
+    .string()
+    .max(64)
+    .nullable()
+    .describe(
+      "Arrow starting at a table: the column whose row it leaves from (else the table's header).",
+    ),
+  endColumn: z
+    .string()
+    .max(64)
+    .nullable()
+    .describe("Arrow ending at a table: the column whose row it points to."),
+  startHead: cardinalitySchema
+    .nullable()
+    .describe(
+      'Arrow only: a crow\'s-foot cardinality at its start (an ER relation): "one", "many", "zero-or-one", "zero-or-many" or "one-or-many". null for nothing.',
+    ),
+  endHead: cardinalitySchema
+    .nullable()
+    .describe("Arrow only: a crow's-foot cardinality at its end, instead of the arrowhead."),
+  route: connectorRouteSchema
+    .nullable()
+    .describe('Arrow only: "straight" (default) or "elbow" (right-angle segments).'),
   parentId: z
     .string()
     .max(64)
@@ -199,10 +229,21 @@ export const fieldShape = {
       "Mind map node only: id (or key from the same call) of its parent node; null for a central topic.",
     ),
   collapsed: z.boolean().describe("Mind map node only: its branch is folded away."),
-  textColor: z.string().max(64).describe("Mind map node only: text color (theme token or hex)."),
+  textColor: z
+    .string()
+    .max(64)
+    .describe("Mind map node and table only: text color (theme token or hex)."),
   chart: chartDataSchema.describe(
     "Chart only: { kind: bar|line|pie|donut, rows: [{ label, value }] }.",
   ),
+  table: tableDataSchema.describe(
+    "Table only (an ER diagram entity; create_er_diagram is easier): { name, columns: [{ name, type, pk?, fk?, nullable?, unique? }] }. It sizes itself to its columns. stroke is its border and header tint, fill its body, textColor its text.",
+  ),
+  keysOnly: z
+    .boolean()
+    .describe(
+      'Table only: show just the primary and foreign key columns and a "+N more" row (the other columns stay in the table).',
+    ),
   icon: iconNameSchema.describe(
     'Icon only: a Lucide icon name in kebab case (https://lucide.dev/icons), e.g. "search", "bell", "chevron-right", "shopping-cart", "circle-user", "settings". Prefer these over emoji for UI.',
   ),
@@ -233,6 +274,11 @@ export const layoutElementInput = createElementInput.extend({
   // Already stored with the board (storeLayoutImages).
   fillImage: imageFillSchema.optional(),
   autoWidth: z.boolean().optional(),
+  // Elbow arrows from create_er_diagram: the sides their ends leave through and their lanes.
+  startSide: connectorSideSchema.optional(),
+  endSide: connectorSideSchema.optional(),
+  lanes: z.array(z.number()).max(15).optional(),
+  keysOnly: z.boolean().optional(),
   tokens: elementTokensSchema.optional(),
   component: z.string().max(120).optional(),
 });
@@ -281,6 +327,7 @@ const DEFAULTS: Partial<Record<ElementType, Partial<BoardElement>>> = {
     chart: { kind: "bar", rows: [{ label: "A", value: 1 }] },
   },
   frame: { width: 390, height: 844, stroke: "#5f5f5f" },
+  table: { ...TABLE_STYLE, table: { name: "table", columns: [] } },
   freehand: { width: 0, height: 0, points: [] },
 };
 
@@ -347,6 +394,18 @@ export function buildElements(
       draft["width"] ??= size.width;
       draft["height"] ??= size.height;
     }
+    if (input.type === "table") {
+      // Sized to its columns like one drawn on the board; the height always follows them.
+      const size = tableSize(
+        draft["table"] as z.infer<typeof tableDataSchema>,
+        (draft["font"] as FontFamily | undefined) ?? "sans",
+        estimateGlyphs,
+        draft["keysOnly"] === true,
+      );
+      draft["width"] = input.width ?? size.width;
+      draft["height"] = size.height;
+      if (input.width === undefined) draft["autoWidth"] = true;
+    }
     if (textual) {
       if (input.type === "list" && !input.items) draft["items"] = [{ text: "", indent: 0 }];
       // Without a width the text grows to fit its longest line, like typed text.
@@ -399,6 +458,19 @@ export function compact(el: BoardElement, fileUrl: (assetKey: string) => string,
         delete out[key];
       }
     }
+  }
+  if (el.table) {
+    // A table reads as its name and one line per column: "authorId String FK".
+    out["table"] = el.table.name;
+    if (el.table.description) out["description"] = el.table.description;
+    out["columns"] = el.table.columns.map((column) =>
+      [
+        column.name,
+        columnTypeLabel(column),
+        ...(column.pk ? ["PK"] : []),
+        ...(column.fk ? ["FK"] : []),
+      ].join(" "),
+    );
   }
   if (el.assetKey) out["url"] = fileUrl(el.assetKey);
   if (el.fillImage)

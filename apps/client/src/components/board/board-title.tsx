@@ -8,7 +8,7 @@ import { DeleteItemDialog } from "@/components/dashboard/delete-item-dialog";
 import { ItemDialog, type ItemDialogTarget } from "@/components/dashboard/item-dialog";
 import type { WorkspaceItem } from "@/components/dashboard/workspace-data";
 import { cn } from "@/lib/utils";
-import { useUpdateBoard, workspaceQuery } from "@/lib/workspace";
+import { allBoards, allProjects, useUpdateBoard, workspaceQuery } from "@/lib/workspace";
 
 const titleText = "text-[15px] leading-[21px]";
 const itemClass =
@@ -114,13 +114,15 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
     item: null,
   });
 
-  const project = workspace.data?.projects.find((p) => p.id === projectId);
+  const project = workspace.data && allProjects(workspace.data).find((p) => p.id === projectId);
   if (!workspace.data || !project) return null;
 
-  const boards = workspace.data.boards
+  const boards = allBoards(workspace.data)
     .filter((b) => b.projectId === projectId)
     .toSorted((a, b) => a.name.localeCompare(b.name));
-  const projects = workspace.data.projects.map(({ id, name }) => ({ id, name }));
+  // Only the owner moves boards between projects; members of a shared project don't get the choice.
+  const owned = project.access === "owner";
+  const projects = owned ? workspace.data.projects.map(({ id, name }) => ({ id, name })) : [];
   const itemFor = (b: BoardSummary) => ({
     kind: "board" as const,
     ...b,
@@ -167,44 +169,55 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
                         </span>
                         <span className="truncate">{b.name}</span>
                       </Menu.RadioItem>
-                      <Menu.Item
-                        aria-label={`Edit ${b.name}`}
-                        title="Edit"
-                        onClick={() =>
-                          setItemDialog({ open: true, target: { mode: "edit", item: itemFor(b) } })
-                        }
-                        className={cn(rowActionClass, "hover:text-ink data-highlighted:text-ink")}
-                      >
-                        <Pencil aria-hidden="true" />
-                      </Menu.Item>
-                      <Menu.Item
-                        aria-label={`Delete ${b.name}`}
-                        title="Delete"
-                        onClick={() => setDeleteDialog({ open: true, item: itemFor(b) })}
-                        className={cn(
-                          rowActionClass,
-                          "hover:text-destructive data-highlighted:text-destructive",
-                        )}
-                      >
-                        <Trash2 aria-hidden="true" />
-                      </Menu.Item>
+                      {b.access !== "viewer" && (
+                        <Menu.Item
+                          aria-label={`Edit ${b.name}`}
+                          title="Edit"
+                          onClick={() =>
+                            setItemDialog({
+                              open: true,
+                              target: { mode: "edit", item: itemFor(b) },
+                            })
+                          }
+                          className={cn(rowActionClass, "hover:text-ink data-highlighted:text-ink")}
+                        >
+                          <Pencil aria-hidden="true" />
+                        </Menu.Item>
+                      )}
+                      {b.access === "owner" && (
+                        <Menu.Item
+                          aria-label={`Delete ${b.name}`}
+                          title="Delete"
+                          onClick={() => setDeleteDialog({ open: true, item: itemFor(b) })}
+                          className={cn(
+                            rowActionClass,
+                            "hover:text-destructive data-highlighted:text-destructive",
+                          )}
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </Menu.Item>
+                      )}
                     </div>
                   ))}
                 </Menu.RadioGroup>
               </Menu.Group>
-              <Menu.Separator className="my-1 h-px bg-divider" />
-              <Menu.Item
-                onClick={() =>
-                  setItemDialog({
-                    open: true,
-                    target: { mode: "create", kind: "whiteboard", projectId },
-                  })
-                }
-                className={itemClass}
-              >
-                <Plus aria-hidden="true" />
-                New board
-              </Menu.Item>
+              {project.access !== "viewer" && (
+                <>
+                  <Menu.Separator className="my-1 h-px bg-divider" />
+                  <Menu.Item
+                    onClick={() =>
+                      setItemDialog({
+                        open: true,
+                        target: { mode: "create", kind: "whiteboard", projectId },
+                      })
+                    }
+                    className={itemClass}
+                  >
+                    <Plus aria-hidden="true" />
+                    New board
+                  </Menu.Item>
+                </>
+              )}
             </Menu.Popup>
           </Menu.Positioner>
         </Menu.Portal>

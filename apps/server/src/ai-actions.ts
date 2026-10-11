@@ -1,11 +1,12 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { type BoardElement, type EditRequest, SVG_TYPE, UPLOAD_MAX_BYTES } from "@prism/shared";
 import type { EditStatus } from "./db/generated/client.js";
 import { prisma } from "./db/client.js";
 import { badRequest, notFound } from "./errors.js";
 import { downloadImage } from "./image-import.js";
 import { broadcastEdit, broadcastOps, latestSelection } from "./realtime.js";
-import { applyOps, ownedBoard, toElement } from "./routes/elements.js";
+import { accessibleBoardWhere, boardFor } from "./routes/board-access.js";
+import { applyOps, toElement } from "./routes/elements.js";
 import { putObject } from "./storage.js";
 import { sanitizeSvg, svgSize, unsafeSvgParts } from "./svg-sanitize.js";
 
@@ -65,11 +66,11 @@ async function elementsByIds(boardId: string, ids: string[]): Promise<BoardEleme
 
 /** What the user has selected in an open board tab: on `boardId`, else their latest board. */
 export async function selectionFor(userId: string, boardId?: string) {
-  if (boardId) boardId = (await ownedBoard(boardId, userId)).id;
+  if (boardId) boardId = (await boardFor(boardId, userId, "view")).id;
   const selection = latestSelection(userId, boardId);
   if (!selection) return { boardId: boardId ?? null, elements: [] };
   // The board could have been deleted or archived since the tab reported it.
-  const board = await ownedBoard(selection.boardId, userId);
+  const board = await boardFor(selection.boardId, userId, "view");
   return { boardId: board.id, elements: await elementsByIds(board.id, selection.elementIds) };
 }
 
@@ -77,9 +78,16 @@ export async function selectionFor(userId: string, boardId?: string) {
 
 type DownloadedImage = Awaited<ReturnType<typeof downloadImage>>;
 
-/** Saves a downloaded image with the board's files and returns its asset key. */
-async function storeImage(boardId: string, image: DownloadedImage) {
-  const assetKey = `${boardId}/${randomUUID()}.${image.extension}`;
+/**
+ * The file name (without extension) a downloaded image gets: a hash of its source URL, so the same
+ * photo has the same name on every board and search_images can tell which ones a site already uses.
+ */
+export const sourceFileStem = (url: string) =>
+  createHash("sha256").update(url).digest("hex").slice(0, 32);
+
+/** Saves an image downloaded from `url` with the board's files and returns its asset key. */
+async function storeImage(boardId: string, url: string, image: DownloadedImage) {
+  const assetKey = `${boardId}/${sourceFileStem(url)}.${image.extension}`;
   await putObject(assetKey, image.bytes, image.type);
   return assetKey;
 }
@@ -92,7 +100,7 @@ export async function imageFillAsset(board: string, url: string) {
   const path = URL.canParse(url) ? new URL(url).pathname : "";
   const own = /^\/uploads\/([^/]+)\/([^/]+)$/.exec(path);
   if (own?.[1] === board && own[2]) return `${board}/${own[2]}`;
-  return storeImage(board, await downloadImage(url));
+  return storeImage(board, url, await downloadImage(url));
 }
 
 /** Display width for an imported image: phone screenshots narrower than desktop ones. */
@@ -164,9 +172,9 @@ export async function importImage(
   boardId: string,
   input: Placement & { url: string },
 ) {
-  const board = await ownedBoard(boardId, userId);
+  const board = await boardFor(boardId, userId, "edit");
   const image = await downloadImage(input.url);
-  const assetKey = await storeImage(board.id, image);
+  const assetKey = await storeImage(board.id, input.url, image);
   const width = input.width ?? displayWidth(image);
   const height = Math.round((width * image.height) / image.width);
   return placeAsset(board.id, "image", assetKey, input, width, height);
@@ -198,7 +206,7 @@ export async function importSvg(
   boardId: string,
   input: Placement & { svg: string; name?: string | undefined; role?: string | undefined },
 ) {
-  const board = await ownedBoard(boardId, userId);
+  const board = await boardFor(boardId, userId, "edit");
   const svg = await storeSvg(board.id, input.svg);
   const width = input.width ?? svg.width;
   const height = Math.round(((width * svg.height) / svg.width) * 10) / 10;
@@ -250,7 +258,8 @@ async function claimRequests(userId: string, boardId: string | undefined): Promi
     where: {
       userId,
       ...(boardId && { boardId }),
-      board: { archivedAt: null },
+      // Only boards the user can still edit: one they were removed from is skipped.
+      board: accessibleBoardWhere(userId, "edit"),
       OR: [{ status: "pending" }, { status: "working", claimedAt: { lt: reclaimBefore } }],
     },
     orderBy: { createdAt: "asc" },
@@ -287,7 +296,7 @@ export async function waitForEdits(
   seconds: number,
   signal: AbortSignal,
 ) {
-  if (boardId) boardId = (await ownedBoard(boardId, userId)).id;
+  if (boardId) boardId = (await boardFor(boardId, userId, "view")).id;
   const deadline = Date.now() + seconds * 1_000;
   for (;;) {
     // A caller that gave up mustn't claim requests it will never handle.

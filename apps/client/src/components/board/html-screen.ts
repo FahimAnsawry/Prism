@@ -1036,23 +1036,29 @@ async function convert(
     return slot ? `$${slot}` : font;
   }
 
-  /** A theme radius token whose value is `value` px and that a rounded-* class asked for. */
+  /**
+   * A theme radius token whose value is `value` px and that a rounded-* class asked for: the
+   * element's own, or a clipping ancestor's (an image in an `overflow-hidden rounded-lg` card takes
+   * the card's corners).
+   */
   function radiusToken(el: Element, value: number, full: boolean): Corner {
-    for (const utility of utilities(el)) {
-      const match =
-        /^rounded(?:-(?:t|r|b|l|s|e|x|y|tl|tr|br|bl|ss|se|es|ee|ts|te|bs|be))?-(\w+)$/.exec(
-          utility,
-        );
-      const size = match?.[1];
-      if (!size) continue;
-      if (size === "full" && full) return "$radius-full";
-      const name = `radius-${size}` as keyof typeof RADIUS_SCALE;
-      const scale = RADIUS_SCALE[name];
-      if (
-        scale !== undefined &&
-        Math.abs(Math.round(theme.radius * scale * 10) / 10 - value) < 0.1
-      ) {
-        return `$${name}`;
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      for (const utility of utilities(node)) {
+        const match =
+          /^rounded(?:-(?:t|r|b|l|s|e|x|y|tl|tr|br|bl|ss|se|es|ee|ts|te|bs|be))?-(\w+)$/.exec(
+            utility,
+          );
+        const size = match?.[1];
+        if (!size) continue;
+        if (size === "full" && full && node === el) return "$radius-full";
+        const name = `radius-${size}` as keyof typeof RADIUS_SCALE;
+        const scale = RADIUS_SCALE[name];
+        if (
+          scale !== undefined &&
+          Math.abs(Math.round(theme.radius * scale * 10) / 10 - value) < 0.1
+        ) {
+          return `$${name}`;
+        }
       }
     }
     return r2(value);

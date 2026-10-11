@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { BoardElement, ElementOp } from "./elements.js";
 import type { Components } from "./components.js";
+import type { ErDiagramOptions, ErRelationInput, ErTableInput } from "./er.js";
 import type { LayoutNode, LayoutOptions } from "./layout.js";
 import type { MindmapInput, MindmapOptions } from "./mindmap.js";
 import type { Theme, ThemeMode } from "./theme.js";
@@ -244,6 +245,14 @@ export const imageColorsReplySchema = z.discriminatedUnion("ok", [
 
 export type ImageColorsReply = z.infer<typeof imageColorsReplySchema>;
 
+/** An ER diagram for a board tab to size with the board's fonts (create_er_diagram). */
+export interface LayoutErRequest {
+  boardId: string;
+  tables: ErTableInput[];
+  relations: ErRelationInput[];
+  options: ErDiagramOptions;
+}
+
 /** Mind map nodes for a board tab to size with the board's fonts (create_mindmap). */
 export interface LayoutMindmapRequest {
   boardId: string;
@@ -274,11 +283,35 @@ export interface ServerToClientEvents {
     request: LayoutMindmapRequest,
     ack: (reply: LayoutScreenReply) => void,
   ) => void;
+  /** An AI editor's create_er_diagram: size the tables with real text measurements and reply. */
+  "layout:er": (request: LayoutErRequest, ack: (reply: LayoutScreenReply) => void) => void;
+  /**
+   * An AI editor opened a board (open_board): switch this tab to it. The reply says whether the
+   * tab went there or, because the user was busy (typing, a dialog open), asked them first.
+   */
+  "board:show": (request: ShowBoardRequest, ack: (reply: ShowBoardReply) => void) => void;
+  /** This tab lost access to the board (removed from it, or the public link was turned off). */
+  "board:revoked": (payload: { boardId: string }) => void;
+  /** What this user may do on the board changed (a new role): reload the board's access. */
+  "board:access": (payload: { boardId: string }) => void;
 }
 
+export interface ShowBoardRequest {
+  boardId: string;
+  name: string;
+}
+
+export const showBoardReplySchema = z.enum(["opened", "asked"]);
+
+export type ShowBoardReply = z.infer<typeof showBoardReplySchema>;
+
 export interface ClientToServerEvents {
+  /** The user focused this tab, so it's the one board:show picks first. */
+  "tab:active": () => void;
   /** Start receiving a board's updates. The ack says whether the board is the user's. */
   "board:join": (boardId: string, ack: (ok: boolean) => void) => void;
+  /** A public link's viewer (no account) joins a board the link shows, read-only. */
+  "share:join": (token: string, boardId: string, ack: (ok: boolean) => void) => void;
   "board:leave": (boardId: string) => void;
   /** The tab's current selection, so AI editors can read it. */
   "selection:set": (payload: { boardId: string; elementIds: string[] }) => void;

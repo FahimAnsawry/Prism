@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { IMAGE_TYPES, SVG_TYPE, UPLOAD_MAX_BYTES } from "@prism/shared";
 import express, { Router } from "express";
-import { prisma } from "../db/client.js";
 import { badRequest, notFound } from "../errors.js";
 import { requireUser } from "../session.js";
 import { getObject, putObject } from "../storage.js";
 import { sanitizeSvg } from "../svg-sanitize.js";
-import { BOARD_NOT_FOUND, liveBoardWhere, uuidParam } from "./board-access.js";
+import { boardFor, uuidParam } from "./board-access.js";
 
 const EXTENSIONS: Record<string, string> = {
   "image/png": "png",
@@ -36,7 +35,7 @@ function matchesSignature(type: string, bytes: Uint8Array) {
   }
 }
 
-/** Upload: a signed-in user adds a file to one of their boards. */
+/** Upload: a signed-in owner or editor adds a file to a board. */
 export const uploadRouter = Router();
 
 uploadRouter.post(
@@ -44,14 +43,7 @@ uploadRouter.post(
   requireUser,
   express.raw({ type: [...IMAGE_TYPES, SVG_TYPE], limit: UPLOAD_MAX_BYTES }),
   async (req, res) => {
-    const boardId = uuidParam(req.params.boardId);
-    const board = boardId
-      ? await prisma.board.findFirst({
-          where: { id: boardId, ...liveBoardWhere(res.locals.userId) },
-          select: { id: true },
-        })
-      : null;
-    if (!board) throw notFound(BOARD_NOT_FOUND);
+    const board = await boardFor(req.params.boardId, res.locals.userId, "edit");
 
     const type = req.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
     const extension = EXTENSIONS[type];
@@ -77,14 +69,17 @@ uploadRouter.post(
 
 /**
  * Serving: public, like a CDN link, since <image href> can't send credentials cross-site. Keys
- * contain a random UUID, so they can't be guessed. Files never change, so they cache for good.
+ * start with the board's random UUID, so they can't be guessed. Files never change, so they cache
+ * for good.
  */
 export const fileRouter = Router();
 
 fileRouter.get("/uploads/:boardId/:file", async (req, res) => {
   const boardId = uuidParam(req.params.boardId);
-  const match = /^([0-9a-f-]{36})\.(png|jpg|gif|webp|svg)$/.exec(req.params.file);
-  if (!boardId || !match || !uuidParam(match[1])) throw notFound("File not found.");
+  // Uploads are named by a UUID, downloaded images by a 32-hex hash of their source URL.
+  const match = /^([0-9a-f-]{36}|[0-9a-f]{32})\.(png|jpg|gif|webp|svg)$/.exec(req.params.file);
+  if (!boardId || !match) throw notFound("File not found.");
+  if (match[1]?.length === 36 && !uuidParam(match[1])) throw notFound("File not found.");
   const type = TYPES_BY_EXTENSION.get(match[2] ?? "");
   if (!type) throw notFound("File not found.");
 

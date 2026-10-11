@@ -11,6 +11,7 @@ import {
   MIND_LINE_HEIGHT,
   MIND_MAX_TEXT,
   mindNodeSize,
+  tableSize,
   type TextMeasurer,
 } from "@prism/shared";
 import { DEFAULT_SIZES, fontInfo, fontStack, loadFonts, weightOf } from "./fonts";
@@ -214,8 +215,18 @@ export function layoutList(el: BoardElement) {
   return { lines, px, lineHeight: px * lineHeightOf(el), width };
 }
 
-/** Text, lists and mind map nodes size their box to their text; anything else is as-is. */
+/**
+ * Text, lists and mind map nodes size their box to their text, and tables to their columns (as
+ * wide as their text needs, or wider once resized by hand); anything else is as-is.
+ */
 export function fitTextBox(el: BoardElement): BoardElement {
+  if (el.type === "table") {
+    if (!el.table) return el;
+    const size = tableSize(el.table, el.font ?? "sans", boardMeasure, !!el.keysOnly);
+    const width = el.autoWidth ? size.width : Math.max(el.width, size.width);
+    if (width === el.width && size.height === el.height) return el;
+    return { ...el, width, height: size.height };
+  }
   if (el.type === "mindnode") {
     const size = mindNodeSize(
       el.text ?? "",

@@ -31,6 +31,7 @@ import {
   snapAngle,
   startPoint,
   endPoint,
+  tableColumnAt,
   topHit,
   updateBindings,
 } from "./geometry";
@@ -114,6 +115,9 @@ export function startGesture(
       return null;
     case "chart":
       place(ctx, "chart", p, 360, 240);
+      return null;
+    case "table":
+      placeTable(ctx, p);
       return null;
     case "mindmap":
       placeMindRoot(ctx, p);
@@ -207,8 +211,9 @@ function moveGesture(ctx: GestureContext, start: Point, ids: string[]): Gesture 
         if (el.type !== "arrow") return moved;
         return {
           ...moved,
-          ...(el.startBinding && !moving.has(el.startBinding) && { startBinding: null }),
-          ...(el.endBinding && !moving.has(el.endBinding) && { endBinding: null }),
+          ...(el.startBinding &&
+            !moving.has(el.startBinding) && { startBinding: null, startColumn: null }),
+          ...(el.endBinding && !moving.has(el.endBinding) && { endBinding: null, endColumn: null }),
         };
       });
       ctx.dispatch({ type: "preview", elements: updateBindings(next) });
@@ -270,13 +275,14 @@ function transformGesture(
         let el: BoardElement = { ...only, x: s.x, y: s.y, width: e.x - s.x, height: e.y - s.y };
         if (el.type === "arrow") {
           const key = handle === "start" ? "startBinding" : "endBinding";
+          const columnKey = handle === "start" ? "startColumn" : "endColumn";
           const other = handle === "start" ? only.endBinding : only.startBinding;
           const target = bindingTarget(ordered, p, tolerance(ctx), [
             only.id,
             ...(other ? [other] : []),
           ]);
           el = routeArrow(
-            { ...el, [key]: target?.id ?? null },
+            { ...el, [key]: target?.id ?? null, [columnKey]: columnAt(target, p) },
             new Map(before.map((b) => [b.id, b])),
           );
           ctx.setOverlay(target ? { snapTarget: target.id } : null);
@@ -372,6 +378,7 @@ function lineGesture(type: "line" | "arrow", ctx: GestureContext, start: Point):
     width: 0,
     height: 0,
     ...(startTarget && { startBinding: startTarget.id }),
+    ...(columnAt(startTarget, start) && { startColumn: columnAt(startTarget, start) }),
   });
   let current = base;
   let dragged = false;
@@ -390,6 +397,7 @@ function lineGesture(type: "line" | "arrow", ctx: GestureContext, start: Point):
       width: end.x - start.x,
       height: end.y - start.y,
       endBinding: endTarget?.id ?? null,
+      endColumn: columnAt(endTarget, p),
     };
     if (type === "arrow") current = routeArrow(current, byId);
     ctx.setOverlay(endTarget ? { snapTarget: endTarget.id } : null);
@@ -403,21 +411,27 @@ function lineGesture(type: "line" | "arrow", ctx: GestureContext, start: Point):
       update(p, event.shiftKey);
     },
     up(p, event) {
-      ctx.setOverlay(null);
       if (dragged) {
         update(p, event.shiftKey);
       } else {
         // A click draws a default-length horizontal line.
         current = routeArrow({ ...base, width: 160, height: 0 }, byId);
       }
+      // After the last update, which shows the snap target it attached to.
+      ctx.setOverlay(null);
       if (!current.startBinding) delete current.startBinding;
       if (!current.endBinding) delete current.endBinding;
+      if (!current.endColumn) delete current.endColumn;
       ctx.dispatch({ type: "preview", elements: [...before, current], select: [current.id] });
       ctx.dispatch({ type: "commit", before });
       ctx.finishTool();
     },
   };
 }
+
+/** The column row of a table that an arrow end at `p` attaches to (null elsewhere). */
+const columnAt = (target: BoardElement | undefined, p: Point) =>
+  target?.type === "table" ? tableColumnAt(target, p) : null;
 
 // ── Pencil and eraser ─────────────────────────────────────────────────────
 
@@ -549,6 +563,17 @@ export function placeText(
 
 export const isTextual = (el: BoardElement) =>
   el.type === "text" || el.type === "sticky" || el.type === "list" || el.type === "mindnode";
+
+// ── ER diagrams ───────────────────────────────────────────────────────────
+
+/** The Table tool: a starter table centered on `p`, sized to its columns. */
+function placeTable(ctx: GestureContext, p: Point) {
+  const { elements } = ctx.state;
+  const draft = fitTextBox(newElement("table", elements, { x: p.x, y: p.y, width: 0, height: 0 }));
+  const el = { ...draft, x: p.x - draft.width / 2, y: p.y - draft.height / 2 };
+  ctx.dispatch({ type: "apply", elements: [...elements, el], select: [el.id] });
+  ctx.finishTool();
+}
 
 // ── Mind map ──────────────────────────────────────────────────────────────
 

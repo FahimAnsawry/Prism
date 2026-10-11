@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { googleFontNameSchema } from "./elements.js";
+import { accessSchema } from "./sharing.js";
 
 // Dashboard API: the request bodies the server validates and the responses the client parses.
 
@@ -54,6 +55,12 @@ export const updateBoardStyleSchema = boardStyleSchema.partial();
 /** Reply to a delete. */
 export const deletedSchema = z.object({ id: z.uuid() });
 
+/** Who owns an item and what the signed-in user may do with it ("owner" for their own). */
+const ownership = {
+  access: accessSchema,
+  ownerName: z.string(),
+};
+
 const timestamps = {
   /** ISO 8601. */
   createdAt: z.iso.datetime(),
@@ -69,6 +76,7 @@ export const boardSummarySchema = z.object({
   /** Live (non-deleted) elements on the board. */
   itemCount: z.number().int(),
   ...boardStyleSchema.shape,
+  ...ownership,
   ...timestamps,
 });
 
@@ -87,6 +95,7 @@ export const projectSummarySchema = z.object({
       editedAt: z.iso.datetime(),
     }),
   ),
+  ...ownership,
   ...timestamps,
 });
 
@@ -94,6 +103,12 @@ export const workspaceSchema = z.object({
   projects: z.array(projectSummarySchema),
   /** Every live board: standalone ones (projectId = null) and the ones inside live projects. */
   boards: z.array(boardSummarySchema),
+  /** What other people shared with the user. */
+  shared: z.object({
+    projects: z.array(projectSummarySchema),
+    /** Boards shared on their own and every board of a shared project. */
+    boards: z.array(boardSummarySchema),
+  }),
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;

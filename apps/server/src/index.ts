@@ -7,6 +7,7 @@ import { mcpRouter } from "./mcp/index.js";
 import { attachRealtime } from "./realtime.js";
 import { aiRouter } from "./routes/ai.js";
 import { elementsRouter } from "./routes/elements.js";
+import { shareRouter } from "./routes/share.js";
 import { tokensRouter } from "./routes/tokens.js";
 import { fileRouter, uploadRouter } from "./routes/uploads.js";
 import { workspaceRouter } from "./routes/workspace.js";
@@ -42,6 +43,8 @@ app.use(express.json());
 // AI editors (the MCP bridge) and the browser's "Ask AI" box; personal access tokens.
 app.use("/api", aiRouter);
 app.use("/api", tokensRouter);
+// Sharing; its public link and invite routes work signed out, so it comes before workspaceRouter.
+app.use("/api", shareRouter);
 app.use("/api", workspaceRouter);
 
 // Unknown /api paths. Requests reach it through workspaceRouter, so signed-out ones get a 401 first.

@@ -1,15 +1,8 @@
 import { type BoardElement, type BoardSummary, type ElementOp, SVG_TYPE } from "@prism/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import {
   fitSize,
   imageSize,
@@ -29,6 +22,7 @@ import {
   useBoardSaver,
 } from "@/components/board/board-sync";
 import { BoardToolbar } from "@/components/board/board-toolbar";
+import { BoardViewer } from "@/components/board/board-viewer";
 import { BoardTopBar } from "@/components/board/board-top-bar";
 import { type Camera, fitCamera, screenToWorld, stepZoom, zoomAt } from "@/components/board/camera";
 import {
@@ -38,15 +32,19 @@ import {
   serializeElements,
 } from "@/components/board/clipboard";
 import { EmojiPicker } from "@/components/board/emoji-picker";
+import { ErFocusDialog } from "@/components/board/er-focus-dialog";
 import { IconPicker } from "@/components/board/icon-picker";
 import { googleFontId, loadFont } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
 import { isTextual } from "@/components/board/gestures";
 import { applicableChanges, PropertiesPanel } from "@/components/board/properties-panel";
 import { ShortcutsDialog } from "@/components/board/shortcuts-dialog";
+import { TableDetails } from "@/components/board/table-details";
 import { TextEditor } from "@/components/board/text-editor";
 import { fitTextBox, loadBoardFonts } from "@/components/board/text-layout";
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
+import { useElementSize } from "@/components/board/use-element-size";
+import { ShareDialog } from "@/components/share/share-dialog";
 import { ErrorScreen } from "@/components/feedback/error-page";
 import { NotFoundPage } from "@/components/feedback/not-found-page";
 import { PrismLoader } from "@/components/feedback/prism-loader";
@@ -54,7 +52,8 @@ import { boardEditsQuery, useMergeEdit } from "@/lib/ai";
 import { ApiError, apiErrorMessage } from "@/lib/api";
 import { requireSession } from "@/lib/auth-client";
 import { isTyping } from "@/lib/keyboard";
-import { boardQuery, useUpdateBoardStyle, workspaceQuery } from "@/lib/workspace";
+import { cn } from "@/lib/utils";
+import { allBoards, boardQuery, useUpdateBoardStyle, workspaceQuery } from "@/lib/workspace";
 
 export const Route = createFileRoute("/board/$boardId")({
   head: () => ({ meta: [{ title: "Board - Prism" }] }),
@@ -72,8 +71,10 @@ function BoardPage() {
   const board = useQuery({
     ...boardQuery(boardId),
     // Switching boards from the project menu: show the name the workspace already has.
-    placeholderData: () =>
-      queryClient.getQueryData(workspaceQuery.queryKey)?.boards.find((b) => b.id === boardId),
+    placeholderData: () => {
+      const workspace = queryClient.getQueryData(workspaceQuery.queryKey);
+      return workspace && allBoards(workspace).find((b) => b.id === boardId);
+    },
   });
   const elements = useQuery(boardElementsQuery(boardId));
   const fonts = useQuery({
@@ -87,24 +88,55 @@ function BoardPage() {
     (error) => error instanceof ApiError && error.status === 404,
   );
   if (notFound) return <NotFoundPage />;
-  if (elements.error) {
+  const error = elements.error ?? (board.data ? null : board.error);
+  if (error) {
     return (
       <ErrorScreen
-        error={elements.error}
-        onRetry={() => void elements.refetch()}
+        error={error}
+        onRetry={() => void Promise.all([board.refetch(), elements.refetch()])}
         onGoHome={() => void navigate({ to: "/dashboard" })}
       />
     );
   }
-  if (!elements.data || fonts.isPending) {
+  // Whether this tab edits or only views depends on the board's access, so it waits for it.
+  if (!elements.data || fonts.isPending || !board.data) {
     return <PrismLoader fullScreen label="Opening board" />;
+  }
+  /** The user was removed or got another role: reload what they may do (a 404 if nothing). */
+  const reloadAccess = () => {
+    void queryClient.invalidateQueries({ queryKey: boardQuery(boardId).queryKey });
+    void queryClient.invalidateQueries({ queryKey: workspaceQuery.queryKey });
+  };
+  if (board.data.access === "viewer") {
+    return (
+      <BoardViewer
+        key={`${boardId}:view`}
+        boardId={boardId}
+        initial={elements.data.elements}
+        fetchElements={() => fetchBoardElements(boardId)}
+        title={board.data.name}
+        context={`Shared by ${board.data.ownerName}`}
+        leading={
+          <Link
+            to="/dashboard"
+            aria-label="Back to dashboard"
+            className="flex size-8 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-background"
+          >
+            <ArrowLeft aria-hidden="true" className="size-[18px]" />
+          </Link>
+        }
+        onRevoked={reloadAccess}
+        onAccessChanged={reloadAccess}
+      />
+    );
   }
   return (
     <BoardEditor
-      key={boardId}
+      key={`${boardId}:edit`}
       boardId={boardId}
       board={board.data}
       initial={elements.data.elements}
+      onAccessChanged={reloadAccess}
     />
   );
 }
@@ -118,10 +150,13 @@ function BoardEditor({
   boardId,
   board,
   initial,
+  onAccessChanged,
 }: {
   boardId: string;
   board: BoardSummary | undefined;
   initial: BoardElement[];
+  /** Removed from the board, or given another role. */
+  onAccessChanged: () => void;
 }) {
   const [state, dispatch] = useReducer(boardReducer, initial, initialBoardState);
   const [tool, setTool] = useState<ToolId>("select");
@@ -134,6 +169,11 @@ function BoardEditor({
   const [emoji, setEmoji] = useState<string | null>(null);
   const [icon, setIcon] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [sharing, setSharing] = useState(false);
+  /** The table whose details card shows: the one the pointer rested on (BoardCanvas pins it). */
+  const [cardTable, setCardTable] = useState<string | null>(null);
+  /** The table whose focus view (ErFocusDialog) is open. */
+  const [focusTable, setFocusTable] = useState<string | null>(null);
   const viewport = useRef<HTMLElement>(null);
   const size = useElementSize(viewport);
   const pointer = useRef<Point | null>(null);
@@ -189,6 +229,8 @@ function BoardEditor({
       mergeEdit(request);
       setSeenEdits((ids) => (ids.has(request.id) ? ids : new Set(ids).add(request.id)));
     },
+    onRevoked: onAccessChanged,
+    onAccessChanged,
   });
 
   // AI editors read the selection (get_selection) from the server.
@@ -414,6 +456,11 @@ function BoardEditor({
       const key = event.key.toLowerCase();
       const mod = event.ctrlKey || event.metaKey;
       const ids = state.selectedIds;
+      const focusTarget = () => {
+        const chosen = cardTable ?? (ids.length === 1 ? ids[0] : undefined);
+        const el = chosen ? state.elements.find((e) => e.id === chosen) : undefined;
+        return el?.type === "table" ? el.id : null;
+      };
 
       // Ctrl +/−/0 would zoom the whole page; here they zoom the board.
       if (mod && (key === "=" || key === "+")) {
@@ -432,6 +479,10 @@ function BoardEditor({
       } else if (key === "?" && !mod) {
         event.preventDefault();
         setShortcutsOpen(true);
+      } else if (key === "f" && !mod && !event.altKey && !event.shiftKey && focusTarget()) {
+        // F: the focus view of the table the pointer rested on, or else the one selected table.
+        event.preventDefault();
+        setFocusTable(focusTarget());
       } else if (mod && key === "z") {
         event.preventDefault();
         dispatch({ type: event.shiftKey ? "redo" : "undo" });
@@ -482,7 +533,7 @@ function BoardEditor({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [state.selectedIds, state.elements, size, chooseTool, startEditing]);
+  }, [state.selectedIds, state.elements, size, chooseTool, startEditing, cardTable]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
@@ -500,6 +551,7 @@ function BoardEditor({
         onZoomIn={zoomIn}
         onZoomReset={zoomReset}
         onShowShortcuts={() => setShortcutsOpen(true)}
+        onShare={board?.access === "owner" ? () => setSharing(true) : undefined}
       />
 
       <main ref={viewport} className="relative min-h-0 flex-1 overflow-hidden">
@@ -521,6 +573,12 @@ function BoardEditor({
             pointer.current = p;
           }}
           onDropFiles={(files, p) => void addFiles(files, p)}
+          focusOpen={focusTable !== null}
+          onHoverTable={(id) => {
+            setCardTable(id);
+            // Resting on a table for half a second opens its focus view (not while text is edited).
+            if (id && !latest.current.editing) setFocusTable(id);
+          }}
         />
 
         {editingEl && (
@@ -545,6 +603,29 @@ function BoardEditor({
 
         {tool === "emoji" && <EmojiPicker value={emoji} onPick={setEmoji} />}
         {tool === "icon" && <IconPicker value={icon} onPick={setIcon} />}
+
+        {(() => {
+          const table = cardTable ? state.elements.find((el) => el.id === cardTable) : undefined;
+          // While the table's focus view is open its details show there instead.
+          if (table?.type !== "table" || editing || focusTable) return null;
+          // Beside the properties panel when it's open, in its place otherwise.
+          return (
+            <aside
+              aria-label={`${table.table?.name ?? "Table"} details`}
+              className={cn(
+                "absolute top-6 z-20 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-lg",
+                selected.length > 0 ? "right-[18rem] md:right-[18.5rem]" : "right-4 md:right-6",
+              )}
+            >
+              <TableDetails
+                table={table}
+                board={state.elements}
+                onSelect={(ids) => dispatch({ type: "select", ids })}
+                onOpenFocus={() => setFocusTable(table.id)}
+              />
+            </aside>
+          );
+        })()}
 
         {selected.length > 0 && !editing && (
           <PropertiesPanel
@@ -615,21 +696,31 @@ function BoardEditor({
       </main>
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <ErFocusDialog
+        tableId={focusTable}
+        elements={state.elements}
+        onClose={(lastId) => {
+          // Coming back from another table than the one it opened on, the board shows that one.
+          const last = lastId !== focusTable && state.elements.find((el) => el.id === lastId);
+          if (last) {
+            setCamera((c) => ({
+              ...c,
+              x: -c.zoom * (last.x + last.width / 2 - size.width / 2),
+              y: -c.zoom * (last.y + last.height / 2 - size.height / 2),
+            }));
+          }
+          setFocusTable(null);
+        }}
+      />
+      {board?.access === "owner" && (
+        <ShareDialog
+          kind="board"
+          id={boardId}
+          name={board.name}
+          open={sharing}
+          onOpenChange={setSharing}
+        />
+      )}
     </div>
   );
-}
-
-/** The element's size, kept up to date as it resizes. Measured before the first paint. */
-function useElementSize(ref: RefObject<HTMLElement | null>) {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const update = () => setSize({ width: el.clientWidth, height: el.clientHeight });
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
-  return size;
 }

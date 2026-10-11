@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { ItemActionsMenu, type ItemAction } from "./item-actions-menu";
 import { ItemDate, KindBadge } from "./workspace-item-parts";
-import { itemMeta, type SortKey, type WorkspaceItem } from "./workspace-data";
+import { itemMeta, sharedLabel, type SortKey, type WorkspaceItem } from "./workspace-data";
 
 // List view: one row per item. Desktop lines the fields up in columns under a header;
 // on phones the badge, count and date wrap under the name.
@@ -38,8 +38,10 @@ export function WorkspaceRow({
   sort: SortKey;
   onAction: (action: ItemAction, item: WorkspaceItem) => void;
 }) {
-  const description =
-    item.kind === "board" && item.projectName
+  const shared = sharedLabel(item);
+  const description = shared
+    ? `Shared by ${shared}`
+    : item.kind === "board" && item.projectName
       ? [item.projectName, item.description].filter(Boolean).join(" · ")
       : item.description;
 

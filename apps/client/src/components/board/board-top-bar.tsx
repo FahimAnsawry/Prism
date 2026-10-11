@@ -41,6 +41,7 @@ export function BoardTopBar({
   onZoomIn,
   onZoomReset,
   onShowShortcuts,
+  onShare,
 }: {
   /** Undefined while it loads. */
   board: BoardSummary | undefined;
@@ -56,6 +57,8 @@ export function BoardTopBar({
   onZoomIn: () => void;
   onZoomReset: () => void;
   onShowShortcuts: () => void;
+  /** Opens the Share dialog; only the owner gets it. Others see who shared the board. */
+  onShare: (() => void) | undefined;
 }) {
   return (
     <header className="relative z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-divider bg-card pr-4 pl-4 md:pr-6">
@@ -160,7 +163,7 @@ export function BoardTopBar({
 
         <ThemeToggle className="size-9 border border-chrome bg-card" />
 
-        {/* AI, Export and Share are visual only until "Ask Claude", exports and rooms exist. */}
+        {/* AI and Export are visual only until "Ask Claude" and exports exist. */}
         <button
           type="button"
           title="Ask Claude about the selection"
@@ -179,14 +182,28 @@ export function BoardTopBar({
           <ChevronDown aria-hidden="true" className="size-3.5" />
         </button>
 
-        <button
-          type="button"
-          aria-label="Share"
-          className="flex h-9 w-9 items-center justify-center gap-1.5 bg-brand font-mono text-xs font-bold text-onyx transition-colors duration-150 ease-standard hover:bg-brand/80 sm:w-[88px]"
-        >
-          <Share2 aria-hidden="true" className="size-4" />
-          <span className="hidden sm:inline">Share</span>
-        </button>
+        {onShare ? (
+          <button
+            type="button"
+            aria-label="Share"
+            aria-haspopup="dialog"
+            onClick={onShare}
+            className="flex h-9 w-9 items-center justify-center gap-1.5 bg-brand font-mono text-xs font-bold text-onyx transition-colors duration-150 ease-standard hover:bg-brand/80 sm:w-[88px]"
+          >
+            <Share2 aria-hidden="true" className="size-4" />
+            <span className="hidden sm:inline">Share</span>
+          </button>
+        ) : (
+          board && (
+            <p
+              title={`Shared with you by ${board.ownerName}`}
+              className="hidden h-9 max-w-40 items-center gap-1.5 border border-chrome px-3 font-mono text-3xs font-bold text-muted-foreground uppercase sm:flex"
+            >
+              <Share2 aria-hidden="true" className="size-3.5 shrink-0" />
+              <span className="truncate">{board.ownerName}</span>
+            </p>
+          )
+        )}
       </div>
     </header>
   );
