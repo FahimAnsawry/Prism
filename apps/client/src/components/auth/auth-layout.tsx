@@ -6,30 +6,58 @@ import { cn } from "@/lib/utils";
 import { PrismPanel } from "./prism-panel";
 
 /**
- * Split auth screen from the board: form column (640/1440) beside the dark prism panel.
- * `panel={false}` drops the panel and centers the form (e.g. the AI editor consent page).
+ * Split auth screen from the board: form column (640/1440, 448px form) beside the dark prism
+ * panel. `panel={false}` drops the panel and centers the form (e.g. the AI editor consent page).
+ * The panel layouts (login and signup) also get a "Back to home" link beside the logo.
+ * `panelButton` is the label in the panel's code card; `footer` is the fine print at the bottom.
  */
-export function AuthLayout({ children, panel = true }: { children: ReactNode; panel?: boolean }) {
+export function AuthLayout({
+  children,
+  panel = true,
+  panelButton = "Log in",
+  footer,
+}: {
+  children: ReactNode;
+  panel?: boolean;
+  panelButton?: string;
+  footer?: ReactNode;
+}) {
   return (
-    <div className={cn("grid min-h-screen bg-background", panel && "lg:grid-cols-[640fr_800fr]")}>
-      <main className="flex flex-col px-(--page-gutter) pt-8 pb-12 lg:px-20 lg:pt-14 lg:pb-14">
-        <div className="flex items-center justify-between gap-6">
+    <div
+      className={cn(
+        "grid min-h-screen grid-cols-[minmax(0,1fr)] bg-background",
+        panel && "lg:grid-cols-[640fr_800fr]",
+      )}
+    >
+      <main
+        className={cn(
+          "flex flex-col px-(--page-gutter) py-8",
+          panel ? "lg:pr-12 lg:pl-24" : "lg:px-24",
+        )}
+      >
+        <div className="flex items-center justify-between gap-4">
           <PrismLogo />
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 font-mono text-xs tracking-[0.08em] text-foreground uppercase underline-offset-4 transition-colors hover:text-ink hover:underline [&_svg]:size-3.5"
-          >
-            <ArrowLeft aria-hidden="true" />
-            Back home
-          </Link>
+          {panel && (
+            <Link
+              to="/"
+              className="group inline-flex items-center gap-2 text-sm font-medium text-foreground underline-offset-4 transition-colors hover:text-ink hover:underline"
+            >
+              <ArrowLeft
+                aria-hidden="true"
+                className="size-4 transition-transform duration-150 group-hover:-translate-x-0.5"
+              />
+              Back to home
+            </Link>
+          )}
         </div>
-        <div
-          className={cn("my-auto w-full max-w-100 pt-12 lg:pt-10", panel ? "lg:ml-10" : "mx-auto")}
-        >
-          {children}
-        </div>
+        <div className={cn("my-auto w-full max-w-112 py-6", !panel && "mx-auto")}>{children}</div>
+        {footer && (
+          <p className={cn("text-xs text-muted-foreground", !panel && "mx-auto w-full max-w-112")}>
+            {footer}
+          </p>
+        )}
       </main>
-      {panel && <PrismPanel />}
+      {panel && <PrismPanel button={panelButton} />}
     </div>
   );
 }
