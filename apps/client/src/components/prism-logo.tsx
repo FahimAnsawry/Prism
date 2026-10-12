@@ -16,7 +16,7 @@ export function PrismMark({ className }: { className?: string }) {
   );
 }
 
-/** `compact` is the sticky navbar's size (30% smaller than the board's 36px mark / 28px word). */
+/** The board's logo is a 28px mark beside a 24px word; `compact` is the dashboard navbar's size. */
 export function PrismLogo({
   className,
   compact = false,
@@ -34,11 +34,11 @@ export function PrismLogo({
         className,
       )}
     >
-      <PrismMark className={cn(compact && "size-[25px]")} />
+      <PrismMark className={compact ? "size-[25px]" : "size-7"} />
       <span
         className={cn(
           "font-display leading-none font-bold tracking-[-0.03em]",
-          compact ? "text-xl" : "text-[28px]",
+          compact ? "text-xl" : "text-2xl",
         )}
       >
         Prism

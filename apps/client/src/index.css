@@ -519,6 +519,13 @@
   color: var(--foreground);
 }
 
+/* The board canvas's dot grid (24px pitch) for "board" panels on the landing page. */
+@utility dot-grid {
+  background-color: var(--background);
+  background-image: radial-gradient(circle at 2px 2px, var(--grid-dot) 1.5px, transparent 1.6px);
+  background-size: 24px 24px;
+}
+
 /* ==========================================================================
    Motion preferences
    ========================================================================== */
@@ -732,8 +739,47 @@
     @apply font-sans;
   }
 
+  /* Anchor links and scrollTo glide; people who ask for less motion get the jump. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
+  }
+
+  /* Scrollbars: a slim square thumb in the ink color, brand green on hover, on the page and every
+     scrolling panel. Square, like the rest of the UI. Browsers without ::-webkit-scrollbar
+     (Firefox) get the standard properties. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--foreground) 32%, transparent);
+    background-clip: content-box;
+    border: 2px solid transparent;
+    transition: background-color 150ms;
+  }
+
+  ::-webkit-scrollbar-thumb:hover,
+  ::-webkit-scrollbar-thumb:active {
+    background-color: var(--color-brand);
+  }
+
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--foreground) 32%, transparent) transparent;
+    }
   }
 
   button,
@@ -767,6 +813,96 @@
   :focus-visible {
     outline: 2px solid var(--focus-ring, var(--foreground));
     outline-offset: 2px;
+  }
+}
+
+/* ==========================================================================
+   Scroll reveal (components/landing/reveal.tsx)
+   Content rises 24px and fades in once as it scrolls into view. Only opacity and transform
+   change, so nothing shifts. With reduced motion the rule never applies and content just shows.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-reveal] {
+    transition:
+      opacity 0.7s var(--ease-decelerate),
+      transform 0.7s var(--ease-decelerate);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  [data-reveal="out"] {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+/* ==========================================================================
+   Hero entrance (components/landing/hero.tsx)
+   Plays once, after the startup splash. Start times live in the hero's TIMELINE and arrive here as --d (and --dur
+   for strokes); `both` keeps each piece hidden until its turn and finished after. With reduced
+   motion none of this applies and the hero shows complete. Strokes need pathLength="1".
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-fade {
+    animation: hero-fade 0.4s var(--ease-decelerate) var(--d, 0ms) both;
+  }
+
+  .hero-pop {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: hero-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) var(--d, 0ms) both;
+  }
+
+  .hero-draw {
+    stroke-dasharray: 1;
+    animation: ray-draw var(--dur, 0.5s) var(--ease-decelerate) var(--d, 0ms) both;
+  }
+
+  .hero-slide-in {
+    animation: hero-slide-in var(--dur, 0.5s) var(--ease-decelerate) var(--d, 0ms) both;
+  }
+
+  /* Until the startup splash lifts, every piece holds on its first (hidden) frame. Delays only
+     count while running, so the timeline starts when the splash is gone. */
+  [data-hero="wait"] :is(.hero-fade, .hero-pop, .hero-draw, .hero-slide-in) {
+    animation-play-state: paused;
+  }
+
+  /* Stopped (the hero left the screen): no animation at all leaves every piece in its finished,
+     fully drawn state. */
+  [data-hero="settled"] :is(.hero-fade, .hero-pop, .hero-draw, .hero-slide-in) {
+    animation: none;
+  }
+}
+
+.hero-caret-blink {
+  animation: caret-blink 1s step-end infinite;
+}
+
+@keyframes hero-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes hero-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@keyframes hero-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
   }
 }
 

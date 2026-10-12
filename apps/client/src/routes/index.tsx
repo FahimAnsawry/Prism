@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClaudeSection } from "@/components/landing/claude-section";
 import { ClosingCta } from "@/components/landing/closing-cta";
+import { EditorsSection } from "@/components/landing/editors-section";
 import { Hero } from "@/components/landing/hero";
-import { LoopSection } from "@/components/landing/loop-section";
+import { SharingSection } from "@/components/landing/sharing-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteHeader } from "@/components/landing/site-header";
-import { ViewsSection } from "@/components/landing/views-section";
+import { SpecSection } from "@/components/landing/spec-section";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Prism - One idea broken into many views." }] }),
@@ -18,9 +18,9 @@ function LandingPage() {
       <SiteHeader />
       <main>
         <Hero />
-        <ViewsSection />
-        <ClaudeSection />
-        <LoopSection />
+        <EditorsSection />
+        <SpecSection />
+        <SharingSection />
         <ClosingCta />
       </main>
       <SiteFooter />

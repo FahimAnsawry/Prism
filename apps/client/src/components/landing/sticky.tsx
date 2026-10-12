@@ -1,0 +1,27 @@
+import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
+
+const tones = { lime: "bg-lime", peach: "bg-peach" } as const;
+
+/** A sticky note as drawn on the board: pastel fill, handwriting, soft drop shadow. */
+export function Sticky({
+  children,
+  tone = "lime",
+  className,
+}: {
+  children: ReactNode;
+  tone?: keyof typeof tones;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "font-hand text-slate shadow-[0_12px_24px_-8px_rgb(61_59_80/0.2)] dark:shadow-[0_12px_24px_-8px_rgb(0_0_0/0.5)]",
+        tones[tone],
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
