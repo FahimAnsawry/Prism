@@ -1,5 +1,5 @@
 import { Menu } from "@base-ui/react/menu";
-import { Check, ChevronDown } from "lucide-react";
+import { ArrowUpDown, Check, ChevronDown } from "lucide-react";
 import { SORT_OPTIONS, type SortKey } from "./workspace-data";
 
 export function SortMenu({
@@ -15,12 +15,13 @@ export function SortMenu({
     <Menu.Root>
       <Menu.Trigger
         aria-label={`Sort by: ${current?.label}`}
-        className="inline-flex h-8 items-center gap-1 font-mono text-xs text-foreground select-none hover:text-ink data-popup-open:text-ink"
+        className="inline-flex h-[38px] items-center gap-2 border border-divider bg-card px-3 text-[13px] text-foreground transition-colors select-none hover:bg-background data-popup-open:border-input"
       >
-        {current?.label}
+        <ArrowUpDown aria-hidden="true" className="size-4" />
+        <span className="max-sm:sr-only">{current?.label}</span>
         <ChevronDown
           aria-hidden="true"
-          className="size-3.5 transition-transform duration-150 ease-standard in-data-popup-open:rotate-180"
+          className="size-3.5 transition-transform duration-150 ease-standard in-data-popup-open:rotate-180 max-sm:hidden"
         />
       </Menu.Trigger>
       <Menu.Portal>

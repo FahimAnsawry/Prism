@@ -10,6 +10,7 @@ import {
 import { flushSync } from "react-dom";
 import {
   applyTheme,
+  clearStoredTheme,
   DARK_QUERY,
   readStoredTheme,
   STORAGE_KEY,
@@ -86,6 +87,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [theme],
   );
 
-  const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
+  const setChoice = useCallback((choice: Theme | "system") => {
+    if (choice === "system") clearStoredTheme();
+    else storeTheme(choice);
+    setStored(choice === "system" ? null : choice);
+  }, []);
+
+  const value = useMemo(
+    () => ({ theme, toggleTheme, choice: stored ?? ("system" as const), setChoice }),
+    [theme, toggleTheme, stored, setChoice],
+  );
   return <ThemeContext value={value}>{children}</ThemeContext>;
 }

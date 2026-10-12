@@ -6,6 +6,7 @@ import { auth } from "./auth.js";
 import { catchProcessErrors, errorHandler, notFoundHandler } from "./errors.js";
 import { mcpRouter } from "./mcp/index.js";
 import { attachRealtime } from "./realtime.js";
+import { accountRouter, avatarFileRouter, photoRouter } from "./routes/account.js";
 import { aiRouter } from "./routes/ai.js";
 import { elementsRouter } from "./routes/elements.js";
 import { shareRouter } from "./routes/share.js";
@@ -45,16 +46,20 @@ app.use(
 
 // Uploaded images and SVGs, served publicly by unguessable key (tools.md §1, tools 15 and 17).
 app.use(fileRouter);
+app.use(avatarFileRouter);
 
 // These parse their own bodies (raw files, large element batches), so they come before express.json().
 app.use("/api", uploadRouter);
 app.use("/api", elementsRouter);
+app.use("/api", photoRouter);
 
 app.use(express.json());
 
 // AI editors (the MCP bridge) and the browser's "Ask AI" box; personal access tokens.
 app.use("/api", aiRouter);
 app.use("/api", tokensRouter);
+// The profile page: photo removal and connected AI editors.
+app.use("/api", accountRouter);
 // Sharing; its public link and invite routes work signed out, so it comes before workspaceRouter.
 app.use("/api", shareRouter);
 app.use("/api", workspaceRouter);

@@ -1,7 +1,8 @@
 // Dashboard previews as pictures. A card's live drawing is costly to mount (every element, with
 // its shadows and filters), and the grid mounts all of them at once: on a filter change, on a
 // switch of view, on the way back from a board. So each board's preview is drawn once per
-// version, rasterized and kept, in memory for this page and in Cache Storage across visits.
+// version and theme (both, so a theme switch only swaps pictures), rasterized and kept, in
+// memory for this page and in Cache Storage across visits.
 // Cards show the picture (an older one while the new one is made); only a board that was never
 // pictured draws live, until its picture is ready.
 
@@ -140,8 +141,12 @@ export function usePreviewPicture(boardId: string, theme: Theme) {
 
 // ── Making pictures ───────────────────────────────────────────────────────
 
-/** One picture at a time, in idle time, so making them never holds up the page. */
+/**
+ * One picture at a time, in idle time, so making them never holds up the page. Pictures in the
+ * theme on screen come first; the other theme's are made after, so switching finds them ready.
+ */
 const queue: (() => Promise<void>)[] = [];
+const later: (() => Promise<void>)[] = [];
 let draining = false;
 /** Pictures asked for (key and version), so a card rendering again doesn't ask twice. */
 const requested = new Set<string>();
@@ -155,9 +160,9 @@ const idle = () =>
 async function drain() {
   if (draining) return;
   draining = true;
-  while (queue.length > 0) {
+  while (queue.length > 0 || later.length > 0) {
     await idle();
-    const job = queue.shift();
+    const job = queue.shift() ?? later.shift();
     try {
       await job?.();
     } catch (error) {
@@ -172,7 +177,7 @@ const currentTheme = (): Theme =>
 
 /**
  * Makes the picture of `elements` (the board as of `editedAt`, bottom layer first, folded
- * branches left out) in the current theme, then keeps it.
+ * branches left out) in `theme`, then keeps it.
  */
 export function requestPreviewPicture(
   boardId: string,
@@ -184,16 +189,15 @@ export function requestPreviewPicture(
   const job = `${key}@${editedAt}`;
   if (requested.has(job) || pictures.get(key)?.editedAt === editedAt) return;
   requested.add(job);
-  queue.push(async () => {
+  (theme === currentTheme() ? queue : later).push(async () => {
     const box = previewBox(elements);
-    // The theme changed since: the colors would be the wrong ones.
-    if (!box || currentTheme() !== theme) return;
+    // Found in storage meanwhile.
+    if (!box || pictures.get(key)?.editedAt === editedAt) return;
     const { canvasBlob, drawSvg, renderSvg } = await import("@/components/board/export-image");
     const scale = PICTURE_SIDE / Math.max(box.width, box.height);
     const width = Math.max(1, Math.round(box.width * scale));
     const height = Math.max(1, Math.round(box.height * scale));
-    const markup = await renderSvg(elements, box, width, height, { background: false });
-    if (currentTheme() !== theme) return;
+    const markup = await renderSvg(elements, box, width, height, { background: false, theme });
     const canvas = await drawSvg(markup, width, height);
     // WebP where the browser can encode it (it falls back to PNG elsewhere).
     const blob = await canvasBlob(canvas, "image/webp", 0.85);
@@ -219,6 +223,7 @@ export async function forgetPreviewPictures() {
   lookups.clear();
   requested.clear();
   queue.length = 0;
+  later.length = 0;
   notify();
   try {
     if ("caches" in window) await caches.delete(CACHE_NAME);

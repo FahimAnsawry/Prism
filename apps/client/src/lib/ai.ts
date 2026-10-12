@@ -13,6 +13,12 @@ import {
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./api";
 
+/** The server's remote MCP endpoint. */
+export const MCP_URL = new URL("/mcp", import.meta.env.VITE_SERVER_URL).toString();
+
+export const CLAUDE_COMMAND = `claude mcp add --transport http --scope user prism ${MCP_URL}`;
+export const CODEX_COMMAND = `codex mcp add prism --url ${MCP_URL}`;
+
 const TOKENS_KEY = ["api-tokens"] as const;
 
 export const apiTokensQuery = queryOptions({

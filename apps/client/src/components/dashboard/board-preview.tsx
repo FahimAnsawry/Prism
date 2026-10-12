@@ -37,8 +37,12 @@ export function BoardPreview({
   const near = useNearViewport(ref);
   const empty = itemCount === 0;
   const { theme } = useTheme();
+  const otherTheme = theme === "dark" ? "light" : "dark";
   const { picture, checked } = usePreviewPicture(boardId, theme);
+  // Kept ready too: a switch that found no picture would draw every card live mid-transition.
+  const other = usePreviewPicture(boardId, otherTheme);
   const fresh = picture?.editedAt === editedAt;
+  const otherFresh = other.picture?.editedAt === editedAt;
   const preview = useQuery({
     queryKey: ["board-preview", boardId, editedAt, load ? "public" : "user"],
     queryFn: async () => {
@@ -50,15 +54,15 @@ export function BoardPreview({
       await loadBoardFonts(elements);
       return elements;
     },
-    enabled: near && !empty && checked && !fresh,
+    enabled: near && !empty && checked && (!fresh || (other.checked && !otherFresh)),
     staleTime: Infinity,
   });
 
   useEffect(() => {
-    if (preview.data && !fresh && !empty) {
-      requestPreviewPicture(boardId, editedAt, theme, preview.data);
-    }
-  }, [preview.data, fresh, empty, boardId, editedAt, theme]);
+    if (!preview.data || empty) return;
+    if (!fresh) requestPreviewPicture(boardId, editedAt, theme, preview.data);
+    if (!otherFresh) requestPreviewPicture(boardId, editedAt, otherTheme, preview.data);
+  }, [preview.data, fresh, otherFresh, empty, boardId, editedAt, theme, otherTheme]);
 
   // Pictures are decoded before they're handed out, so a card mounting (a filter switch, the
   // way back from a board) shows its picture in its first frame: `complete` is already true.

@@ -54,3 +54,15 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type SignupInput = z.infer<typeof signupSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+// ── Profile photo ──────────────────────────────────────────────────────────
+
+export const PHOTO_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+export const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Reply to a photo upload or removal: the stored photo's key (`avatars/<file>`), or null. */
+export const photoSchema = z.object({ imageKey: z.string().nullable() });
+
+export const updateNameSchema = z.object({
+  name: z.string().trim().min(1, "Enter your name.").max(120, "Use 120 characters or fewer."),
+});

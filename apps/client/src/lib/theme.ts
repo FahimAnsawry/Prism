@@ -31,6 +31,15 @@ export function storeTheme(theme: Theme) {
   }
 }
 
+/** Forgets the pick, so the theme follows the system again. */
+export function clearStoredTheme() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Not critical.
+  }
+}
+
 export function systemTheme(): Theme {
   return window.matchMedia(DARK_QUERY).matches ? "dark" : "light";
 }
@@ -58,6 +67,9 @@ export interface ThemeContextValue {
    * reveal starts; without it, or without View Transitions, the swap is instant.
    */
   toggleTheme: (origin?: { x: number; y: number }) => void;
+  /** What the user picked: a theme, or "system" to follow the device. */
+  choice: Theme | "system";
+  setChoice: (choice: Theme | "system") => void;
 }
 
 export const ThemeContext = createContext<ThemeContextValue | null>(null);

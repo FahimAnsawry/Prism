@@ -104,6 +104,9 @@ export const auth = betterAuth({
   ],
 
   user: {
+    // The profile page's "Delete account". Boards, projects, tokens and shares go with the user
+    // (onDelete: Cascade in the schema).
+    deleteUser: { enabled: true },
     additionalFields: {
       // Set only by the server's upload route, never by the client
       imageKey: { type: "string", required: false, input: false },

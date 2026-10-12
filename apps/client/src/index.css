@@ -22,7 +22,8 @@
 @import "@fontsource/nanum-pen-script"; /* handwritten annotations */
 @import "@fontsource/caveat"; /* the board's handwriting font (Handwriting tool) */
 
-@custom-variant dark (&:is(.dark *));
+/* A `.light` subtree stays light on a dark page (dashboard preview pictures are drawn in both). */
+@custom-variant dark (&:is(.dark *):not(:where(.light *)));
 
 @theme {
   --font-sans: "DM Sans Variable", "DM Sans", ui-sans-serif, system-ui, sans-serif;
@@ -572,7 +573,8 @@
    the raw neutrals above, so one class works in both themes. The raw brand and pastel accents
    stay fixed in both themes (sticky notes are yellow at night too), so text sitting on them keeps
    its raw class (bg-brand text-slate). */
-:root {
+:root,
+.light {
   color-scheme: light;
   --radius: 0rem; /* Greptile squares every corner */
   /* PrismLoader's dimmest facet. Light canvas washes out faint slate and the brand green, so the

@@ -30,6 +30,21 @@ export const apiTokenSchema = z.object({
 
 export const apiTokensSchema = z.object({ tokens: z.array(apiTokenSchema) });
 
+/** An AI editor (Claude Code, Codex, …) the user signed in to Prism through OAuth. */
+export const connectedEditorSchema = z.object({
+  clientId: z.string(),
+  name: z.string(),
+  /** When the user first approved it. */
+  connectedAt: z.iso.datetime().nullable(),
+  /** The last time it got a new access token. */
+  lastUsedAt: z.iso.datetime().nullable(),
+});
+
+export const connectedEditorsSchema = z.object({ editors: z.array(connectedEditorSchema) });
+
+/** Reply to signing an editor out. */
+export const editorRevokedSchema = z.object({ clientId: z.string() });
+
 /** Reply to a create: the only time the full token is sent. */
 export const createdApiTokenSchema = apiTokenSchema.extend({ token: z.string() });
 
@@ -323,6 +338,7 @@ export const SOCKET_ID_HEADER = "x-prism-socket";
 export type CreateApiTokenInput = z.infer<typeof createApiTokenSchema>;
 export type ApiToken = z.infer<typeof apiTokenSchema>;
 export type CreatedApiToken = z.infer<typeof createdApiTokenSchema>;
+export type ConnectedEditor = z.infer<typeof connectedEditorSchema>;
 export type EditStatus = (typeof EDIT_STATUSES)[number];
 export type CreateEditRequestInput = z.infer<typeof createEditRequestSchema>;
 export type EditRequest = z.infer<typeof editRequestSchema>;

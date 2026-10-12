@@ -1,19 +1,28 @@
 import { Dialog } from "@base-ui/react/dialog";
 import type { ApiToken, CreatedApiToken } from "@prism/shared";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Copy, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  ChevronLeft,
+  ChevronUp,
+  Circle,
+  Copy,
+  PlugZap,
+  Plus,
+  X,
+} from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { FormError, FormField } from "@/components/auth/form-field";
 import { ctaVariants } from "@/components/cta";
-import { apiTokensQuery, useCreateApiToken, useRevokeApiToken } from "@/lib/ai";
+import { editorsQuery } from "@/lib/account";
+import { apiTokensQuery, MCP_URL, useCreateApiToken, useRevokeApiToken } from "@/lib/ai";
 import { apiErrorMessage } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { AI_TOOLS, toolForEditor, type AiTool } from "./ai-tools";
 import { ConfirmDialog } from "./confirm-dialog";
-
-/** The server's remote MCP endpoint. */
-const MCP_URL = new URL("/mcp", import.meta.env.VITE_SERVER_URL).toString();
-
-const CLAUDE_COMMAND = `claude mcp add --transport http --scope user prism ${MCP_URL}`;
-const CODEX_COMMAND = `codex mcp add prism --url ${MCP_URL}`;
+import { EditorLogo } from "./editor-logo";
+import { timeAgo } from "./workspace-data";
 
 /** For clients that can't sign in with OAuth: the token goes in a fixed header. */
 const claudeTokenCommand = (token: string) =>
@@ -22,9 +31,10 @@ const claudeTokenCommand = (token: string) =>
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 /**
- * How to connect an AI editor (Claude Code, Codex, any MCP client) to Prism's MCP endpoint: one
- * command, then the editor opens the browser to sign in. Personal access tokens are the
- * fallback for clients without OAuth; a token is shown once.
+ * How to connect an AI tool (Claude Code, Codex, Antigravity, Cursor, GitHub Copilot, any MCP
+ * client) to Prism's MCP endpoint: a grid of tools, then one page per tool with what to run or
+ * paste. Personal access tokens are the fallback for clients without OAuth, on the "Any MCP
+ * client" page; a token is shown once.
  */
 export function AiAccessDialog({
   open,
@@ -37,7 +47,7 @@ export function AiAccessDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate/40 transition-opacity duration-150 ease-standard data-ending-style:opacity-0 data-starting-style:opacity-0 dark:bg-black/60" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[36rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-nested-dialog-open:opacity-60 sm:p-8">
+        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[55rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col border border-input bg-popover outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-nested-dialog-open:opacity-60">
           <AiAccess />
         </Dialog.Popup>
       </Dialog.Portal>
@@ -45,49 +55,260 @@ export function AiAccessDialog({
   );
 }
 
-// Mounted with the popup, so a created token is forgotten once the dialog closes.
+// Mounted with the popup, so the chosen tool and a created token are forgotten once it closes.
 function AiAccess() {
+  const [toolId, setToolId] = useState<AiTool["id"] | null>(null);
+  const editors = useQuery(editorsQuery).data ?? [];
+  const tool = AI_TOOLS.find((t) => t.id === toolId);
+
   return (
     <>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <Dialog.Title className="text-[26px] leading-8 font-bold text-ink">
-            Connect an AI editor
-          </Dialog.Title>
-          <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Let Claude Code, Codex or any MCP client draw on your boards and handle your “Ask AI”
-            requests. Run one command; your editor then opens Prism to sign in and approve.
-          </Dialog.Description>
+      <header className="flex items-center gap-4 border-b border-divider px-6 py-5 sm:px-8">
+        <Dialog.Title className="font-display text-[26px] leading-8 font-bold tracking-[-0.01em] text-ink">
+          Connect AI tools
+        </Dialog.Title>
+        <div className="flex items-center gap-2">
+          {editors.slice(0, 3).map((editor) => (
+            <span
+              key={editor.clientId}
+              title={editor.name}
+              className="flex size-8 items-center justify-center border border-divider bg-white"
+            >
+              <EditorLogo name={editor.name} className="size-5" />
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={() => setToolId(null)}
+            aria-label="All tools"
+            title="All tools"
+            className="flex size-8 items-center justify-center border border-divider bg-card text-foreground transition-colors duration-150 ease-standard hover:border-input"
+          >
+            <Plus aria-hidden="true" className="size-4" />
+          </button>
         </div>
         <Dialog.Close
           aria-label="Close"
-          className="-mt-1 -mr-2 flex size-9 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-standard hover:text-ink"
+          className="-mr-2 ml-auto flex size-10 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-standard hover:text-ink"
         >
-          <X aria-hidden="true" className="size-4" />
+          <X aria-hidden="true" className="size-5" />
         </Dialog.Close>
+      </header>
+
+      <Dialog.Description className="sr-only">
+        Add Prism to Claude Code, Codex, Antigravity, Cursor, GitHub Copilot or any MCP client.
+      </Dialog.Description>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-8">
+        {tool ? (
+          <ToolPage
+            tool={tool}
+            editor={editors.find((e) => toolForEditor(e.name)?.id === tool.id)}
+            onBack={() => setToolId(null)}
+          />
+        ) : (
+          <ToolGrid
+            connected={new Set(editors.map((e) => toolForEditor(e.name)?.id))}
+            onPick={setToolId}
+          />
+        )}
       </div>
 
-      <div className="mt-6 flex flex-col gap-5">
-        <CopyBlock
-          label="Claude Code (then run /mcp and choose Authenticate)"
-          text={CLAUDE_COMMAND}
-        />
-        <CopyBlock label="Codex (opens the browser to sign in)" text={CODEX_COMMAND} />
-        <CopyBlock label="Any other MCP client: server URL" text={MCP_URL} />
-        <p className="text-xs text-muted-foreground">
-          In Claude Code, type <code className="font-mono">/mcp__prism__watch_edits</code> to have
-          it handle your Ask AI requests, or{" "}
-          <code className="font-mono">/mcp__prism__design_screen</code> to start a design.
-        </p>
-      </div>
-
-      <details className="group mt-8 border-t border-divider pt-5">
-        <summary className="cursor-pointer font-mono text-xs tracking-[0.08em] text-foreground uppercase">
-          Access tokens (clients without OAuth sign-in)
-        </summary>
-        <AccessTokens />
-      </details>
+      <footer className="flex items-center justify-between gap-4 border-t border-divider px-6 py-5 sm:px-8">
+        <a
+          href="/#how-it-works"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 text-sm font-bold text-foreground underline-offset-4 hover:underline"
+        >
+          Learn more
+          <ArrowUpRight aria-hidden="true" className="size-4" />
+        </a>
+        <Dialog.Close className={ctaVariants({ variant: "secondary", size: "sm" })}>
+          Done
+        </Dialog.Close>
+      </footer>
     </>
+  );
+}
+
+function ToolLogo({ tool, size }: { tool: AiTool; size: "sm" | "lg" }) {
+  const big = size === "lg";
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center border border-divider",
+        tool.logo ? "bg-white" : "border-transparent bg-slate text-fog",
+        big ? "size-20" : "size-12",
+      )}
+    >
+      {tool.logo ? (
+        <img
+          src={tool.logo}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className={big ? "size-11" : "size-7"}
+        />
+      ) : (
+        <PlugZap aria-hidden="true" className={big ? "size-9" : "size-[22px]"} />
+      )}
+    </span>
+  );
+}
+
+function ToolGrid({
+  connected,
+  onPick,
+}: {
+  connected: Set<AiTool["id"] | undefined>;
+  onPick: (id: AiTool["id"]) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="flex flex-col gap-8">
+      <section className="flex items-start gap-4 border border-divider bg-card p-6">
+        <PlugZap aria-hidden="true" className="mt-0.5 size-[22px] shrink-0 text-foreground" />
+        <div>
+          <h2 className="text-base font-bold text-foreground">Connect Prism with your AI tools</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Read, edit and create board content straight from your editor: screens, flows, schemas
+            and mind maps, drawn live on the board you have open.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-sm font-bold text-foreground">AI tools you can connect to Prism</h2>
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+            className="flex items-center gap-2 text-sm font-semibold text-foreground"
+          >
+            {open ? "Collapse" : "Expand"}
+            <ChevronUp
+              aria-hidden="true"
+              className={cn(
+                "size-4 transition-transform duration-200 ease-standard",
+                !open && "rotate-180",
+              )}
+            />
+          </button>
+        </div>
+        {open && (
+          <ul className="mt-4 grid grid-cols-1 gap-4 min-[40rem]:grid-cols-2 lg:grid-cols-3">
+            {AI_TOOLS.map((tool) => (
+              <li key={tool.id} className="flex">
+                <button
+                  type="button"
+                  onClick={() => onPick(tool.id)}
+                  className="flex w-full flex-col gap-4 border border-divider bg-card p-6 text-left transition-colors duration-150 ease-standard hover:border-input"
+                >
+                  <span className="flex items-center gap-4">
+                    <ToolLogo tool={tool} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-base font-bold text-foreground">
+                        {tool.name}
+                      </span>
+                      <span className="mt-1 block truncate text-[13px] text-muted-foreground">
+                        {tool.id === "other" ? tool.by : `by ${tool.by}`}
+                      </span>
+                    </span>
+                    {connected.has(tool.id) && (
+                      <>
+                        <Check
+                          aria-hidden="true"
+                          strokeWidth={2.5}
+                          className="size-5 shrink-0 text-[#14804a] dark:text-brand"
+                        />
+                        <span className="sr-only">Connected</span>
+                      </>
+                    )}
+                  </span>
+                  <span className="text-sm leading-6 text-muted-foreground">{tool.blurb}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ToolPage({
+  tool,
+  editor,
+  onBack,
+}: {
+  tool: AiTool;
+  editor: { lastUsedAt: string | null } | undefined;
+  onBack: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-8">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-2 self-start text-[15px] font-bold text-foreground"
+      >
+        <ChevronLeft aria-hidden="true" className="size-[18px]" />
+        All tools
+      </button>
+
+      <div className="flex flex-wrap items-center gap-5">
+        <ToolLogo tool={tool} size="lg" />
+        <div className="min-w-0">
+          <h2 className="font-display text-[34px] leading-tight font-bold tracking-[-0.01em] text-ink">
+            {tool.name}
+          </h2>
+          <p className="mt-1 text-[15px] text-muted-foreground">
+            {tool.id === "other" ? tool.by : `by ${tool.by}`}
+          </p>
+        </div>
+        {tool.id !== "other" && (
+          <span
+            className={cn(
+              "ml-auto flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold",
+              editor
+                ? "bg-seafoam text-[#0f5c35] dark:bg-seafoam/14 dark:text-brand"
+                : "bg-secondary text-secondary-foreground",
+            )}
+          >
+            {editor ? (
+              <Check aria-hidden="true" strokeWidth={2.5} className="size-4" />
+            ) : (
+              <Circle aria-hidden="true" className="size-4" />
+            )}
+            {editor
+              ? `Connected${editor.lastUsedAt ? ` · last call ${timeAgo(editor.lastUsedAt)}` : ""}`
+              : "Not connected yet"}
+          </span>
+        )}
+      </div>
+
+      <section className="flex flex-col gap-4">
+        <div>
+          <h3 className="text-lg font-bold text-foreground">Add the Prism MCP server</h3>
+          <p className="mt-1 text-[15px] text-muted-foreground">{tool.setup.intro}</p>
+        </div>
+        <CommandBlock text={tool.setup.code} label={`Copy the ${tool.name} setup`} />
+      </section>
+
+      {tool.id === "other" && (
+        <section className="flex flex-col gap-4 border-t border-divider pt-8">
+          <div>
+            <h3 className="text-lg font-bold text-foreground">Access tokens</h3>
+            <p className="mt-1 text-[15px] text-muted-foreground">
+              For clients without OAuth sign-in. A token acts as you, on your boards only.
+            </p>
+          </div>
+          <AccessTokens />
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -105,13 +326,16 @@ function AccessTokens() {
   return (
     <>
       {created ? (
-        <div className="mt-6 flex flex-col gap-5">
+        <div className="flex flex-col gap-5">
           <p className="text-sm text-foreground">Copy your token now. It won't be shown again.</p>
-          <CopyBlock label="Token" text={created.token} />
-          <CopyBlock label="Claude Code with a token" text={claudeTokenCommand(created.token)} />
+          <CommandBlock text={created.token} label="Copy the token" />
+          <CommandBlock
+            text={claudeTokenCommand(created.token)}
+            label="Copy the Claude Code command"
+          />
           <p className="text-xs text-muted-foreground">
             Other clients: send it as <code className="font-mono">Authorization: Bearer …</code> to{" "}
-            <code className="font-mono">{MCP_URL}</code>. A token acts as you, on your boards only.
+            <code className="font-mono">{MCP_URL}</code>.
           </p>
           <div className="flex justify-end">
             <button
@@ -124,7 +348,7 @@ function AccessTokens() {
           </div>
         </div>
       ) : (
-        <form noValidate onSubmit={submit} className="mt-5">
+        <form noValidate onSubmit={submit}>
           <FormError
             message={create.error ? apiErrorMessage(create.error) : undefined}
             className="mb-5"
@@ -150,10 +374,10 @@ function AccessTokens() {
         </form>
       )}
 
-      <section className="mt-8">
-        <h3 className="font-mono text-xs tracking-[0.08em] text-foreground uppercase">
+      <div>
+        <h4 className="font-mono text-xs tracking-[0.08em] text-foreground uppercase">
           Your tokens
-        </h3>
+        </h4>
         {tokens.error ? (
           <FormError message={apiErrorMessage(tokens.error)} className="mt-3" />
         ) : tokens.data?.length === 0 ? (
@@ -165,7 +389,7 @@ function AccessTokens() {
             ))}
           </ul>
         )}
-      </section>
+      </div>
     </>
   );
 }
@@ -207,7 +431,8 @@ function TokenRow({ token }: { token: ApiToken }) {
   );
 }
 
-function CopyBlock({ label, text }: { label: string; text: string }) {
+/** Text to copy (a command, a config, a URL) in a dark block with a Copy button. */
+function CommandBlock({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     void navigator.clipboard.writeText(text).then(() => {
@@ -216,27 +441,23 @@ function CopyBlock({ label, text }: { label: string; text: string }) {
     });
   };
   return (
-    <div>
-      <p className="mb-1.5 font-mono text-3xs tracking-[0.08em] text-muted-foreground uppercase">
-        {label}
-      </p>
-      <div className="flex items-start gap-2 border border-divider bg-card p-3">
-        <pre className="min-w-0 flex-1 overflow-x-auto font-mono text-2xs leading-relaxed whitespace-pre-wrap break-all text-foreground">
-          {text}
-        </pre>
-        <button
-          type="button"
-          onClick={copy}
-          aria-label={copied ? "Copied" : `Copy ${label}`}
-          className="flex size-7 shrink-0 items-center justify-center text-muted-foreground hover:text-ink"
-        >
-          {copied ? (
-            <Check aria-hidden="true" className="size-3.5" />
-          ) : (
-            <Copy aria-hidden="true" className="size-3.5" />
-          )}
-        </button>
-      </div>
+    <div className="flex items-center gap-4 bg-slate py-4 pr-4 pl-5 dark:bg-black/40">
+      <pre className="min-w-0 flex-1 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all text-fog">
+        {text}
+      </pre>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={copied ? "Copied" : label}
+        className="flex h-9 shrink-0 items-center gap-2 bg-fog px-3.5 text-sm font-bold text-slate transition-colors duration-150 ease-standard hover:bg-white"
+      >
+        {copied ? (
+          <Check aria-hidden="true" className="size-4" />
+        ) : (
+          <Copy aria-hidden="true" className="size-4" />
+        )}
+        {copied ? "Copied" : "Copy"}
+      </button>
     </div>
   );
 }
