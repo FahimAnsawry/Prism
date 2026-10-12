@@ -14,7 +14,16 @@ import {
   tableSize,
   type TextMeasurer,
 } from "@prism/shared";
-import { DEFAULT_SIZES, fontInfo, fontStack, loadFonts, weightOf } from "./fonts";
+import { useSyncExternalStore } from "react";
+import {
+  DEFAULT_SIZES,
+  fontInfo,
+  fontStack,
+  isFontLoaded,
+  loadedFontCount,
+  loadFonts,
+  weightOf,
+} from "./fonts";
 
 /** Pixel sizes behind S / M / L / XL for a font (handwriting fonts run small, so they step up). */
 export function fontSizes(font: FontFamily): Record<FontSize, number> {
@@ -34,7 +43,29 @@ export const BULLETS = ["•", "◦", "▪", "•", "◦"];
 
 let context: CanvasRenderingContext2D | null | undefined;
 
+/**
+ * Measured widths. Wrapping measures every candidate line, so a board full of paragraphs takes
+ * tens of thousands of entries; a smaller cap would empty it during every redraw.
+ */
 const widthCache = new Map<string, number>();
+const WIDTH_CACHE_LIMIT = 100_000;
+
+/** Bumped when measurements are dropped, so drawn text lays itself out again. */
+let measureEpoch = 0;
+const epochListeners = new Set<() => void>();
+
+const subscribeEpoch = (listener: () => void) => {
+  epochListeners.add(listener);
+  return () => epochListeners.delete(listener);
+};
+
+/**
+ * Re-renders the caller when measurements are reset (web fonts finished loading). Shapes are
+ * memoized on their element, so without it text would keep the fallback font's line breaks.
+ */
+export function useMeasureEpoch() {
+  return useSyncExternalStore(subscribeEpoch, () => measureEpoch);
+}
 
 /**
  * The width of `text` in px. `spacing` is letter spacing in ems; browsers add it after every
@@ -50,7 +81,7 @@ export function measure(text: string, font: FontFamily, px: number, weight = 400
   if (!context) return text.length * px * 0.55 + extra;
   context.font = `${weight} ${px}px ${fontStack(font)}`;
   const width = context.measureText(text).width;
-  if (widthCache.size > 5_000) widthCache.clear();
+  if (widthCache.size > WIDTH_CACHE_LIMIT) widthCache.clear();
   widthCache.set(key, width);
   return width + extra;
 }
@@ -58,6 +89,8 @@ export function measure(text: string, font: FontFamily, px: number, weight = 400
 /** Forget measurements once web fonts finish loading (they were taken with a fallback font). */
 export function resetMeasurements() {
   widthCache.clear();
+  measureEpoch++;
+  for (const listener of epochListeners) listener();
 }
 
 /**
@@ -69,10 +102,25 @@ export async function loadBoardFonts(elements: BoardElement[]) {
   const used = elements.flatMap((el) =>
     el.font || el.fontWeight ? [[el.font ?? "sans", weightOf(el)] as const] : [],
   );
+  const before = loadedFontCount();
   await loadFonts(["sans", "caveat", "mono", ...used]);
-  resetMeasurements();
+  // Fonts already there (a second board, each dashboard preview) keep the measurements, and
+  // drawn text doesn't lay itself out again.
+  if (loadedFontCount() !== before || loadedFontCount() === 0) resetMeasurements();
   return true;
 }
+
+/**
+ * Whether every font the board's text uses has loaded, so it can open without waiting: a board
+ * with no text, or one opened after another board (or the dashboard) loaded the same fonts.
+ */
+export function boardFontsReady(elements: BoardElement[]) {
+  return elements.every((el) => !hasText(el) || isFontLoaded(el.font ?? "sans", weightOf(el)));
+}
+
+/** Elements that draw text (theirs, or a table's or chart's labels). */
+const hasText = (el: BoardElement) =>
+  Boolean(el.text?.trim() || el.items?.length || el.table || el.chart);
 
 /** The longest a board's opening loader waits for its fonts once its elements are here. */
 export const BOARD_OPEN_FONT_WAIT_MS = 500;

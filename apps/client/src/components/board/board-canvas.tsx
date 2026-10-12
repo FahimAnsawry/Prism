@@ -3,8 +3,10 @@ import {
   type Dispatch,
   type DragEvent,
   type MouseEvent,
+  memo,
   type PointerEvent,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -104,17 +106,27 @@ export function BoardCanvas({
   const [hoverMindId, setHoverMindId] = useState<string | null>(null);
   const spaceHeld = useHeldSpace();
   const { elements, selectedIds } = state;
+  // Derived from the elements only, so panning and zooming (a render per frame) reuse them.
   // Nodes inside folded mind map branches aren't drawn, hit or selected.
-  const hidden = hiddenMindNodes(elements);
-  const ordered = byZ(elements).filter((el) => !hidden.has(el.id));
-  const selected = elements.filter((el) => selectedIds.includes(el.id) && !hidden.has(el.id));
-  const toggles = editingId
-    ? []
-    : mindToggles(elements, ordered, hoverMindId ? [...selectedIds, hoverMindId] : selectedIds);
+  const { hidden, ordered } = useMemo(() => {
+    const folded = hiddenMindNodes(elements);
+    return { hidden: folded, ordered: byZ(elements).filter((el) => !folded.has(el.id)) };
+  }, [elements]);
+  const selected = useMemo(
+    () => elements.filter((el) => selectedIds.includes(el.id) && !hidden.has(el.id)),
+    [elements, selectedIds, hidden],
+  );
+  const toggles = useMemo(
+    () =>
+      editingId
+        ? []
+        : mindToggles(elements, ordered, hoverMindId ? [...selectedIds, hoverMindId] : selectedIds),
+    [editingId, elements, ordered, hoverMindId, selectedIds],
+  );
   const frame = editingId ? null : selectionFrame(selected, camera.zoom);
   // A selected table or relation shows what it connects and dims the rest (only here on screen:
   // exports and previews draw everything as it is).
-  const focus = erFocus(elements, selectedIds);
+  const focus = useMemo(() => erFocus(elements, selectedIds), [elements, selectedIds]);
 
   const borrowingHand = spaceHeld || panning;
   useEffect(() => {
@@ -130,12 +142,17 @@ export function BoardCanvas({
 
   // Wheel (and Ctrl+wheel, a trackpad pinch) zooms toward the pointer. Not a React handler:
   // those are passive, and preventDefault must stop page scroll and the browser's own zoom.
+  // Trackpads send wheel events faster than the screen refreshes, so the camera goes out once
+  // per frame.
   useEffect(() => {
     const el = svg.current;
     if (!el) return;
+    let frame = 0;
+    /** The camera waiting for the next frame; a render in between mustn't drop it. */
+    let pending: Camera | null = null;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const { camera: current, onCameraChange: change } = latest.current;
+      const current = pending ?? latest.current.camera;
       const pixels =
         event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY * 16 : event.deltaY;
       // Pinches send small deltas, so they get a stronger factor than a mouse wheel's notches.
@@ -145,11 +162,21 @@ export function BoardCanvas({
         x: event.clientX - rect.left - rect.width / 2,
         y: event.clientY - rect.top - rect.height / 2,
       });
+      pending = next;
       latest.current.camera = next;
-      change(next);
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const camera = pending;
+        pending = null;
+        if (camera) latest.current.onCameraChange(camera);
+      });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      cancelAnimationFrame(frame);
+    };
   }, []);
 
   const toWorld = (event: { clientX: number; clientY: number }): Point => {
@@ -330,29 +357,12 @@ export function BoardCanvas({
       >
         {grid && <rect x="-8000" y="-8000" width="16000" height="16000" fill="url(#dot-grid)" />}
 
-        <MindBranches elements={ordered} />
-
-        {ordered.map((el, i) => (
-          <g
-            key={el.id}
-            data-id={el.id}
-            opacity={
-              overlay?.erasing?.has(el.id) ? 0.25 : focus && !focus.has(el.id) ? 0.18 : undefined
-            }
-          >
-            <ElementShape el={el} hidden={el.id === editingId} below={backdropOf(ordered, i)} />
-          </g>
-        ))}
-
-        {/* The focused relations again on top, so none hides behind a table. */}
-        {focus &&
-          ordered
-            .filter((el) => el.type === "arrow" && focus.has(el.id))
-            .map((el) => (
-              <g key={`focus-${el.id}`} pointerEvents="none">
-                <ElementShape el={el} />
-              </g>
-            ))}
+        <ElementLayer
+          ordered={ordered}
+          editingId={editingId}
+          erasing={overlay?.erasing}
+          focus={focus}
+        />
 
         <MindToggles toggles={toggles} zoom={camera.zoom} />
 
@@ -403,6 +413,49 @@ export function BoardCanvas({
     </svg>
   );
 }
+
+/**
+ * The board's elements, bottom layer first. Memoized apart from the camera, the hover and the
+ * selection frame, so a pan or zoom frame doesn't walk the elements at all.
+ */
+const ElementLayer = memo(function ElementLayer({
+  ordered,
+  editingId,
+  erasing,
+  focus,
+}: {
+  ordered: BoardElement[];
+  editingId: string | null;
+  erasing: ReadonlySet<string> | undefined;
+  focus: ReadonlySet<string> | null;
+}) {
+  const below = useMemo(() => ordered.map((_, i) => backdropOf(ordered, i)), [ordered]);
+  return (
+    <>
+      <MindBranches elements={ordered} />
+
+      {ordered.map((el, i) => (
+        <g
+          key={el.id}
+          data-id={el.id}
+          opacity={erasing?.has(el.id) ? 0.25 : focus && !focus.has(el.id) ? 0.18 : undefined}
+        >
+          <ElementShape el={el} hidden={el.id === editingId} below={below[i]} />
+        </g>
+      ))}
+
+      {/* The focused relations again on top, so none hides behind a table. */}
+      {focus &&
+        ordered
+          .filter((el) => el.type === "arrow" && focus.has(el.id))
+          .map((el) => (
+            <g key={`focus-${el.id}`} pointerEvents="none">
+              <ElementShape el={el} />
+            </g>
+          ))}
+    </>
+  );
+});
 
 /** Selection: box, 8 square handles and a rotate handle above (Miro frame 10). */
 function SelectionFrame({ frame, zoom, linear }: { frame: Frame; zoom: number; linear: boolean }) {

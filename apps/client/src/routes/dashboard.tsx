@@ -1,7 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
-import { useState, type ComponentType, type ReactNode } from "react";
+import {
+  useDeferredValue,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import { ctaVariants } from "@/components/cta";
 import { DeleteItemDialog } from "@/components/dashboard/delete-item-dialog";
 import type { ItemAction } from "@/components/dashboard/item-actions-menu";
@@ -43,12 +50,19 @@ import { allProjects, workspaceQuery } from "@/lib/workspace";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard - Prism" }] }),
-  beforeLoad: async () => {
+  beforeLoad: async ({ preload }) => {
     const session = await requireSession();
-    // Signed in from an invite link: finish accepting it.
-    const invite = claimPendingInvite();
+    // Signed in from an invite link: finish accepting it (on the visit itself, not a hover).
+    const invite = preload ? null : claimPendingInvite();
     if (invite) throw redirect({ to: "/invite/$token", params: { token: invite } });
     return session;
+  },
+  // The workspace loads alongside the page's code instead of after it. Cached data shows at
+  // once, and the page refreshes it itself.
+  loader: ({ context: { queryClient } }) => {
+    if (!queryClient.getQueryData(workspaceQuery.queryKey)) {
+      void queryClient.prefetchQuery(workspaceQuery);
+    }
   },
   component: DashboardPage,
 });
@@ -93,6 +107,11 @@ function DashboardPage() {
     item: null,
   });
   const workspace = useQuery(workspaceQuery);
+  // The switches answer at once (their highlight slides over); the grid follows as a deferred,
+  // interruptible render, so a slow one never holds up the click.
+  const shownFilter = useDeferredValue(filter);
+  const shownView = useDeferredValue(prefs.view);
+  const [animateGrid, setAnimateGrid] = useState(false);
 
   const updatePrefs = (changes: Partial<DashboardPrefs>) => {
     const next = { ...prefs, ...changes };
@@ -115,13 +134,13 @@ function DashboardPage() {
   const isEmpty = ownEmpty && sharedCount === 0;
   const items = data
     ? sortItems(
-        itemsFor(data, filter).filter((item) => matchesQuery(item, query)),
+        itemsFor(data, shownFilter).filter((item) => matchesQuery(item, query)),
         prefs.sort,
       )
     : [];
   const sharedItems = data
     ? sortItems(
-        sharedItemsFor(data, filter).filter((item) => matchesQuery(item, query)),
+        sharedItemsFor(data, shownFilter).filter((item) => matchesQuery(item, query)),
         prefs.sort,
       )
     : [];
@@ -136,17 +155,30 @@ function DashboardPage() {
       )
     : [];
 
+  // A new filter or view mounts the list again, so its entrance plays (only after a switch: not
+  // when the dashboard opens or comes back from a board).
+  const listKey = `${shownFilter}:${shownView}`;
+  // A slide only: cards stay opaque, so the grid never goes blank between two filters.
+  const enter = animateGrid
+    ? "motion-safe:animate-in motion-safe:slide-in-from-bottom-2 fill-mode-both duration-250 ease-(--ease-decelerate)"
+    : undefined;
+
   const itemList = (list: WorkspaceItem[]): ReactNode =>
-    prefs.view === "grid" ? (
-      <ul className="mt-8 grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
-        {list.map((item) => (
-          <li key={item.id}>
+    shownView === "grid" ? (
+      <ul key={listKey} className="mt-8 grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+        {list.map((item, i) => (
+          <li
+            key={item.id}
+            className={enter}
+            // Staggered, capped so a long grid doesn't keep its last cards waiting.
+            style={enter ? { animationDelay: `${Math.min(i, 6) * 25}ms` } : undefined}
+          >
             <WorkspaceCard item={item} sort={prefs.sort} onAction={onItemAction} />
           </li>
         ))}
       </ul>
     ) : (
-      <div className="mt-8 border border-divider bg-card">
+      <div key={listKey} className={cn("mt-8 border border-divider bg-card", enter)}>
         <WorkspaceListHeader sort={prefs.sort} />
         <ul className="divide-y divide-divider">
           {list.map((item) => (
@@ -176,31 +208,14 @@ function DashboardPage() {
 
         {!isEmpty && (
           <div className="mt-14 flex flex-wrap items-center justify-between gap-4">
-            <div
-              role="group"
-              aria-label="Show"
-              className="flex max-w-full gap-2 border border-divider bg-card p-[3px] max-sm:w-full"
-            >
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  aria-pressed={filter === f.id}
-                  onClick={() => setFilter(f.id)}
-                  className={cn(
-                    "flex h-8 shrink-0 items-center justify-center gap-2 text-[13px] transition-colors duration-150 ease-standard",
-                    f.width,
-                    "max-sm:w-auto max-sm:min-w-0 max-sm:flex-1 max-sm:px-2",
-                    filter === f.id
-                      ? "bg-secondary font-bold text-secondary-foreground"
-                      : "bg-card text-foreground hover:bg-background",
-                  )}
-                >
-                  {f.label}
-                  {data && <span>{itemsFor(data, f.id).length}</span>}
-                </button>
-              ))}
-            </div>
+            <FilterSwitch
+              value={filter}
+              counts={data && ((id) => itemsFor(data, id).length)}
+              onChange={(next) => {
+                setAnimateGrid(true);
+                setFilter(next);
+              }}
+            />
 
             <div className="ml-auto flex items-center gap-3">
               <SortMenu value={prefs.sort} onChange={(sort) => updatePrefs({ sort })} />
@@ -211,7 +226,10 @@ function DashboardPage() {
                     type="button"
                     aria-label={label}
                     aria-pressed={prefs.view === id}
-                    onClick={() => updatePrefs({ view: id })}
+                    onClick={() => {
+                      setAnimateGrid(true);
+                      updatePrefs({ view: id });
+                    }}
                     className={cn(
                       "flex size-8 items-center justify-center transition-colors duration-150 ease-standard",
                       prefs.view === id
@@ -248,8 +266,8 @@ function DashboardPage() {
           sharedItems.length > 0 && query.trim() ? null : (
             <NoMatches
               query={query}
-              filter={filter}
-              onCreate={() => openCreate(filter === "project" ? "project" : "whiteboard")}
+              filter={shownFilter}
+              onCreate={() => openCreate(shownFilter === "project" ? "project" : "whiteboard")}
             />
           )
         ) : (
@@ -302,6 +320,73 @@ function DashboardPage() {
         item={leaving.item}
         onOpenChange={(open) => setLeaving((d) => ({ ...d, open }))}
       />
+    </div>
+  );
+}
+
+/**
+ * All / Projects / Whiteboards. The active one's fill slides over to the one picked, measured
+ * from the buttons, so it follows their widths at every breakpoint.
+ */
+function FilterSwitch({
+  value,
+  counts,
+  onChange,
+}: {
+  value: Filter;
+  /** How many items each filter shows, once the workspace has loaded. */
+  counts: ((filter: Filter) => number) | undefined;
+  onChange: (filter: Filter) => void;
+}) {
+  const group = useRef<HTMLDivElement>(null);
+  const [fill, setFill] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const node = group.current;
+    if (!node) return;
+    const measure = () => {
+      const active = node.querySelector<HTMLElement>('[aria-pressed="true"]');
+      if (active) setFill({ left: active.offsetLeft, width: active.offsetWidth });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [value]);
+
+  return (
+    <div
+      ref={group}
+      role="group"
+      aria-label="Show"
+      className="relative flex max-w-full gap-2 border border-divider bg-card p-[3px] max-sm:w-full"
+    >
+      {fill && (
+        <span
+          aria-hidden="true"
+          className="absolute top-[3px] bottom-[3px] left-0 bg-secondary transition-[translate,width] duration-250 ease-standard motion-reduce:transition-none"
+          style={{ width: fill.width, translate: `${fill.left}px 0` }}
+        />
+      )}
+      {FILTERS.map((f) => (
+        <button
+          key={f.id}
+          type="button"
+          aria-pressed={value === f.id}
+          onClick={() => onChange(f.id)}
+          className={cn(
+            "relative flex h-8 shrink-0 items-center justify-center gap-2 text-[13px] transition-colors duration-250 ease-standard",
+            f.width,
+            "max-sm:w-auto max-sm:min-w-0 max-sm:flex-1 max-sm:px-2",
+            value === f.id
+              ? "font-bold text-secondary-foreground"
+              : "text-foreground hover:bg-background",
+          )}
+        >
+          {f.label}
+          {counts && <span>{counts(f.id)}</span>}
+        </button>
+      ))}
     </div>
   );
 }

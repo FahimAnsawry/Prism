@@ -28,18 +28,66 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { getSocket } from "@/lib/realtime";
 import { applyOps } from "./board-model";
-import { compareReference } from "./compare-reference";
-import { exportBoardImage } from "./export-image";
-import { htmlScreenOnTab } from "./html-screen";
-import { imageColorsOnTab } from "./image-colors";
-import { layoutErOnTab, layoutMindmapOnTab, layoutScreenOnTab } from "./screen-layout";
+
+// What an AI editor asks an open tab to do (draw, measure, lay out) loads on its first request:
+// the dashboard (previews load elements from here) and a board's first paint don't need it.
+const compareReference = (request: CompareReferenceRequest) =>
+  import("./compare-reference").then((m) => m.compareReference(request));
+const exportBoardImage = (request: ExportImageRequest) =>
+  import("./export-image").then((m) => m.exportBoardImage(request));
+const htmlScreenOnTab = (request: HtmlScreenRequest) =>
+  import("./html-screen").then((m) => m.htmlScreenOnTab(request));
+const imageColorsOnTab = (request: ImageColorsRequest) =>
+  import("./image-colors").then((m) => m.imageColorsOnTab(request));
+const layoutScreenOnTab = (request: LayoutScreenRequest) =>
+  import("./screen-layout").then((m) => m.layoutScreenOnTab(request));
+const layoutMindmapOnTab = (request: LayoutMindmapRequest) =>
+  import("./screen-layout").then((m) => m.layoutMindmapOnTab(request));
+const layoutErOnTab = (request: LayoutErRequest) =>
+  import("./screen-layout").then((m) => m.layoutErOnTab(request));
 
 const elementsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}/elements`;
+
+type BoardElementsReply = { elements: BoardElement[] };
+
+/** How long elements fetched ahead (on a hover) may open the board. */
+const AHEAD_FRESH_MS = 15_000;
+/** Elements fetched ahead of opening a board, each used once by the board's query. */
+const ahead = new Map<string, { at: number; reply: Promise<BoardElementsReply> }>();
+/** Boards with a save on its way: elements read now could miss it. */
+const saving = new Set<string>();
+
+/**
+ * Fetches a board's elements ahead of opening it (the pointer is on its link). Opening within
+ * AHEAD_FRESH_MS uses them, and joining the board's room then catches up on anything newer
+ * (resync), as after any reconnect.
+ */
+export function fetchBoardElementsAhead(boardId: string) {
+  const current = ahead.get(boardId);
+  if (saving.has(boardId) || (current && Date.now() - current.at < AHEAD_FRESH_MS)) return;
+  const reply = apiFetch(elementsPath(boardId), boardElementsSchema);
+  reply.catch(() => ahead.delete(boardId));
+  ahead.set(boardId, { at: Date.now(), reply });
+}
+
+/** A board just made: it opens with no elements, without asking the server. */
+export function seedNewBoardElements(boardId: string) {
+  ahead.set(boardId, { at: Date.now(), reply: Promise.resolve({ elements: [] }) });
+}
+
+/** The elements fetched ahead, if still fresh (once: the editor owns them from then on). */
+function takeAhead(boardId: string) {
+  const entry = ahead.get(boardId);
+  ahead.delete(boardId);
+  return entry && Date.now() - entry.at < AHEAD_FRESH_MS ? entry.reply : null;
+}
 
 export const boardElementsQuery = (boardId: string) =>
   queryOptions({
     queryKey: ["board-elements", boardId],
-    queryFn: () => apiFetch(elementsPath(boardId), boardElementsSchema),
+    queryFn: async () =>
+      (await takeAhead(boardId)?.catch(() => null)) ??
+      apiFetch(elementsPath(boardId), boardElementsSchema),
     // The editor owns the elements once loaded; a background refetch must not replace them.
     staleTime: Infinity,
     gcTime: 0,
@@ -147,6 +195,8 @@ export function useBoardSaver(
       return;
     }
     setRequest("saving");
+    // Set before the request goes out (a board being left saves as it unmounts).
+    saving.add(boardId);
     const run = (async () => {
       try {
         const socketId = getSocket().id;
@@ -178,6 +228,7 @@ export function useBoardSaver(
         setTimeout(() => void flushRef.current(), RETRY_DELAY);
       } finally {
         inFlight.current = null;
+        saving.delete(boardId);
       }
     })();
     inFlight.current = run;

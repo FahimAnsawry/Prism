@@ -186,6 +186,16 @@ export const isHandwriting = (font: FontFamily | undefined) =>
 
 const stylesheets = new Map<string, Promise<boolean>>();
 const loading = new Map<string, Promise<boolean>>();
+let fontsLoaded = 0;
+/** The font weights loaded so far (`font|weight`). */
+const loadedFonts = new Set<string>();
+
+/** Counts font weights that finished loading, so measurers know whether new glyphs arrived. */
+export const loadedFontCount = () => fontsLoaded;
+
+/** Whether this weight of the font has loaded already (no wait needed to measure with it). */
+export const isFontLoaded = (font: FontFamily, weight = 400) =>
+  loadedFonts.has(`${font}|${weight}`);
 
 /** Adds the Google Fonts stylesheet for `family`; resolves false if Google doesn't know it. */
 function addGoogleStylesheet(family: string) {
@@ -237,7 +247,12 @@ export function loadFont(font: FontFamily, weight = 400): Promise<boolean> {
     })();
     loading.set(key, pending);
     void pending.then((ok) => {
-      if (!ok) loading.delete(key);
+      if (ok) {
+        fontsLoaded++;
+        loadedFonts.add(key);
+      } else {
+        loading.delete(key);
+      }
     });
   }
   return pending;

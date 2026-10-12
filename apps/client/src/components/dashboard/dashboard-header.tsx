@@ -5,6 +5,7 @@ import { PrismLogo } from "@/components/prism-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { authClient, runAuthAction } from "@/lib/auth-client";
 import { AiAccessDialog } from "./ai-access-dialog";
+import { forgetPreviewPictures } from "./preview-pictures";
 
 /** Ctrl K (⌘K on macOS) jumps to search from anywhere on the dashboard. */
 function useSearchShortcut(input: RefObject<HTMLInputElement | null>) {
@@ -37,6 +38,8 @@ export function DashboardHeader({
   const logOut = async () => {
     // Don't leave the user stuck here if the server is unreachable
     await runAuthAction(() => authClient.signOut());
+    // Board pictures stay on this browser otherwise.
+    void forgetPreviewPictures();
     await navigate({ to: "/login" });
   };
 

@@ -17,6 +17,7 @@ import {
   FormError,
   FormField,
 } from "@/components/auth/form-field";
+import { seedNewBoardElements } from "@/components/board/board-sync";
 import { ctaVariants } from "@/components/cta";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiErrorMessage } from "@/lib/api";
@@ -219,6 +220,8 @@ function ItemForm({
         onDone();
       } else {
         const board = await createBoard.mutateAsync({ name, description, projectId });
+        // It's empty: the board page needn't ask the server (its summary is cached already).
+        seedNewBoardElements(board.id);
         // Don't close first: the dialog stays up (still "Creating…") until the board page
         // replaces the dashboard, so the dashboard never flashes in between.
         await navigate({ to: "/board/$boardId", params: { boardId: board.id } });

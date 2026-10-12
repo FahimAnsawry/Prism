@@ -29,7 +29,7 @@ import {
   type UpdateBoardStyleInput,
 } from "@prism/shared";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { memo, type ReactNode, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   type BoardElement,
@@ -145,7 +145,10 @@ export function applicableChanges(el: BoardElement, changes: Partial<BoardElemen
   return Object.keys(kept).length > 0 ? kept : null;
 }
 
-export function PropertiesPanel({
+// Memoized: the board editor re-renders on every pan and zoom frame.
+export const PropertiesPanel = memo(PropertiesPanelView);
+
+function PropertiesPanelView({
   elements,
   customColors,
   customFonts,

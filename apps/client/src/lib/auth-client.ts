@@ -70,9 +70,48 @@ export async function runAuthAction(
   }
 }
 
-/** Route guard: sends signed-out visitors to /login. If the server can't be reached, the route's error page shows. */
+type SessionData = Awaited<ReturnType<typeof authClient.getSession>>["data"];
+
+/** After this long a remembered session is checked again, in the background. */
+const SESSION_FRESH_MS = 30_000;
+
+/** The last session check: route guards reuse it instead of a round trip per navigation. */
+let lastSession: { at: number; data: Promise<SessionData> } | null = null;
+
+function checkSession() {
+  const entry = {
+    at: Date.now(),
+    data: authClient.getSession().then(({ data }) => data),
+  };
+  lastSession = entry;
+  // A failed check (server unreachable) isn't remembered.
+  entry.data.catch(() => {
+    if (lastSession === entry) lastSession = null;
+  });
+  return entry.data;
+}
+
+// Signing in or out (and changing the account) runs the next check again.
+authClient.$store.listen("$sessionSignal", () => {
+  lastSession = null;
+});
+
+/**
+ * Route guard: sends signed-out visitors to /login. If the server can't be reached, the route's
+ * error page shows. A signed-in user's session is remembered, so moving between the dashboard
+ * and boards doesn't wait on the server; it's checked again in the background now and then.
+ * The API checks the session on every request either way.
+ */
 export async function requireSession() {
-  const { data } = await authClient.getSession();
+  const remembered = lastSession;
+  let data: SessionData;
+  if (remembered) {
+    data = await remembered.data;
+    if (data && Date.now() - remembered.at > SESSION_FRESH_MS) void checkSession().catch(() => {});
+    if (!data) data = await checkSession();
+  } else {
+    data = await checkSession();
+  }
   if (!data) throw redirect({ to: "/login" });
   return data;
 }

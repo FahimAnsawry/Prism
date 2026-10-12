@@ -1,9 +1,20 @@
-import { HeadContent, Outlet, createRootRoute, useRouterState } from "@tanstack/react-router";
+import type { QueryClient } from "@tanstack/react-query";
+import {
+  HeadContent,
+  Outlet,
+  createRootRouteWithContext,
+  useRouterState,
+} from "@tanstack/react-router";
 import { AiBoardFollower } from "@/components/ai-board-follower";
 import { ErrorPage } from "@/components/feedback/error-page";
 import { NotFoundPage } from "@/components/feedback/not-found-page";
 
-export const Route = createRootRoute({
+/** Route loaders start their pages' queries with this, alongside the page's code. */
+export interface RouterContext {
+  queryClient: QueryClient;
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({ meta: [{ title: "Prism" }] }),
   component: RootLayout,
   errorComponent: ErrorPage,

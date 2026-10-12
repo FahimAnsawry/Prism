@@ -1,6 +1,6 @@
 import { EDIT_PROMPT_MAX, type EditRequest } from "@prism/shared";
 import { ArrowUp, CircleAlert, CircleCheck, LoaderCircle, Sparkles, X } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, memo, useCallback, useEffect, useState } from "react";
 import { apiErrorMessage } from "@/lib/api";
 import { useCreateEdit } from "@/lib/ai";
 import { cn } from "@/lib/utils";
@@ -13,7 +13,10 @@ const DONE_VISIBLE_MS = 12_000;
  * until an AI editor connected through the MCP bridge picks it up and reports back; each
  * request's status shows above the box.
  */
-export function AskAiBox({
+// Memoized: the board editor re-renders on every pan and zoom frame.
+export const AskAiBox = memo(AskAiBoxView);
+
+function AskAiBoxView({
   boardId,
   selectedIds,
   requests,

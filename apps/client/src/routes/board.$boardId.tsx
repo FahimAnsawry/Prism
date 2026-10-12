@@ -2,7 +2,15 @@ import { type BoardElement, type BoardSummary, type ElementOp, SVG_TYPE } from "
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   fitSize,
   imageSize,
@@ -17,11 +25,13 @@ import {
   type BoardAction,
   boardReducer,
   initialBoardState,
+  type LayerMove,
   newElement,
 } from "@/components/board/board-model";
 import {
   boardElementsQuery,
   fetchBoardElements,
+  fetchBoardElementsAhead,
   reportSelection,
   useBoardRealtime,
   useBoardSaver,
@@ -45,14 +55,14 @@ import {
 import { EmojiPicker } from "@/components/board/emoji-picker";
 import { ErFocusDialog, ErFocusPanel } from "@/components/board/er-focus-dialog";
 import { IconPicker } from "@/components/board/icon-picker";
-import { googleFontId, loadFont } from "@/components/board/fonts";
+import { googleFontId, loadFont, loadFonts } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
 import { isTextual } from "@/components/board/gestures";
 import { applicableChanges, PropertiesPanel } from "@/components/board/properties-panel";
 import { ShortcutsDialog } from "@/components/board/shortcuts-dialog";
 import { TableDetails } from "@/components/board/table-details";
 import { TextEditor } from "@/components/board/text-editor";
-import { fitTextBox, loadBoardFontsToOpen } from "@/components/board/text-layout";
+import { boardFontsReady, fitTextBox, loadBoardFontsToOpen } from "@/components/board/text-layout";
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
 import { useElementSize } from "@/components/board/use-element-size";
 import { ShareDialog } from "@/components/share/share-dialog";
@@ -69,6 +79,20 @@ import { allBoards, boardQuery, useUpdateBoardStyle, workspaceQuery } from "@/li
 export const Route = createFileRoute("/board/$boardId")({
   head: () => ({ meta: [{ title: "Board - Prism" }] }),
   beforeLoad: requireSession,
+  // The board starts loading alongside the page's code instead of after it. A hover over its link
+  // already fetches the elements (and the code), so a click usually opens it at once.
+  loader: ({ context: { queryClient }, params: { boardId }, preload }) => {
+    if (preload) {
+      fetchBoardElementsAhead(boardId);
+      void loadFonts(["sans", "caveat", "mono"]);
+      return;
+    }
+    const summary = boardQuery(boardId);
+    // Cached data shows at once and the page refreshes it itself.
+    if (!queryClient.getQueryData(summary.queryKey)) void queryClient.prefetchQuery(summary);
+    void queryClient.prefetchQuery(boardElementsQuery(boardId));
+    void loadFonts(["sans", "caveat", "mono"]);
+  },
   component: BoardPage,
 });
 
@@ -80,6 +104,9 @@ const VIEW_ALLOWED = new Set<BoardAction["type"]>(["remote", "select"]);
 
 /** View mode never opens the text editor. */
 const ignoreEditing = () => {};
+
+/** One empty list for every render, so memoized panels see no change. */
+const NONE: string[] = [];
 
 function BoardPage() {
   const { boardId } = Route.useParams();
@@ -116,7 +143,12 @@ function BoardPage() {
     );
   }
   // Whether this tab edits or only views depends on the board's access, so it waits for it.
-  if (!elements.data || fonts.isPending || !board.data) {
+  // Fonts are waited for only when the board's text needs some that haven't loaded yet.
+  if (
+    !elements.data ||
+    (fonts.isPending && !boardFontsReady(elements.data.elements)) ||
+    !board.data
+  ) {
     return <PrismLoader fullScreen label="Opening board" />;
   }
   /** The user was removed or got another role: reload what they may do (a 404 if nothing). */
@@ -199,7 +231,12 @@ function BoardEditor({
   const { status: saveStatus, receive, resync } = useBoardSaver(boardId, initial, state.elements);
   const updateStyle = useUpdateBoardStyle(boardId);
   const customFonts = board?.customFonts;
-  const selected = state.elements.filter((el) => state.selectedIds.includes(el.id));
+  // Memoized with the callbacks below: the editor renders on every pan and zoom frame, and the
+  // panels it shows mustn't render with it.
+  const selected = useMemo(
+    () => state.elements.filter((el) => state.selectedIds.includes(el.id)),
+    [state.elements, state.selectedIds],
+  );
   const editingEl = editing && state.elements.find((el) => el.id === editing.id);
   const viewing = mode === "view";
   /** Opens the Share dialog; only the owner gets it. */
@@ -235,8 +272,12 @@ function BoardEditor({
   const mergeEdit = useMergeEdit(boardId);
   // Statuses show for unfinished requests, and for ones made or changed while the board is open.
   const [seenEdits, setSeenEdits] = useState<ReadonlySet<string>>(() => new Set());
-  const recentEdits = (edits.data ?? []).filter(
-    (r) => r.status === "pending" || r.status === "working" || seenEdits.has(r.id),
+  const recentEdits = useMemo(
+    () =>
+      (edits.data ?? []).filter(
+        (r) => r.status === "pending" || r.status === "working" || seenEdits.has(r.id),
+      ),
+    [edits.data, seenEdits],
   );
 
   /** The selection as last reported, re-sent after a reconnect. */
@@ -397,6 +438,55 @@ function BoardEditor({
         showNotice({ text: apiErrorMessage(error), error: true }, 5_000);
       }
       if (added.length > 0) dispatch({ type: "add", elements: added, select: true });
+    },
+    [boardId, showNotice],
+  );
+
+  // ── Properties panel ─────────────────────────────────────────────────────
+
+  const tidyMind = useCallback((id: string) => dispatch({ type: "mindTidy", id }), []);
+
+  const { mutate: mutateStyle } = updateStyle;
+  const changeStyle = useCallback(
+    (style: Parameters<typeof mutateStyle>[0]) =>
+      mutateStyle(style, {
+        onError: (error) => showNotice({ text: apiErrorMessage(error), error: true }, 5_000),
+      }),
+    [mutateStyle, showNotice],
+  );
+
+  const changeSelected = useCallback(
+    (changes: Partial<BoardElement>) => {
+      const patches: Record<string, Partial<BoardElement>> = {};
+      for (const el of selected) {
+        const kept = applicableChanges(el, changes);
+        if (kept) patches[el.id] = kept;
+      }
+      dispatch({ type: "patch", patches });
+    },
+    [selected],
+  );
+
+  const layerSelected = useCallback(
+    (move: LayerMove) => dispatch({ type: "layer", ids: state.selectedIds, move }),
+    [state.selectedIds],
+  );
+
+  const uploadImage = useCallback(
+    async (file: File) => {
+      if (!isImageFile(file)) {
+        showNotice({ text: "Pick a PNG, JPEG, GIF or WebP image.", error: true }, 4_000);
+        return null;
+      }
+      showNotice({ text: "Uploading…" });
+      try {
+        const assetKey = await uploadAsset(boardId, file);
+        showNotice(null);
+        return assetKey;
+      } catch (error) {
+        showNotice({ text: apiErrorMessage(error), error: true }, 5_000);
+        return null;
+      }
     },
     [boardId, showNotice],
   );
@@ -733,39 +823,13 @@ function BoardEditor({
         {selected.length > 0 && !editing && !viewing && (
           <PropertiesPanel
             elements={selected}
-            onTidy={(id) => dispatch({ type: "mindTidy", id })}
-            customColors={board?.customColors ?? []}
-            customFonts={customFonts ?? []}
-            onStyleChange={(style) =>
-              updateStyle.mutate(style, {
-                onError: (error) =>
-                  showNotice({ text: apiErrorMessage(error), error: true }, 5_000),
-              })
-            }
-            onChange={(changes) => {
-              const patches: Record<string, Partial<BoardElement>> = {};
-              for (const el of selected) {
-                const kept = applicableChanges(el, changes);
-                if (kept) patches[el.id] = kept;
-              }
-              dispatch({ type: "patch", patches });
-            }}
-            onLayer={(move) => dispatch({ type: "layer", ids: state.selectedIds, move })}
-            onUploadImage={async (file) => {
-              if (!isImageFile(file)) {
-                showNotice({ text: "Pick a PNG, JPEG, GIF or WebP image.", error: true }, 4_000);
-                return null;
-              }
-              showNotice({ text: "Uploading…" });
-              try {
-                const assetKey = await uploadAsset(boardId, file);
-                showNotice(null);
-                return assetKey;
-              } catch (error) {
-                showNotice({ text: apiErrorMessage(error), error: true }, 5_000);
-                return null;
-              }
-            }}
+            onTidy={tidyMind}
+            customColors={board?.customColors ?? NONE}
+            customFonts={customFonts ?? NONE}
+            onStyleChange={changeStyle}
+            onChange={changeSelected}
+            onLayer={layerSelected}
+            onUploadImage={uploadImage}
           />
         )}
 

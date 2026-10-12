@@ -29,7 +29,7 @@ import {
   tableRows,
 } from "@prism/shared";
 import { KeyRound, Link } from "lucide-react";
-import { Fragment, type SVGProps, useId } from "react";
+import { Fragment, memo, type SVGProps, useId } from "react";
 import { cn } from "@/lib/utils";
 import { assetUrl } from "./assets";
 import { displayColor, STICKY_DEFAULT } from "./board-model";
@@ -48,6 +48,7 @@ import {
   LIST_BULLET_EM,
   LIST_INDENT_EM,
   STICKY_PADDING,
+  useMeasureEpoch,
 } from "./text-layout";
 
 const ANCHOR = { left: "start", center: "middle", right: "end" } as const;
@@ -111,8 +112,22 @@ function shadowPasses(shadow: Shadow): ShadowPass[] {
     .reverse();
 }
 
-/** One element, drawn in world coordinates and turned around its center. */
-export function ElementShape({
+/** Same elements in the same order (every change replaces the element object). */
+const sameList = (a: BoardElement[] | undefined, b: BoardElement[] | undefined) =>
+  a === b || (!!a && !!b && a.length === b.length && a.every((el, i) => el === b[i]));
+
+/**
+ * One element, drawn in world coordinates and turned around its center. Memoized: elements are
+ * replaced on every change, so an unchanged object draws the same, and a pan or a drag only
+ * redraws what moved.
+ */
+export const ElementShape = memo(
+  ElementShapeView,
+  (prev, next) =>
+    prev.el === next.el && prev.hidden === next.hidden && sameList(prev.below, next.below),
+);
+
+function ElementShapeView({
   el,
   hidden = false,
   below,
@@ -122,6 +137,8 @@ export function ElementShape({
   /** For a frosted-glass element, the elements under it to blur (backdropOf). */
   below?: BoardElement[] | undefined;
 }) {
+  // Text lays out again once web fonts arrive.
+  useMeasureEpoch();
   const c = center(el);
   // Unique per rendered copy, so the board and a dashboard preview never share a filter.
   const uid = useId().replace(/[^\w-]/g, "");

@@ -1,5 +1,5 @@
 import { ChevronUp } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { isTyping } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { TOOL_GROUPS, type ToolId } from "./tools";
@@ -44,7 +44,10 @@ const enterClass = cn(
  * Floating tool rail on the left of the canvas, 24px below the top bar. Ctrl+B or the chevron folds
  * it down to the active tool alone; tool shortcuts keep working either way.
  */
-export function BoardToolbar({
+// Memoized: the board editor re-renders on every pan and zoom frame.
+export const BoardToolbar = memo(BoardToolbarView);
+
+function BoardToolbarView({
   active,
   onSelect,
 }: {

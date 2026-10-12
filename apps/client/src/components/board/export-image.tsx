@@ -117,8 +117,17 @@ async function inlineImages(svg: SVGSVGElement) {
   );
 }
 
-/** The region drawn as standalone SVG markup, `width` × `height` px. */
-async function renderSvg(shown: BoardElement[], box: Box, width: number, height: number) {
+/**
+ * The region drawn as standalone SVG markup, `width` × `height` px: on the page background, or
+ * transparent (dashboard previews sit on their own dotted canvas).
+ */
+export async function renderSvg(
+  shown: BoardElement[],
+  box: Box,
+  width: number,
+  height: number,
+  { background = true } = {},
+) {
   // Text is measured with the board's fonts, and icons must draw on the first render.
   await Promise.all([
     loadBoardFonts(shown),
@@ -132,7 +141,7 @@ async function renderSvg(shown: BoardElement[], box: Box, width: number, height:
   document.body.append(host);
   const root = createRoot(host);
   try {
-    const background = boardBackground(host);
+    const fill = background ? boardBackground(host) : null;
     flushSync(() =>
       root.render(
         <svg
@@ -141,7 +150,7 @@ async function renderSvg(shown: BoardElement[], box: Box, width: number, height:
           width={width}
           height={height}
         >
-          <rect x={box.x} y={box.y} width={box.width} height={box.height} fill={background} />
+          {fill && <rect x={box.x} y={box.y} width={box.width} height={box.height} fill={fill} />}
           <MindBranches elements={shown} />
           {shown.map((el, i) => (
             <ElementShape key={el.id} el={el} below={backdropOf(shown, i)} />
@@ -166,7 +175,7 @@ async function renderSvg(shown: BoardElement[], box: Box, width: number, height:
   }
 }
 
-function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
+export function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Couldn't encode the image."))),
@@ -176,8 +185,8 @@ function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
   });
 }
 
-/** Draws the SVG markup on a canvas and encodes it: PNG, or JPEG when the PNG is too large. */
-async function rasterize(markup: string, width: number, height: number) {
+/** Draws standalone SVG markup on a `width` × `height` canvas. */
+export async function drawSvg(markup: string, width: number, height: number) {
   const url = URL.createObjectURL(new Blob([markup], { type: "image/svg+xml" }));
   try {
     const image = new Image(width, height);
@@ -189,21 +198,27 @@ async function rasterize(markup: string, width: number, height: number) {
     const context = canvas.getContext("2d");
     if (!context) throw new Error("This browser can't draw images.");
     context.drawImage(image, 0, 0, width, height);
-    let blob = await canvasBlob(canvas, "image/png");
-    let mimeType: "image/png" | "image/jpeg" = "image/png";
-    for (const quality of JPEG_QUALITIES) {
-      if (blob.size <= IMAGE_MAX_BYTES) break;
-      blob = await canvasBlob(canvas, "image/jpeg", quality);
-      mimeType = "image/jpeg";
-    }
-    if (blob.size > IMAGE_MAX_BYTES) {
-      throw new ExportError("The image is too large to send. Try a smaller scale or area.");
-    }
-    const dataUrl = await blobToDataUrl(blob);
-    return { data: dataUrl.slice(dataUrl.indexOf(",") + 1), mimeType };
+    return canvas;
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/** Draws the SVG markup on a canvas and encodes it: PNG, or JPEG when the PNG is too large. */
+async function rasterize(markup: string, width: number, height: number) {
+  const canvas = await drawSvg(markup, width, height);
+  let blob = await canvasBlob(canvas, "image/png");
+  let mimeType: "image/png" | "image/jpeg" = "image/png";
+  for (const quality of JPEG_QUALITIES) {
+    if (blob.size <= IMAGE_MAX_BYTES) break;
+    blob = await canvasBlob(canvas, "image/jpeg", quality);
+    mimeType = "image/jpeg";
+  }
+  if (blob.size > IMAGE_MAX_BYTES) {
+    throw new ExportError("The image is too large to send. Try a smaller scale or area.");
+  }
+  const dataUrl = await blobToDataUrl(blob);
+  return { data: dataUrl.slice(dataUrl.indexOf(",") + 1), mimeType };
 }
 
 /** Answers an export_image request from an AI editor. Never throws: failures become a reply. */
