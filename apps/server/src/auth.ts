@@ -42,6 +42,13 @@ export const auth = betterAuth({
   trustedOrigins: [clientUrl],
   database: prismaAdapter(authPrisma, { provider: "postgresql" }),
 
+  // Every API request checks the session (requireUser). The signed cookie cache answers that
+  // without a database round trip; the session row is read again every 5 minutes, so a session
+  // revoked elsewhere (sign-out on another device, a password reset) ends within that time.
+  session: {
+    cookieCache: { enabled: true, maxAge: 5 * 60 },
+  },
+
   emailAndPassword: {
     enabled: true,
     revokeSessionsOnPasswordReset: true,

@@ -1,3 +1,4 @@
+import compression from "compression";
 import cors from "cors";
 import express from "express";
 import { toNodeHandler } from "better-auth/node";
@@ -30,6 +31,17 @@ app.get("/.well-known/*splat", toNodeHandler(auth));
 
 // The remote MCP endpoint for AI editors (Claude Code, Codex, …). Reads its own body.
 app.use(mcpRouter);
+
+// Everything after this is compressed: a board's elements are large, repetitive JSON that gzip
+// shrinks several times over. MCP comes before it, since compression would hold back its
+// streamed events, and any other event stream is left alone too.
+app.use(
+  compression({
+    filter: (req, res) =>
+      !String(res.getHeader("Content-Type") ?? "").startsWith("text/event-stream") &&
+      compression.filter(req, res),
+  }),
+);
 
 // Uploaded images and SVGs, served publicly by unguessable key (tools.md §1, tools 15 and 17).
 app.use(fileRouter);

@@ -12,7 +12,7 @@ import { prisma } from "../db/client.js";
 import { parseBody } from "../errors.js";
 import { broadcastOps } from "../realtime.js";
 import { requireUser } from "../session.js";
-import { boardFor } from "./board-access.js";
+import { boardFor, uuidParam } from "./board-access.js";
 
 type ElementRow = Prisma.ElementGetPayload<object>;
 type Props = Record<string, unknown>;
@@ -196,11 +196,18 @@ export const elementsRouter = Router();
 
 /** The board's live elements, bottom layer first. */
 elementsRouter.get("/boards/:boardId/elements", requireUser, async (req, res) => {
-  const board = await boardFor(req.params.boardId, res.locals.userId, "view");
-  const rows = await prisma.element.findMany({
-    where: { boardId: board.id, deletedAt: null },
-    orderBy: { z: "asc" },
-  });
+  // The rows load alongside the access check (one round trip instead of two); they're only
+  // sent once it passes.
+  const boardId = uuidParam(req.params.boardId);
+  const [, rows] = await Promise.all([
+    boardFor(boardId, res.locals.userId, "view"),
+    boardId
+      ? prisma.element.findMany({
+          where: { boardId, deletedAt: null },
+          orderBy: { z: "asc" },
+        })
+      : [],
+  ]);
   res.json({ elements: rows.map(toElement) });
 });
 
