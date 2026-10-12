@@ -13,7 +13,12 @@ import {
 } from "@/components/board/assets";
 import { AskAiBox } from "@/components/board/ask-ai-box";
 import { BoardCanvas } from "@/components/board/board-canvas";
-import { boardReducer, initialBoardState, newElement } from "@/components/board/board-model";
+import {
+  type BoardAction,
+  boardReducer,
+  initialBoardState,
+  newElement,
+} from "@/components/board/board-model";
 import {
   boardElementsQuery,
   fetchBoardElements,
@@ -23,7 +28,13 @@ import {
 } from "@/components/board/board-sync";
 import { BoardToolbar } from "@/components/board/board-toolbar";
 import { BoardViewer } from "@/components/board/board-viewer";
-import { BoardTopBar } from "@/components/board/board-top-bar";
+import {
+  type BoardMode,
+  BoardTopBar,
+  ModeMenu,
+  ShareControl,
+  type ViewTool,
+} from "@/components/board/board-top-bar";
 import { type Camera, fitCamera, screenToWorld, stepZoom, zoomAt } from "@/components/board/camera";
 import {
   cloneAt,
@@ -32,7 +43,7 @@ import {
   serializeElements,
 } from "@/components/board/clipboard";
 import { EmojiPicker } from "@/components/board/emoji-picker";
-import { ErFocusDialog } from "@/components/board/er-focus-dialog";
+import { ErFocusDialog, ErFocusPanel } from "@/components/board/er-focus-dialog";
 import { IconPicker } from "@/components/board/icon-picker";
 import { googleFontId, loadFont } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
@@ -41,10 +52,11 @@ import { applicableChanges, PropertiesPanel } from "@/components/board/propertie
 import { ShortcutsDialog } from "@/components/board/shortcuts-dialog";
 import { TableDetails } from "@/components/board/table-details";
 import { TextEditor } from "@/components/board/text-editor";
-import { fitTextBox, loadBoardFonts } from "@/components/board/text-layout";
+import { fitTextBox, loadBoardFontsToOpen } from "@/components/board/text-layout";
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
 import { useElementSize } from "@/components/board/use-element-size";
 import { ShareDialog } from "@/components/share/share-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ErrorScreen } from "@/components/feedback/error-page";
 import { NotFoundPage } from "@/components/feedback/not-found-page";
 import { PrismLoader } from "@/components/feedback/prism-loader";
@@ -52,7 +64,6 @@ import { boardEditsQuery, useMergeEdit } from "@/lib/ai";
 import { ApiError, apiErrorMessage } from "@/lib/api";
 import { requireSession } from "@/lib/auth-client";
 import { isTyping } from "@/lib/keyboard";
-import { cn } from "@/lib/utils";
 import { allBoards, boardQuery, useUpdateBoardStyle, workspaceQuery } from "@/lib/workspace";
 
 export const Route = createFileRoute("/board/$boardId")({
@@ -63,6 +74,12 @@ export const Route = createFileRoute("/board/$boardId")({
 
 /** Top-bar buttons and keys zoom around the middle of the view; the wheel zooms toward the pointer. */
 const CENTER = { x: 0, y: 0 };
+
+/** What View mode lets the canvas do to the board: follow live changes and select, nothing else. */
+const VIEW_ALLOWED = new Set<BoardAction["type"]>(["remote", "select"]);
+
+/** View mode never opens the text editor. */
+const ignoreEditing = () => {};
 
 function BoardPage() {
   const { boardId } = Route.useParams();
@@ -79,7 +96,7 @@ function BoardPage() {
   const elements = useQuery(boardElementsQuery(boardId));
   const fonts = useQuery({
     queryKey: ["board-fonts", boardId],
-    queryFn: () => loadBoardFonts(elements.data?.elements ?? []),
+    queryFn: () => loadBoardFontsToOpen(elements.data?.elements ?? []),
     enabled: Boolean(elements.data),
     staleTime: Infinity,
   });
@@ -170,8 +187,9 @@ function BoardEditor({
   const [icon, setIcon] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sharing, setSharing] = useState(false);
-  /** The table whose details card shows: the one the pointer rested on (BoardCanvas pins it). */
-  const [cardTable, setCardTable] = useState<string | null>(null);
+  /** Edit changes the board. View only looks (an ER diagram as its focus view). */
+  const [mode, setMode] = useState<BoardMode>("edit");
+  const [viewTool, setViewTool] = useState<ViewTool>("hand");
   /** The table whose focus view (ErFocusDialog) is open. */
   const [focusTable, setFocusTable] = useState<string | null>(null);
   const viewport = useRef<HTMLElement>(null);
@@ -183,6 +201,17 @@ function BoardEditor({
   const customFonts = board?.customFonts;
   const selected = state.elements.filter((el) => state.selectedIds.includes(el.id));
   const editingEl = editing && state.elements.find((el) => el.id === editing.id);
+  const viewing = mode === "view";
+  /** Opens the Share dialog; only the owner gets it. */
+  const onShare = board?.access === "owner" ? () => setSharing(true) : undefined;
+  const hasTables = state.elements.some((el) => el.type === "table");
+  /** The one selected table: its details card shows, and F opens its focus view. */
+  const selectedTable =
+    selected.length === 1 && selected[0]?.type === "table" ? selected[0] : undefined;
+  /** The canvas in View mode may follow live changes and select, but never change the board. */
+  const viewDispatch = useCallback((action: BoardAction) => {
+    if (VIEW_ALLOWED.has(action.type)) dispatch(action);
+  }, []);
 
   // ── Live sync and AI editors ─────────────────────────────────────────────
 
@@ -254,9 +283,9 @@ function BoardEditor({
   const zoomReset = () => setCamera((c) => zoomAt(c, 1, CENTER));
 
   // Event handlers attached once read the latest values from here.
-  const latest = useRef({ state, camera, size, editing });
+  const latest = useRef({ state, camera, size, editing, viewing });
   useEffect(() => {
-    latest.current = { state, camera, size, editing };
+    latest.current = { state, camera, size, editing, viewing };
   });
 
   /** The world point in the middle of the view. */
@@ -295,6 +324,21 @@ function BoardEditor({
   }, []);
 
   const toolDone = useCallback(() => setTool("select"), []);
+
+  /** Edit ↔ View. Going to View closes whatever is open for editing; the board's state stays. */
+  const changeMode = useCallback(
+    (next: BoardMode) => {
+      if (next === "view") {
+        if (latest.current.editing) finishEditing();
+        setFocusTable(null);
+        setTool("select");
+        setEmoji(null);
+        setIcon(null);
+      }
+      setMode(next);
+    },
+    [finishEditing],
+  );
 
   // The board's added Google fonts, so the font list can preview them.
   useEffect(() => {
@@ -390,7 +434,9 @@ function BoardEditor({
 
     const onCopy = (event: ClipboardEvent, cut = false) => {
       if (blocked(event.target)) return;
-      const { state: current } = latest.current;
+      const { state: current, viewing: readOnly } = latest.current;
+      // View mode can copy but not cut.
+      if (cut && readOnly) return;
       const chosen = current.elements.filter((el) => current.selectedIds.includes(el.id));
       if (chosen.length === 0 || !event.clipboardData) return;
       event.preventDefault();
@@ -400,7 +446,7 @@ function BoardEditor({
     const onCut = (event: ClipboardEvent) => onCopy(event, true);
 
     const onPaste = (event: ClipboardEvent) => {
-      if (blocked(event.target) || !event.clipboardData) return;
+      if (blocked(event.target) || !event.clipboardData || latest.current.viewing) return;
       const at = dropPoint();
       const files = [...event.clipboardData.files];
       if (files.length > 0) {
@@ -456,11 +502,31 @@ function BoardEditor({
       const key = event.key.toLowerCase();
       const mod = event.ctrlKey || event.metaKey;
       const ids = state.selectedIds;
-      const focusTarget = () => {
-        const chosen = cardTable ?? (ids.length === 1 ? ids[0] : undefined);
-        const el = chosen ? state.elements.find((e) => e.id === chosen) : undefined;
-        return el?.type === "table" ? el.id : null;
-      };
+
+      // View mode: look around only. Every other key is left alone.
+      if (viewing) {
+        if (mod && (key === "=" || key === "+")) {
+          event.preventDefault();
+          setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
+        } else if (mod && key === "-") {
+          event.preventDefault();
+          setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
+        } else if (mod && key === "0") {
+          event.preventDefault();
+          setCamera((c) => zoomAt(c, 1, CENTER));
+        } else if (event.shiftKey && !mod && !event.altKey && event.code === "Digit1") {
+          event.preventDefault();
+          setCamera(fitCamera(state.elements, size.width, size.height));
+        } else if (key === "?" && !mod) {
+          event.preventDefault();
+          setShortcutsOpen(true);
+        } else if (key === "escape") {
+          dispatch({ type: "select", ids: [] });
+        } else if (!hasTables && !mod && !event.altKey && (key === "v" || key === "h")) {
+          setViewTool(key === "v" ? "select" : "hand");
+        }
+        return;
+      }
 
       // Ctrl +/−/0 would zoom the whole page; here they zoom the board.
       if (mod && (key === "=" || key === "+")) {
@@ -479,10 +545,10 @@ function BoardEditor({
       } else if (key === "?" && !mod) {
         event.preventDefault();
         setShortcutsOpen(true);
-      } else if (key === "f" && !mod && !event.altKey && !event.shiftKey && focusTarget()) {
-        // F: the focus view of the table the pointer rested on, or else the one selected table.
+      } else if (key === "f" && !mod && !event.altKey && !event.shiftKey && selectedTable) {
+        // F: the focus view of the one selected table.
         event.preventDefault();
-        setFocusTable(focusTarget());
+        setFocusTable(selectedTable.id);
       } else if (mod && key === "z") {
         event.preventDefault();
         dispatch({ type: event.shiftKey ? "redo" : "undo" });
@@ -533,32 +599,48 @@ function BoardEditor({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [state.selectedIds, state.elements, size, chooseTool, startEditing, cardTable]);
+  }, [
+    state.selectedIds,
+    state.elements,
+    size,
+    chooseTool,
+    startEditing,
+    selectedTable,
+    viewing,
+    hasTables,
+  ]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
-      <BoardTopBar
-        board={board}
-        canUndo={state.past.length > 0}
-        canRedo={state.future.length > 0}
-        onUndo={() => dispatch({ type: "undo" })}
-        onRedo={() => dispatch({ type: "redo" })}
-        saveStatus={saveStatus}
-        grid={grid}
-        onToggleGrid={() => setGrid((on) => !on)}
-        zoom={camera.zoom}
-        onZoomOut={zoomOut}
-        onZoomIn={zoomIn}
-        onZoomReset={zoomReset}
-        onShowShortcuts={() => setShortcutsOpen(true)}
-        onShare={board?.access === "owner" ? () => setSharing(true) : undefined}
-      />
+      {/* An ER diagram in View mode has one bar: the focus view's header carries these controls. */}
+      {!(viewing && hasTables) && (
+        <BoardTopBar
+          board={board}
+          canUndo={state.past.length > 0}
+          canRedo={state.future.length > 0}
+          onUndo={() => dispatch({ type: "undo" })}
+          onRedo={() => dispatch({ type: "redo" })}
+          saveStatus={saveStatus}
+          grid={grid}
+          onToggleGrid={() => setGrid((on) => !on)}
+          zoom={camera.zoom}
+          onZoomOut={zoomOut}
+          onZoomIn={zoomIn}
+          onZoomReset={zoomReset}
+          onShowShortcuts={() => setShortcutsOpen(true)}
+          onShare={onShare}
+          mode={mode}
+          onModeChange={changeMode}
+          viewTool={hasTables ? undefined : viewTool}
+          onViewTool={setViewTool}
+        />
+      )}
 
       <main ref={viewport} className="relative min-h-0 flex-1 overflow-hidden">
         <BoardCanvas
           state={state}
-          dispatch={dispatch}
-          tool={tool}
+          dispatch={viewing ? viewDispatch : dispatch}
+          tool={viewing ? viewTool : tool}
           grid={grid}
           camera={camera}
           editingId={editing?.id ?? null}
@@ -566,22 +648,44 @@ function BoardEditor({
           icon={icon}
           onCameraChange={setCamera}
           onBorrowHand={setBorrowingHand}
-          onStartEditing={startEditing}
+          onStartEditing={viewing ? ignoreEditing : startEditing}
           onFinishEditing={finishEditing}
           onToolDone={toolDone}
           onPointerWorld={(p) => {
             pointer.current = p;
           }}
-          onDropFiles={(files, p) => void addFiles(files, p)}
-          focusOpen={focusTable !== null}
-          onHoverTable={(id) => {
-            setCardTable(id);
-            // Resting on a table for half a second opens its focus view (not while text is edited).
-            if (id && !latest.current.editing) setFocusTable(id);
+          onDropFiles={(files, p) => {
+            if (!viewing) void addFiles(files, p);
           }}
         />
 
-        {editingEl && (
+        {/* An ER diagram in View mode: every table first, a click narrows to one. */}
+        {viewing && hasTables && (
+          <div className="absolute inset-0 z-10 flex flex-col bg-popover">
+            <ErFocusPanel
+              elements={state.elements}
+              eyebrow={board?.name}
+              leading={
+                <Link
+                  to="/dashboard"
+                  aria-label="Back to dashboard"
+                  className="flex size-8 shrink-0 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-background"
+                >
+                  <ArrowLeft aria-hidden="true" className="size-[18px]" />
+                </Link>
+              }
+              trailing={
+                <div className="flex items-center gap-3">
+                  <ModeMenu mode={mode} onChange={changeMode} />
+                  <ThemeToggle className="size-9 border border-chrome bg-card" />
+                  <ShareControl board={board} onShare={onShare} />
+                </div>
+              }
+            />
+          </div>
+        )}
+
+        {editingEl && !viewing && (
           <TextEditor
             key={editingEl.id}
             el={editingEl}
@@ -595,39 +699,38 @@ function BoardEditor({
 
         {state.elements.length === 0 && !editing && (
           <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-24 text-center text-sm text-muted-foreground">
-            Pick a tool and start creating — or try the AI assistant
+            {viewing
+              ? "This board is empty."
+              : "Pick a tool and start creating — or try the AI assistant"}
           </p>
         )}
 
-        <BoardToolbar active={borrowingHand ? "hand" : tool} onSelect={chooseTool} />
+        {!viewing && (
+          <>
+            <BoardToolbar active={borrowingHand ? "hand" : tool} onSelect={chooseTool} />
 
-        {tool === "emoji" && <EmojiPicker value={emoji} onPick={setEmoji} />}
-        {tool === "icon" && <IconPicker value={icon} onPick={setIcon} />}
+            {tool === "emoji" && <EmojiPicker value={emoji} onPick={setEmoji} />}
+            {tool === "icon" && <IconPicker value={icon} onPick={setIcon} />}
+          </>
+        )}
 
-        {(() => {
-          const table = cardTable ? state.elements.find((el) => el.id === cardTable) : undefined;
-          // While the table's focus view is open its details show there instead.
-          if (table?.type !== "table" || editing || focusTable) return null;
-          // Beside the properties panel when it's open, in its place otherwise.
-          return (
-            <aside
-              aria-label={`${table.table?.name ?? "Table"} details`}
-              className={cn(
-                "absolute top-6 z-20 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-lg",
-                selected.length > 0 ? "right-[18rem] md:right-[18.5rem]" : "right-4 md:right-6",
-              )}
-            >
-              <TableDetails
-                table={table}
-                board={state.elements}
-                onSelect={(ids) => dispatch({ type: "select", ids })}
-                onOpenFocus={() => setFocusTable(table.id)}
-              />
-            </aside>
-          );
-        })()}
+        {/* Beside the properties panel, which is open whenever a table is selected. While the
+            table's focus view is open its details show there instead. */}
+        {selectedTable && !viewing && !editing && !focusTable && (
+          <aside
+            aria-label={`${selectedTable.table?.name ?? "Table"} details`}
+            className="absolute top-6 right-[18rem] z-20 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-lg md:right-[18.5rem]"
+          >
+            <TableDetails
+              table={selectedTable}
+              board={state.elements}
+              onSelect={(ids) => dispatch({ type: "select", ids })}
+              onOpenFocus={() => setFocusTable(selectedTable.id)}
+            />
+          </aside>
+        )}
 
-        {selected.length > 0 && !editing && (
+        {selected.length > 0 && !editing && !viewing && (
           <PropertiesPanel
             elements={selected}
             onTidy={(id) => dispatch({ type: "mindTidy", id })}
@@ -666,7 +769,7 @@ function BoardEditor({
           />
         )}
 
-        {!editing && (
+        {!editing && !viewing && (
           <AskAiBox boardId={boardId} selectedIds={state.selectedIds} requests={recentEdits} />
         )}
 
@@ -697,7 +800,7 @@ function BoardEditor({
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <ErFocusDialog
-        tableId={focusTable}
+        tableId={viewing ? null : focusTable}
         elements={state.elements}
         onClose={(lastId) => {
           // Coming back from another table than the one it opened on, the board shows that one.

@@ -47,6 +47,9 @@ function isUnknownPath(pathname: string) {
   return foundRoute ? foundRoute.path !== "/" && Boolean(rawParams["**"]) : true;
 }
 
+/** Boards open behind their own full-screen loader, so a startup splash would only stack a second one. */
+const OWN_LOADER_PATH = /^\/(board|s)\//;
+
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing #root element in index.html");
 
@@ -65,8 +68,13 @@ createRoot(rootElement, {
           <Suspense fallback={<PrismLoader fullScreen />}>
             <RouterProvider router={router} />
           </Suspense>
-          {/* A 404 opens straight onto the not-found page, with no splash. */}
-          <AppSplash skip={isUnknownPath(router.state.location.pathname)} />
+          {/* A 404 opens straight onto the not-found page, and a board onto its own loader. */}
+          <AppSplash
+            skip={
+              isUnknownPath(router.state.location.pathname) ||
+              OWN_LOADER_PATH.test(router.state.location.pathname)
+            }
+          />
         </QueryClientProvider>
       </ThemeProvider>
     </AppErrorBoundary>

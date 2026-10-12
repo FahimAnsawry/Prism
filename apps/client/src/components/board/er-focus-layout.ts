@@ -16,7 +16,7 @@ const MAX_SPLIT = 8;
  * out and routed on their own, bottom layer first: relations under tables, as create_er_diagram
  * draws them. When `focusId` is null, all tables and relations in `elements` are laid out.
  * Tall columns split as far as that shows the group larger in `view` (the space it's shown in, px).
- * With `keysOnly` the related tables show only their key columns.
+ * With `keysOnly` every table but the focused one shows only its key columns.
  * Null when `focusId` isn't a table or no tables exist.
  */
 export function focusLayout(
@@ -34,7 +34,7 @@ export function focusLayout(
     .map((el) => {
       // Upright, and sized to the rows it shows here.
       const table: BoardElement = { ...el, rotation: 0 };
-      if (keysOnly && focusId && el.id !== focusId) table.keysOnly = true;
+      if (keysOnly && el.id !== focusId) table.keysOnly = true;
       return fitTextBox(table);
     });
   if (tables.length === 0) return null;

@@ -74,6 +74,21 @@ export async function loadBoardFonts(elements: BoardElement[]) {
   return true;
 }
 
+/** The longest a board's opening loader waits for its fonts once its elements are here. */
+export const BOARD_OPEN_FONT_WAIT_MS = 500;
+
+/**
+ * loadBoardFonts for a board that is opening: the loader waits for the fonts at most
+ * BOARD_OPEN_FONT_WAIT_MS, then the board shows with fallback fonts. The fonts keep loading and
+ * swap in (loadBoardFonts resets the measurements when they do).
+ */
+export function loadBoardFontsToOpen(elements: BoardElement[]) {
+  return Promise.race([
+    loadBoardFonts(elements),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), BOARD_OPEN_FONT_WAIT_MS)),
+  ]);
+}
+
 /** Splits text into lines: on newlines, then word by word to fit `maxWidth` (null = no wrap). */
 export function wrapText(
   text: string,

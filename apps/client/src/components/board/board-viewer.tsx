@@ -68,7 +68,6 @@ export function BoardViewer({
   }, []);
   const hasTables = state.elements.some((el) => el.type === "table");
   const [tool, setTool] = useState<ToolId>(hasTables ? "select" : "hand");
-  const [cardTable, setCardTable] = useState<string | null>(null);
   const [focusTable, setFocusTable] = useState<string | null>(null);
   const switcher = useRef<HTMLButtonElement>(null);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
@@ -77,7 +76,7 @@ export function BoardViewer({
   const size = useElementSize(viewport);
   const { receive, resync } = useBoardSaver(boardId, initial, state.elements, { readOnly: true });
 
-  const chosenTableId = cardTable ?? (state.selectedIds.length === 1 ? state.selectedIds[0] : null);
+  const chosenTableId = state.selectedIds.length === 1 ? (state.selectedIds[0] ?? null) : null;
   const selectedTable = chosenTableId
     ? state.elements.find((el) => el.id === chosenTableId)
     : undefined;
@@ -135,7 +134,7 @@ export function BoardViewer({
       const mod = event.ctrlKey || event.metaKey;
       const ids = state.selectedIds;
       const focusTarget = () => {
-        const chosen = cardTable ?? (ids.length === 1 ? ids[0] : undefined);
+        const chosen = ids.length === 1 ? ids[0] : undefined;
         const el = chosen ? state.elements.find((e) => e.id === chosen) : undefined;
         return el?.type === "table" ? el.id : null;
       };
@@ -150,7 +149,6 @@ export function BoardViewer({
         setFocusTable(focusTarget());
       } else if (key === "escape") {
         dispatch({ type: "select", ids: [] });
-        setCardTable(null);
       } else if (key === "v" && !mod && !event.altKey) {
         setTool("select");
       } else if (key === "h" && !mod && !event.altKey) {
@@ -171,7 +169,7 @@ export function BoardViewer({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [fit, cardTable, state.selectedIds, state.elements, hasTables, dispatch]);
+  }, [fit, state.selectedIds, state.elements, hasTables, dispatch]);
 
   const chrome = "border border-chrome bg-card text-foreground";
   return (
@@ -317,12 +315,6 @@ export function BoardViewer({
           onToolDone={noop}
           onPointerWorld={noop}
           onDropFiles={noop}
-          focusOpen={focusTable !== null}
-          onHoverTable={(id) => {
-            setCardTable(id);
-            // Resting on a table for half a second opens its focus view
-            if (id) setFocusTable(id);
-          }}
         />
         {selectedTable?.type === "table" && !focusTable && (
           <aside

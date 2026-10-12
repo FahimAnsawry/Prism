@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { BoardViewer } from "@/components/board/board-viewer";
 import { ErFocusScreen } from "@/components/board/er-focus-screen";
-import { loadBoardFonts } from "@/components/board/text-layout";
+import { loadBoardFontsToOpen } from "@/components/board/text-layout";
 import { ctaVariants } from "@/components/cta";
 import { ErrorScreen } from "@/components/feedback/error-page";
 import { PrismLoader } from "@/components/feedback/prism-loader";
@@ -50,7 +50,7 @@ export function PublicBoard({
   const elements: BoardElement[] | undefined = data.data?.elements;
   const fonts = useQuery({
     queryKey: ["board-fonts", "public", boardId],
-    queryFn: () => loadBoardFonts(elements ?? []),
+    queryFn: () => loadBoardFontsToOpen(elements ?? []),
     enabled: Boolean(elements),
     staleTime: Infinity,
   });

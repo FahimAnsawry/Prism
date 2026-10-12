@@ -1,6 +1,14 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { ArrowLeft, ArrowRight, ChevronRight, Maximize, Minus, Plus } from "lucide-react";
-import { type PointerEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { isTyping } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import type { BoardElement } from "./board-model";
@@ -13,7 +21,8 @@ import { useElementSize } from "./use-element-size";
 
 // A table's focus view: the table and every table it's related to, laid out together on their own
 // (focusLayout) and shown as large as the screen allows, at full size whenever they fit. It only
-// looks: the board's camera, selection and elements stay as they are.
+// looks: the board's camera, selection and elements stay as they are. As ErFocusPanel (View mode)
+// it fills the board instead of a dialog and starts on every table, then narrows on a click.
 
 /** Room kept around the diagram when it's fitted, in screen px. */
 export const MARGIN = 40;
@@ -27,6 +36,11 @@ const ZOOM_STEP = 1.25;
 export const AUTO_KEYS_BELOW = 0.5;
 /** A press that moves less than this (screen px) is a click, not a pan. */
 const CLICK_SLOP = 4;
+
+const closeButton =
+  "flex h-8 items-center gap-2 border border-chrome bg-card pr-1.5 pl-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-standard hover:bg-background";
+const escKey =
+  "flex h-5 items-center border border-divider bg-background px-1 font-mono text-3xs text-muted-foreground";
 
 export function ErFocusDialog({
   tableId,
@@ -65,7 +79,7 @@ export function ErFocusDialog({
               start={shownId}
               elements={elements}
               onFocusChange={(id) => {
-                last.current = id;
+                if (id) last.current = id;
               }}
             />
           )}
@@ -76,26 +90,87 @@ export function ErFocusDialog({
 }
 
 /**
+ * The focus view without a dialog, for View mode: it starts on every table and relation, a click
+ * on a table focuses it, and "All tables" (or Esc) goes back to them all.
+ */
+export function ErFocusPanel({
+  elements,
+  leading,
+  eyebrow,
+  trailing,
+}: {
+  elements: BoardElement[];
+  /** Before the history buttons (a back link). */
+  leading?: ReactNode;
+  /** Above the table trail, in place of "Table focus" (the board's name). */
+  eyebrow?: string;
+  /** At the end of the header (mode, theme, share), so the board needs no second bar. */
+  trailing?: ReactNode;
+}) {
+  return (
+    <FocusContent
+      start={null}
+      elements={elements}
+      inline
+      leading={leading}
+      eyebrow={eyebrow}
+      trailing={trailing}
+    />
+  );
+}
+
+function Eyebrow({ inline, children }: { inline: boolean; children: string }) {
+  const className = "font-mono text-3xs font-bold text-muted-foreground uppercase";
+  return inline ? (
+    <p className={className}>{children}</p>
+  ) : (
+    <Dialog.Description className={className}>{children}</Dialog.Description>
+  );
+}
+
+function Heading({ inline, children }: { inline: boolean; children: ReactNode }) {
+  const className = "flex min-w-0 items-center gap-1 text-[15px] leading-5 font-bold text-ink";
+  return inline ? (
+    <h2 className={className}>{children}</h2>
+  ) : (
+    <Dialog.Title className={className}>{children}</Dialog.Title>
+  );
+}
+
+/**
  * The window's content: the history of tables walked through (a click on a related table, in the
  * diagram or the details panel, or a pick in "Jump to table" moves the focus; back and forward
- * step through it, as in a browser), the diagram and the table's details.
+ * step through it, as in a browser), the diagram and the table's details. Inline, the history
+ * starts on null: every table at once.
  */
 function FocusContent({
   start,
   elements,
   onFocusChange,
+  inline = false,
+  leading,
+  eyebrow,
+  trailing,
 }: {
-  start: string;
+  start: string | null;
   elements: BoardElement[];
-  onFocusChange: (id: string) => void;
+  onFocusChange?: (id: string | null) => void;
+  /** Fills its parent in View mode instead of living in a dialog. */
+  inline?: boolean;
+  leading?: ReactNode;
+  eyebrow?: string;
+  trailing?: ReactNode;
 }) {
-  const [history, setHistory] = useState({ stack: [start], index: 0 });
+  const [history, setHistory] = useState<{ stack: (string | null)[]; index: number }>({
+    stack: [start],
+    index: 0,
+  });
   const switcher = useRef<HTMLButtonElement>(null);
   /** Null until the switch is used: then keys only is on when every column would show too small. */
   const [keysChoice, setKeysChoice] = useState<boolean | null>(null);
   /** A relation picked in the details panel: it and its two tables stand out in the diagram. */
   const [highlight, setHighlight] = useState<string | null>(null);
-  const current = history.stack[history.index] ?? start;
+  const current = history.stack[history.index] ?? null;
   const trail = history.stack.slice(0, history.index + 1);
   const canBack = history.index > 0;
   const canForward = history.index < history.stack.length - 1;
@@ -121,25 +196,29 @@ function FocusContent({
     [elements, current, keysOnly, spaceWidth, spaceHeight],
   );
   const shown = compact ?? full;
-  const table = elements.find((el) => el.id === current && el.type === "table");
-  const name = (id: string) => elements.find((el) => el.id === id)?.table?.name ?? "table";
+  const table = current
+    ? elements.find((el) => el.id === current && el.type === "table")
+    : undefined;
+  const name = (id: string | null) =>
+    id ? (elements.find((el) => el.id === id)?.table?.name ?? "table") : "All tables";
   /** Moves to step `index` of the history. */
   const goTo = (index: number) => {
     setHighlight(null);
     setHistory((h) => ({ ...h, index: Math.max(0, Math.min(h.stack.length - 1, index)) }));
   };
   /** Focuses `id`, dropping the steps ahead (as following a link does in a browser). */
-  const focusOn = (id: string) => {
+  const focusOn = (id: string | null) => {
     setHighlight(null);
     if (id === current) return;
     setHistory((h) => ({ stack: [...h.stack.slice(0, h.index + 1), id], index: h.index + 1 }));
   };
 
   useEffect(() => {
-    onFocusChange(current);
+    onFocusChange?.(current);
   }, [current, onFocusChange]);
 
-  // "/" or Ctrl+K searches; Alt+Left (or Backspace) and Alt+Right step back and forward.
+  // "/" or Ctrl+K searches; Alt+Left (or Backspace) and Alt+Right step back and forward. Inline,
+  // Esc goes back to every table (the dialog's Esc closes it instead).
   useEffect(() => {
     const step = (by: number) => {
       setHighlight(null);
@@ -147,6 +226,8 @@ function FocusContent({
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTyping(event.target)) return;
+      // A dialog above the view (the shortcut list, Share) takes the keys while it's open.
+      if (inline && document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       const mod = event.ctrlKey || event.metaKey;
       if (event.key === "/" || (mod && event.key.toLowerCase() === "k")) {
         event.preventDefault();
@@ -157,16 +238,29 @@ function FocusContent({
       } else if (event.altKey && event.key === "ArrowRight") {
         event.preventDefault();
         step(1);
+      } else if (inline && event.key === "Escape") {
+        setHighlight(null);
+        setHistory((h) =>
+          h.stack[h.index] === null
+            ? h
+            : { stack: [...h.stack.slice(0, h.index + 1), null], index: h.index + 1 },
+        );
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [inline]);
 
   return (
     <>
-      <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-divider pr-2 pl-5">
+      <header
+        className={cn(
+          "flex h-14 shrink-0 items-center justify-between gap-4 border-b border-divider",
+          inline ? "bg-card px-4 md:pr-6" : "pr-2 pl-5",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-3">
+          {leading}
           <div className="flex h-8 shrink-0 items-stretch border border-chrome bg-card text-foreground">
             <button
               type="button"
@@ -190,10 +284,8 @@ function FocusContent({
             </button>
           </div>
           <div className="min-w-0">
-            <Dialog.Description className="font-mono text-3xs font-bold text-muted-foreground uppercase">
-              Table focus
-            </Dialog.Description>
-            <Dialog.Title className="flex min-w-0 items-center gap-1 text-[15px] leading-5 font-bold text-ink">
+            <Eyebrow inline={inline}>{eyebrow ?? "Table focus"}</Eyebrow>
+            <Heading inline={inline}>
               {trail.map((id, i) =>
                 i === trail.length - 1 ? (
                   <span key={`${id}-${i}`} className="truncate">
@@ -216,13 +308,13 @@ function FocusContent({
                   </span>
                 ),
               )}
-            </Dialog.Title>
+            </Heading>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <TableSwitcher
             elements={elements}
-            currentId={current}
+            currentId={current ?? ""}
             triggerRef={switcher}
             onPick={focusOn}
           />
@@ -253,13 +345,31 @@ function FocusContent({
               </button>
             ))}
           </div>
-          <span aria-hidden="true" className="mx-1 h-5 w-px bg-divider" />
-          <Dialog.Close className="flex h-8 items-center gap-2 border border-chrome bg-card pr-1.5 pl-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-standard hover:bg-background">
-            Back to board
-            <kbd className="flex h-5 items-center border border-divider bg-background px-1 font-mono text-3xs text-muted-foreground">
-              Esc
-            </kbd>
-          </Dialog.Close>
+          {inline ? (
+            current !== null && (
+              <>
+                <span aria-hidden="true" className="mx-1 h-5 w-px bg-divider" />
+                <button type="button" onClick={() => focusOn(null)} className={closeButton}>
+                  All tables
+                  <kbd className={escKey}>Esc</kbd>
+                </button>
+              </>
+            )
+          ) : (
+            <>
+              <span aria-hidden="true" className="mx-1 h-5 w-px bg-divider" />
+              <Dialog.Close className={closeButton}>
+                Back to board
+                <kbd className={escKey}>Esc</kbd>
+              </Dialog.Close>
+            </>
+          )}
+          {trailing && (
+            <>
+              <span aria-hidden="true" className="mx-1 h-5 w-px bg-divider" />
+              {trailing}
+            </>
+          )}
         </div>
       </header>
 
@@ -267,7 +377,9 @@ function FocusContent({
         <div ref={area} className="relative min-w-0 flex-1 overflow-hidden bg-background">
           {!shown ? (
             <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              This table isn&rsquo;t on the board anymore.
+              {current === null
+                ? "There are no tables on this board."
+                : "This table isn’t on the board anymore."}
             </p>
           ) : (
             size.width > 0 && (
