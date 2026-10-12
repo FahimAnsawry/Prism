@@ -71,7 +71,7 @@ export function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => void }) 
     <Menu.Root open={open} onOpenChange={setOpen}>
       <Menu.Trigger
         title="New project (P) or whiteboard (B)"
-        className="inline-flex h-11 w-[140px] shrink-0 items-center justify-center gap-2 border border-transparent bg-brand text-[15px] font-bold text-slate transition-colors duration-150 ease-standard select-none hover:bg-brand/80 data-popup-open:border-foreground"
+        className="inline-flex h-11 w-[140px] shrink-0 max-sm:w-full items-center justify-center gap-2 border border-transparent bg-brand text-[15px] font-bold text-slate transition-colors duration-150 ease-standard select-none hover:bg-brand/80 data-popup-open:border-foreground"
       >
         <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />
         New
@@ -80,7 +80,7 @@ export function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => void }) 
         <Menu.Positioner side="bottom" align="end" sideOffset={14} className="z-50 outline-none">
           <Menu.Popup
             onKeyDown={onKeyDown}
-            className="w-80 origin-(--transform-origin) border border-input bg-popover p-1.5 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
+            className="w-80 max-w-[calc(100vw-2rem)] origin-(--transform-origin) border border-input bg-popover p-1.5 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
           >
             <Menu.Group>
               <Menu.GroupLabel className="px-2.5 pt-1.5 pb-2.5 font-mono text-3xs font-bold text-muted-foreground">

@@ -165,11 +165,11 @@ function DashboardPage() {
 
   const itemList = (list: WorkspaceItem[]): ReactNode =>
     shownView === "grid" ? (
-      <ul key={listKey} className="mt-8 grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+      <ul key={listKey} className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
         {list.map((item, i) => (
           <li
             key={item.id}
-            className={enter}
+            className={cn("min-w-0", enter)}
             // Staggered, capped so a long grid doesn't keep its last cards waiting.
             style={enter ? { animationDelay: `${Math.min(i, 6) * 25}ms` } : undefined}
           >
@@ -192,22 +192,24 @@ function DashboardPage() {
     <div className="min-h-dvh bg-background">
       <DashboardHeader query={query} onQueryChange={setQuery} />
 
-      <main className={cn(column, "pt-8 pb-26")}>
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div>
-            <h1 className="text-[40px] leading-14 font-bold text-ink">Your workspace</h1>
+      <main className={cn(column, "pt-6 pb-16 sm:pt-8 sm:pb-26")}>
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+          <div className="min-w-0">
+            <h1 className="text-[32px] leading-10 font-bold text-ink sm:text-[40px] sm:leading-14">
+              Your workspace
+            </h1>
             <p className="mt-0.5 h-[19px] font-mono text-[13px] leading-[19px] text-muted-foreground">
               {data &&
                 `${plural(data.projects.length, "project")} · ${plural(data.boards.length, "board")}`}
             </p>
           </div>
-          <div className="mt-1.5">
+          <div className="mt-1.5 max-sm:w-full">
             <NewMenu onCreate={openCreate} />
           </div>
         </div>
 
         {!isEmpty && (
-          <div className="mt-14 flex flex-wrap items-center justify-between gap-4">
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-4 sm:mt-14">
             <FilterSwitch
               value={filter}
               counts={data && ((id) => itemsFor(data, id).length)}
@@ -275,7 +277,7 @@ function DashboardPage() {
         )}
 
         {sharedItems.length > 0 && (
-          <section aria-labelledby="shared-heading" className="mt-20">
+          <section aria-labelledby="shared-heading" className="mt-14 sm:mt-20">
             <h2 id="shared-heading" className="text-[26px] leading-8 font-bold text-ink">
               Shared with you
             </h2>
