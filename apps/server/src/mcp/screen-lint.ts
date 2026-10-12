@@ -1,9 +1,11 @@
-import type { BoardElement } from "@prism/shared";
+import { cornerRadii, type BoardElement } from "@prism/shared";
 
 // Checks a screen create_screen just built and reports what an AI editor should fix before it
 // shows the user: text that wraps more than it was written, content spilling out of its
-// container, unreadable contrast, tiny text, too many sizes, too many accent colors and gray boxes
-// standing in for images. It reads only the laid-out elements, so it works the same for
+// container, unreadable contrast, tiny text, too many sizes, too many accent colors, gray boxes
+// standing in for images, and the design guide's hierarchy rules (pure black or white ink, thin
+// or badly leaded text, repeated radii, competing primary buttons, ungrouped labels, gray shadows
+// on colored grounds). It reads only the laid-out elements, so it works the same for
 // browser-measured and estimated layouts.
 
 export type ScreenWarning = { kind: string; ids: string[]; message: string };
@@ -38,9 +40,35 @@ const PLACEHOLDER_TINT_MAX = 24;
 const ACCENT_AREA_MIN = 400;
 /** A wrapped paragraph's last line this short (or one word) is an orphan. */
 const ORPHAN_CHARS_MAX = 12;
+/** Line height when a text doesn't set one (as drawn). */
+const LINE_HEIGHT_DEFAULT = 1.25;
+/** Body text (up to this size) wants 1.3-1.75 when it wraps; headings (from HEADING_PX) at most 1.3. */
+const BODY_PX_MAX = 20;
+const BODY_LINE_HEIGHT_MIN = 1.3;
+const BODY_LINE_HEIGHT_MAX = 1.75;
+const HEADING_PX = 32;
+const HEADING_LINE_HEIGHT_MAX = 1.3;
+/** Weights under this are for display sizes only (LIGHT_WEIGHT_PX and up). */
+const LIGHT_WEIGHT_MAX = 400;
+const LIGHT_WEIGHT_PX = 20;
+/** A box this close to its container's edges shows whether their corners nest. */
+const NESTED_INSET_MAX = 48;
+/** Buttons in one row: centers this close vertically, at most this far apart. */
+const ROW_ALIGN_TOLERANCE = 4;
+const ROW_GAP_MAX = 64;
+/** A text this close above a field (and no bigger) is its label. */
+const LABEL_GAP_MAX = 32;
+/** How far apart a shadow color's channels may be and still read as gray. */
+const NEUTRAL_SHADOW_TINT_MAX = 12;
 
 const isText = (el: BoardElement) => el.type === "text";
 const pxOf = (el: BoardElement) => el.fontSizePx ?? PRESET_PX[el.fontSize ?? "M"];
+const weightOf = (el: BoardElement) =>
+  el.fontWeight === "bold" ? 700 : el.fontWeight === "normal" ? 400 : (el.fontWeight ?? 400);
+const isLine = (el: BoardElement) => el.type === "line" || el.type === "arrow";
+const bottomOf = (el: BoardElement) => el.y + el.height;
+/** Whether `a` and `b` share some horizontal span. */
+const overlapsX = (a: BoardElement, b: BoardElement) => a.x < b.x + b.width && a.x + a.width > b.x;
 const quote = (text: string | undefined) => {
   const flat = (text ?? "").replace(/\s+/g, " ").trim();
   return `"${flat.length > 40 ? `${flat.slice(0, 40)}…` : flat}"`;
@@ -272,6 +300,211 @@ function isPlaceholder(el: BoardElement, above: BoardElement[]) {
   });
 }
 
+const isPureBlack = (color: string | null | undefined) =>
+  /^#(000|000000|000000ff)$/i.test(color ?? "");
+const isPureWhite = (color: string | null | undefined) =>
+  /^#(fff|ffffff|ffffffff)$/i.test(color ?? "");
+
+/** A noticeably colored ground, pale tints included (a lilac field), but not cream or slate. */
+function isColoredGround(color: string | null | undefined) {
+  const parsed = rgb(color);
+  if (!parsed) return false;
+  const max = Math.max(...parsed) / 255;
+  const min = Math.min(...parsed) / 255;
+  const light = (max + min) / 2;
+  if (max - min < 0.1 || light < 0.45) return false;
+  return (max - min) / (1 - Math.abs(2 * light - 1)) >= 0.4;
+}
+
+/** A shadow drawn in gray or black: the presets, or custom layers that are all untinted. */
+function isNeutralShadow(shadow: BoardElement["shadow"]) {
+  if (!shadow) return false;
+  if (typeof shadow === "string") return true;
+  return shadow.every((layer) => {
+    const parsed = rgb(layer.color);
+    return parsed !== null && Math.max(...parsed) - Math.min(...parsed) <= NEUTRAL_SHADOW_TINT_MAX;
+  });
+}
+
+/** `color` darkened toward black, at a soft alpha: a shadow in that color's hue. */
+function tintedShadow(color: [number, number, number]) {
+  return `#${color
+    .map((v) =>
+      Math.round(v * 0.35)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}40`;
+}
+
+const isButton = (el: BoardElement) =>
+  el.role === "button" || /^button\b/i.test(el.component ?? "");
+
+/** A filled button in the accent: the primary token, or a saturated fill. */
+function isPrimaryButton(el: BoardElement) {
+  if (el.type !== "rect" || el.fill === null || el.fillImage || !isButton(el)) return false;
+  if (el.tokens?.fill === "primary") return true;
+  const parsed = rgb(el.fill);
+  return parsed !== null && accentFamily(parsed) !== null;
+}
+
+/** The text drawn on a shape (a button's label), if any. */
+function labelOn(elements: BoardElement[], shape: BoardElement) {
+  return elements.find((el) => {
+    if (!isText(el)) return false;
+    const cx = el.x + el.width / 2;
+    const cy = el.y + el.height / 2;
+    return (
+      cx >= shape.x && cx <= shape.x + shape.width && cy >= shape.y && cy <= shape.y + shape.height
+    );
+  });
+}
+
+/**
+ * Boxes inside a rounded container, near its edges, whose radius is as big as the container's:
+ * nested corners take the outer radius minus the padding between them.
+ */
+function nestedRadius(
+  elements: BoardElement[],
+  layers: ReadonlyMap<string, string>,
+): ScreenWarning[] {
+  const byContainer = new Map<BoardElement, { ids: string[]; inner: number; inset: number }>();
+  elements.forEach((el, index) => {
+    if (el.type !== "rect" || !isContainer(el)) return;
+    const c = containerOf(elements, index);
+    if (!c || c.type !== "rect" || layers.get(c.id) !== layers.get(el.id)) return;
+    const outer = Math.max(...cornerRadii(c.radius, c.width, c.height));
+    const inner = Math.max(...cornerRadii(el.radius, el.width, el.height));
+    // Pills and circles are their own shape family, not a smaller version of the container's.
+    const round = inner >= Math.min(Math.abs(el.width), Math.abs(el.height)) / 2 - 0.5;
+    if (outer <= 0 || inner <= 0 || round || inner < outer) return;
+    const insetX = Math.min(el.x - c.x, c.x + c.width - (el.x + el.width));
+    const insetY = Math.min(el.y - c.y, bottomOf(c) - bottomOf(el));
+    // Flush with an edge (a cover photo on top of a card) is not nested.
+    if (insetX <= TOLERANCE || insetY <= TOLERANCE) return;
+    const inset = Math.min(insetX, insetY);
+    if (inset > NESTED_INSET_MAX) return;
+    const entry = byContainer.get(c) ?? { ids: [], inner, inset };
+    entry.ids.push(el.id);
+    byContainer.set(c, entry);
+  });
+  return [...byContainer].map(([c, { ids, inner, inset }]) => {
+    const outer = Math.max(...cornerRadii(c.radius, c.width, c.height));
+    const suggested = Math.max(Math.round(outer / 2), Math.round(outer - inset));
+    return {
+      kind: "nested-radius",
+      ids,
+      message: `${ids.length === 1 ? "A box" : `${ids.length} boxes`} inside the ${c.role ?? c.type} (${c.id}) ${ids.length === 1 ? "has" : "have"} radius ${Math.round(inner)}, as round as the ${c.role ?? c.type}'s ${Math.round(outer)}. An inner radius is the outer radius minus the padding between them: make ${ids.length === 1 ? "it" : "them"} about ${suggested}.`,
+    };
+  });
+}
+
+/** Two or more filled accent buttons side by side in one container: two equal choices. */
+function primaryCount(elements: BoardElement[]): ScreenWarning[] {
+  const buttons = elements.flatMap((el, index) =>
+    isPrimaryButton(el) ? [{ el, holder: containerOf(elements, index) }] : [],
+  );
+  const warnings: ScreenWarning[] = [];
+  const seen = new Set<BoardElement>();
+  for (const { el, holder } of buttons) {
+    if (seen.has(el)) continue;
+    const cy = el.y + el.height / 2;
+    const row = buttons
+      .filter(
+        (other) =>
+          other.holder === holder &&
+          Math.abs(other.el.y + other.el.height / 2 - cy) <= ROW_ALIGN_TOLERANCE,
+      )
+      .map((other) => other.el)
+      .sort((a, b) => a.x - b.x);
+    for (const other of row) seen.add(other);
+    // Neighbors only: two buttons far apart in a wide row are separate places.
+    const runs: BoardElement[][] = [];
+    for (const button of row) {
+      const run = runs.at(-1);
+      const last = run?.at(-1);
+      if (run && last && button.x - (last.x + last.width) <= ROW_GAP_MAX) run.push(button);
+      else runs.push([button]);
+    }
+    for (const run of runs.filter((r) => r.length >= 2)) {
+      const labels = run.map((button) => quote(labelOn(elements, button)?.text));
+      warnings.push({
+        kind: "primary-count",
+        ids: run.map((button) => button.id),
+        message: `${run.length} filled accent buttons side by side (${labels.join(", ")}) read as ${run.length} equal choices. Keep the main action filled and make the others outline, ghost or a text link.`,
+      });
+    }
+  }
+  return warnings;
+}
+
+/**
+ * Field labels no closer to their field than to what's above them, so the label doesn't read
+ * with its own field.
+ */
+function proximity(elements: BoardElement[]): ScreenWarning[] {
+  const holders = elements.map((_, index) => containerOf(elements, index));
+  const found: { label: BoardElement; below: number; above: number }[] = [];
+  const isInput = (el: BoardElement) =>
+    el.type === "rect" && (el.role === "input" || /^input\b/i.test(el.component ?? ""));
+  elements.forEach((input, index) => {
+    if (!isInput(input)) return;
+    // Only what shares the field's container and horizontal span.
+    const near = elements.filter(
+      (el, i) => holders[i] === holders[index] && el !== input && overlapsX(el, input),
+    );
+    // The label: the nearest small text above the field.
+    const label = near
+      .filter((el) => isText(el) && pxOf(el) <= BODY_PX_MAX && bottomOf(el) <= input.y + TOLERANCE)
+      .sort((a, b) => bottomOf(b) - bottomOf(a))[0];
+    if (!label) return;
+    const below = input.y - bottomOf(label);
+    if (below > LABEL_GAP_MAX) return;
+    // What's above the label: the previous field, its helper text, a heading.
+    const gaps = near
+      .filter(
+        (el) =>
+          el !== label && el.type !== "frame" && !isLine(el) && bottomOf(el) <= label.y + TOLERANCE,
+      )
+      .map((el) => label.y - bottomOf(el));
+    if (gaps.length === 0) return;
+    const above = Math.min(...gaps);
+    if (below + 0.5 >= above) found.push({ label, below, above });
+  });
+  if (found.length === 0) return [];
+  const first = found[0]!;
+  return [
+    {
+      kind: "proximity",
+      ids: found.map(({ label }) => label.id),
+      message: `${
+        found.length === 1
+          ? `The label ${quote(first.label.text)} sits`
+          : `${found.length} field labels (${found
+              .slice(0, 3)
+              .map(({ label }) => quote(label.text))
+              .join(", ")}${found.length > 3 ? ", …" : ""}) sit`
+      } as far from ${found.length === 1 ? "its field" : "their fields"} as from what's above (${Math.round(first.below)}px below, ${Math.round(first.above)}px above), so nothing reads as grouped. Put a label 8 above its field and 24 or more between fields.`,
+    },
+  ];
+}
+
+/** Neutral gray shadows on a colored ground, where they read as dirt. */
+function grayShadow(elements: BoardElement[], frame: BoardElement | undefined): ScreenWarning[] {
+  const byGround = new Map<BoardElement, string[]>();
+  elements.forEach((el, index) => {
+    if (!isNeutralShadow(el.shadow)) return;
+    const ground = containerOf(elements, index, true) ?? frame;
+    if (!ground || ground === el || !isColoredGround(ground.fill)) return;
+    byGround.set(ground, [...(byGround.get(ground) ?? []), el.id]);
+  });
+  return [...byGround].map(([ground, ids]) => ({
+    kind: "gray-shadow",
+    ids,
+    message: `${ids.length === 1 ? "A shadow" : `${ids.length} shadows`} on the ${ground.role ?? ground.type} (${ground.fill}) ${ids.length === 1 ? "is" : "are"} neutral gray. On a colored ground a shadow takes the ground's hue: use custom layers such as [{ x: 0, y: 12, blur: 32, spread: -8, color: "${tintedShadow(rgb(ground.fill)!)}" }].`,
+  }));
+}
+
 /** What the layout knew besides the elements (none of it stored). */
 export interface LintExtras {
   /** Wrapped text's last line, by element id. */
@@ -329,7 +562,8 @@ export function lintScreen(
 
     // Wrapping into more lines than written: a headline or label that breaks where it shouldn't.
     const written = el.text.split("\n").length;
-    const lines = Math.round(el.height / (px * (el.lineHeight ?? 1.25)));
+    const lineHeight = el.lineHeight ?? LINE_HEIGHT_DEFAULT;
+    const lines = Math.round(el.height / (px * lineHeight));
     if (lines > written && (px >= 24 || el.text.length <= 48)) {
       warnings.push({
         kind: "wrap",
@@ -352,15 +586,73 @@ export function lintScreen(
       group(`small:${px}`, el, () => `${px}px; keep text at ${MIN_TEXT_PX}px or more.`);
     }
 
+    const weight = weightOf(el);
+    if (weight < LIGHT_WEIGHT_MAX && px < LIGHT_WEIGHT_PX) {
+      group(
+        `light-weight:${weight}:${px}`,
+        el,
+        () =>
+          `weight ${weight} at ${px}px reads thin. Use 400 or more below ${LIGHT_WEIGHT_PX}px; keep light weights for display sizes.`,
+      );
+    }
+
+    // Leading: paragraphs that wrap want 1.5-1.6, headings stay tight.
+    if (px <= BODY_PX_MAX && lines > 1 && lineHeight < BODY_LINE_HEIGHT_MIN) {
+      group(
+        `line-height:tight:${lineHeight}`,
+        el,
+        () =>
+          `line height ${lineHeight} is cramped for paragraph text. Give it lineHeight 1.5 (1.5-1.6).`,
+      );
+    } else if (px <= BODY_PX_MAX && lines > 1 && lineHeight > BODY_LINE_HEIGHT_MAX) {
+      group(
+        `line-height:loose:${lineHeight}`,
+        el,
+        () =>
+          `line height ${lineHeight} pulls the lines apart. Keep paragraph text at 1.5-1.6, never above ${BODY_LINE_HEIGHT_MAX}.`,
+      );
+    } else if (px >= HEADING_PX && lineHeight > HEADING_LINE_HEIGHT_MAX) {
+      group(
+        `line-height:heading:${lineHeight}`,
+        el,
+        () =>
+          `line height ${lineHeight} is loose for a heading. Use 1.05-1.15 at display sizes and about 1.3 at 32-40px, never above ${HEADING_LINE_HEIGHT_MAX}.`,
+      );
+    }
+
     // WCAG AA against the fill it sits on (or the frame).
-    const backgroundFill = (containerOf(elements, index, true) ?? frame)?.fill;
+    const holder = containerOf(elements, index, true);
+    const backgroundFill = (holder ?? frame)?.fill;
     const text = rgb(el.stroke);
     const background = rgb(backgroundFill);
     if (text && background && el.opacity >= 1) {
+      // Pure black on a light neutral, or pure white paragraphs on a dark one, are harsh.
+      const neutral = accentFamily(background) === null;
+      if (neutral && isPureBlack(el.stroke) && luminance(background) >= 0.5) {
+        group(
+          `pure-ink:${el.stroke}:${backgroundFill}`,
+          el,
+          () =>
+            `pure ${el.stroke} on ${backgroundFill} is harsh. Use a near-black tinted toward the palette (e.g. #111827, or $foreground).`,
+        );
+      } else if (
+        neutral &&
+        isPureWhite(el.stroke) &&
+        luminance(background) < 0.2 &&
+        px <= BODY_PX_MAX &&
+        lines > 1 &&
+        !(holder && isButton(holder))
+      ) {
+        group(
+          `pure-ink:${el.stroke}:${backgroundFill}`,
+          el,
+          () =>
+            `pure ${el.stroke} paragraph text on ${backgroundFill} glares. Dim body text a step (e.g. #d4d4d8, or $muted-foreground) and keep off-white for headings.`,
+        );
+      }
+
       const ratio = contrast(text, background);
-      const weight =
-        el.fontWeight === "bold" ? 700 : el.fontWeight === "normal" ? 400 : el.fontWeight;
-      const large = px >= 24 || (px >= 18.6 && (weight ?? 400) >= 700);
+      const large = px >= 24 || (px >= 18.6 && weight >= 700);
       const needed = large ? 3 : 4.5;
       if (ratio < needed) {
         group(
@@ -423,7 +715,14 @@ export function lintScreen(
     });
   }
 
-  warnings.push(...emptyRatings(elements), ...unevenSiblings(elements));
+  warnings.push(
+    ...emptyRatings(elements),
+    ...unevenSiblings(elements),
+    ...primaryCount(elements),
+    ...proximity(elements),
+    ...nestedRadius(elements, layers),
+    ...grayShadow(elements, frame),
+  );
   if (frame) warnings.push(...offColumn(elements, frame, layers));
 
   const placeholders = elements.filter((el, i) => isPlaceholder(el, elements.slice(i + 1)));

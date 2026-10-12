@@ -13,7 +13,7 @@ const RULES = [
 
 const LEVELS = ["", "Weak", "Fair", "Good", "Strong"];
 
-/** Four-segment meter plus the rule checklist shown under the signup password. */
+/** Four-segment meter plus the rule checklist shown under the reset password. */
 export function PasswordStrength({ password, id }: { password: string; id: string }) {
   const results = RULES.map((rule) => rule.test(password));
   const score = password ? results.filter(Boolean).length : 0;
@@ -60,6 +60,37 @@ export function PasswordStrength({ password, id }: { password: string; id: strin
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * The signup meter from the board: four thin bars and one line ("Strong · 14 characters").
+ * Before anything is typed it shows the length rule instead.
+ */
+export function PasswordMeter({ password, id }: { password: string; id: string }) {
+  const score = password ? RULES.filter((rule) => rule.test(password)).length : 0;
+  const tooShort = password.length > 0 && password.length < PASSWORD_MIN_LENGTH;
+  const barColor = score >= 3 && !tooShort ? "bg-brand" : "bg-coral";
+  const characters = `${password.length} character${password.length === 1 ? "" : "s"}`;
+
+  return (
+    <div id={id} className="mt-2 flex items-center justify-between gap-3">
+      <div className="grid w-[314px] max-w-[65%] grid-cols-4 gap-1" aria-hidden="true">
+        {RULES.map((rule, i) => (
+          <span key={rule.label} className={cn("h-1", i < score ? barColor : "bg-divider")} />
+        ))}
+      </div>
+      <p aria-live="polite" className="text-right text-xs text-muted-foreground">
+        {!password ? (
+          `${PASSWORD_MIN_LENGTH} or more characters`
+        ) : (
+          <>
+            <span className="sr-only">Password strength: </span>
+            {tooShort ? "Too short" : LEVELS[score]} · {characters}
+          </>
+        )}
+      </p>
     </div>
   );
 }

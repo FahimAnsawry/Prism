@@ -18,7 +18,7 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { error } = Route.useSearch();
   return (
-    <AuthLayout>
+    <AuthLayout footer="By continuing you agree to Prism's Terms and Privacy Policy.">
       <LoginForm key={error} oauthError={error} />
     </AuthLayout>
   );

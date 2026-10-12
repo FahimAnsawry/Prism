@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { PrismLoader } from "./prism-loader";
+import { finishSplash } from "./splash-state";
 
 const SPLASH_MS = 1500;
 const FADE_MS = 300;
@@ -10,6 +11,7 @@ const FADE_MS = 300;
  * The router renders underneath meanwhile, so the page is ready when the splash lifts. The
  * wrapper is opaque from the first frame, so only the mark itself fades in. Client
  * navigation never remounts it, so it plays once per page load. `skip` drops it entirely.
+ * When it is gone it calls `finishSplash`, which starts entrances that wait for it (the hero).
  *
  * It spans the full window (100vw, scrollbar included) and locks page scroll while shown, so a
  * long page's scrollbar can neither shift the logo off-center nor scroll the app underneath.
@@ -18,9 +20,15 @@ export function AppSplash({ skip = false }: { skip?: boolean }) {
   const [phase, setPhase] = useState<"show" | "fade" | "done">(skip ? "done" : "show");
 
   useEffect(() => {
-    if (skip) return;
+    if (skip) {
+      finishSplash();
+      return;
+    }
     const fade = setTimeout(() => setPhase("fade"), SPLASH_MS);
-    const done = setTimeout(() => setPhase("done"), SPLASH_MS + FADE_MS);
+    const done = setTimeout(() => {
+      setPhase("done");
+      finishSplash();
+    }, SPLASH_MS + FADE_MS);
     return () => {
       clearTimeout(fade);
       clearTimeout(done);
