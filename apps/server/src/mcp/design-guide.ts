@@ -78,6 +78,10 @@ Desktop marketing (1440 frames):
 - Headlines: 2 lines at most, about 8 words, broken by hand with \\n where the phrase breaks. Paragraphs: 520-640px wide (60-75 characters per line).
 - With a strict theme, use its text styles ($display, $h1-$h4, $body-lg, $body, $body-sm, $caption, $label) instead of sizes.
 - Letter spacing never below -0.04; -0.02 to -0.03 reads better on big headings.
+- Weight: headings 600-700 over 400 body. Nothing under 400 below 20px; light weights only at display sizes. Bold inside a paragraph marks one or two things, not every term.
+- Line height falls as size rises: body 1.5-1.6, about 1.3 at 32-40px, 1.05-1.15 at display sizes. Body never above 1.75, headings never above 1.3.
+- Long text: break anything over four or five lines into short paragraphs, or a list under small subheadings. Left-align it; center only a headline, one or two lines under it and a button.
+- All caps only for short labels (captions, table headers), never on buttons, badges or a sentence.
 - Fonts: any Google Font as gf:<Name>, or the board fonts (inter, sans = DM Sans, poppins, montserrat, lato, playfair, merriweather). App and mobile screens are well served by one workhorse UI sans. A landing page wants a face with a point of view, chosen like an object from the product's world. These are what every AI-made page uses, so pick one only for a reason no other face meets: Inter or DM Sans as display, Plus Jakarta Sans, Outfit, Space Grotesk, Syne, IBM Plex, Instrument Sans, Fraunces, Playfair Display, Cormorant, Lora, Newsreader. A serif display over a sans body is not a signature on its own.
 
 ## 3. Color
@@ -90,8 +94,12 @@ Pick a strategy before picking colors:
 A landing page may take any of them; choose from the thesis and scene, not out of caution. "One accent color" in a brief still allows Committed or Drenched: one hue, used at scale.
 
 Then:
-- Neutrals: near-black ink for headings, a muted body color, one or two surfaces, hairline borders. Tint them toward the main hue when that hue owns the page; on a colored field, derive secondary text from that hue rather than a generic gray.
+- Neutrals: near-black ink for headings (never pure #000000 on white), body text a step lighter, one or two surfaces, hairline borders. On dark grounds, headings off-white and body a step dimmer, never pure #ffffff for both. Tint them toward the main hue when that hue owns the page; on a colored field, derive secondary text from that hue rather than a generic gray.
 - Never two loud accents on one page.
+- The accent marks what can be clicked or is selected: the primary action, links, the active item. Spread over headings, icons and backgrounds, it stops meaning anything.
+- Never color alone: an error is red plus an icon plus words that say how to fix it ("Enter an amount over $1").
+- Meaning colors keep their meaning, tuned to the palette but never swapped: a Delete button is red, never green or the brand color.
+- Dark screens: surfaces get lighter as they rise (page, card, popover) and shadows barely show; lift the accent a step so it still passes contrast.
 - Meaning colors (green success, red error, amber warning, blue info) only on status chips and charts, as a faint fill with the same family's dark text.
 - Text on any fill passes WCAG AA: 4.5:1 for body, 3:1 for 24px+ or bold 19px+.
 
@@ -104,9 +112,31 @@ Then:
 - Siblings are identical: same card size, padding, gap and treatment; differences go in a small chip or label.
 - Buttons 44-52px tall (padding about 14 x 24), inputs 44-48px, one radius family (e.g. 8 buttons and inputs, 16 cards, 24 big panels).
 - Cards: padding 24-32, a hairline border or a soft shadow, never both, radius 12-16. Pills are for small controls and chips. Shadows have a y offset and a soft blur.
-- Leave air: a section looks finished when it has room around it, not when every gap is filled.`;
+- Leave air: a section looks finished when it has room around it, not when every gap is filled.
+- Space says what belongs together: the gap inside a group is always smaller than the gap to the next group. A label 8 above its field, helper text 4 below it, 24 to the next field; 12 between a card's title and its text, 24-32 between cards. Equal gaps everywhere means nothing is grouped.
+- Nested corners: an inner radius is the outer radius minus the padding between them (a 16-radius card with 8 padding holds 8-radius items), never the same radius inside and out.
+- Separate with space or a surface step first (white cards on a faintly tinted page), a single hairline second. Never a border, a fill and a shadow on one box, and no box around every row.
+- Cards in a row: same height, the action pinned to the bottom with a flexible spacer, images in one shape and crop, titles of about the same length.
+- A shadow on a colored ground takes that ground's hue (a purple-gray shadow on a lilac field), never neutral gray. Shadow depth follows height: cards low, menus and popovers higher, modals highest.
+- Focused tasks don't fill the frame: a sign-up, login or checkout sits in a 400-560 column or card with air around it, its inputs as wide as that column.
 
-const LANDING = `## 5. Landing page recipe
+## 5. Hierarchy, actions and forms
+
+- Before drawing, rank what's on the screen by how much it matters to the person using it, and give the top item the most size, weight and contrast. A value beats its label (a KPI's number is the biggest, darkest text; "Revenue" is small and muted); a product's name and price beat its quantity.
+- One primary action per view or card: a filled accent button, also the largest. Secondary actions are neutral (outline, ghost or a muted fill), tertiary are text links. Two filled buttons side by side read as two equal choices.
+- Buttons with the same job look the same on every card and screen; don't recolor them to match each card's image.
+- Labels say what happens, in sentence case: "Create account", "Pay $65", "Save changes". Never "Submit" or "OK".
+- Placement: in a dialog, actions bottom-right, Cancel then the action (red when it destroys something). In a form, actions under the last field, aligned with the fields. An action sits next to the thing it acts on: the quantity stepper beside Add to cart, row actions in the row.
+- Forms:
+  - A label above every field; a placeholder never stands in for it and is visibly lighter than typed text.
+  - Field width follows the expected answer: card number full width, expiry and CVC side by side at half width, ZIP short. A one-time code is one box per digit.
+  - Fewer fields: no Confirm password (an eye toggle and an inline strength meter instead). Long forms are grouped under small headings (Personal, Account).
+  - Five options or fewer: radio buttons, a segmented control or selectable cards, not a dropdown. Colors as swatches, quantities as a stepper.
+  - Validation sits under its field: a red border, an icon and a sentence that says how to fix it. Toasts confirm finished actions; they never carry form errors.
+  - An input is a light fill or a hairline box; it never takes the accent fill, so it can't be mistaken for a button.
+- Icons: one style per screen (outline, with filled only for the active tab or a selected state), one size per context (16-20 beside 14-16px text, 24 in navigation), the color of the text beside them and 8 from it. Hit area at least 40 on desktop and 44-48 on mobile. Keep universal meanings (magnifier searches, trash deletes); an icon that isn't obvious gets a text label.`;
+
+const LANDING = `## 6. Landing page recipe
 
 A landing page is a whole page, usually 2400-4000px tall in one 1440 frame. What it must do is fixed; its order and form are not. Pick a structure from the product and the story it tells, name it before you draw, and don't reuse the structure of the user's other sites ("This site" lists them).
 
@@ -118,6 +148,8 @@ A landing page has jobs, not a fixed list of sections. Each job takes the form t
 - The key features, in the form their content asks for: a workflow reads as one continuous sequence drawn across the page; capabilities of one screen read as callouts on a large product view; unlike features read as text and visuals at different sizes. Three same-size icon cards only when the items really are equivalent and nothing better fits; then make each card show its feature (a fragment of UI) instead of an icon chip.
 - An ending that hands the reader their next step: the sign-up form or pricing itself, the product's finished state, a short FAQ that answers the last objection, or the action set into the footer. A full-width brand-color band with a headline and a button is the category default: use it only when nothing else fits and the user's other sites don't already end that way.
 - A footer: logo, link columns, legal line.
+- Text over a photo sits in the photo's calm area, or on a scrim of the photo's own dark tone, and still passes contrast over its lightest part.
+- A sign-up or login page: the form in its own column or card; an image beside it may set the mood but carries no text or button of its own.
 
 Structures (pick one, mix two, or invent one; the usual nav, product hero, logo strip, alternating feature rows, testimonial and CTA band is the one to avoid):
 - Artifact first: the product's real artifact (an invoice moving through approval, a schedule filling up) at full scale in the first viewport, the headline set against it, features as callouts on it.
@@ -128,23 +160,27 @@ Structures (pick one, mix two, or invent one; the usual nav, product hero, logo 
 - Offer first: pricing or the sign-up form near the top, for a product people already understand; the rest answers objections.
 - Live demo: the first viewport is the product in use with something to try; the page below it is short.`;
 
-const APP = `## 5. App screen recipe
+const APP = `## 6. App screen recipe
 
 1. Shell: a left sidebar (240-280 wide: workspace switcher, search, 6-8 nav items with icons, active item on a faint accent fill) or a top bar.
 2. Page header: title (24-30px), one line of description, actions on the right (secondary, then primary).
 3. Content on a clear grid: KPI cards in a row, then the main table, board or chart. Tables: 44-52px rows, 13-14px text, a header row in muted small text, status as chips, numbers right-aligned.
 4. Realistic data everywhere: names, companies, amounts, dates. Never "Item 1" or lorem ipsum.
-5. Each meaningful state (empty, loading, error, filled) is its own frame next to the main one.`;
+5. Each meaningful state (empty, loading, error, filled) is its own frame next to the main one. Empty: what this place is for, one line on why it's empty, the one action that fills it ("Create project"), and a small illustration in the theme's colors; never a bare "No projects". Error: what went wrong in plain words, how to fix it and a way back (retry, home, search), in the app's own style.
+6. Show the content, not a door to it: a home or dashboard shows the first items (recent files, recommended recipes) instead of a banner linking to them, and "Continue where you left off" beats making people remember.
+7. Task screens (checkout, sign-up, settings) carry nothing unrelated to the task: no promo card beside the form.
+8. Menus: items grouped under small headings, each an icon, a title and one line of description.`;
 
-const MOBILE = `## 5. Mobile screen recipe
+const MOBILE = `## 6. Mobile screen recipe
 
 1. Frame 390 x 844. Side padding 20-24, a status-bar gap at the top (about 47px), a home-indicator gap at the bottom.
-2. Type: headline 28-34, body 16, small 14; nothing under 12.
-3. Touch targets at least 44px tall; the primary action full width, pinned to the bottom with a flexible spacer when the frame height is fixed.
+2. Type: headline 28-34, body 16, small 14; nothing under 12. Headings shrink a lot from the desktop version, body hardly at all. Paragraphs 30-40 characters per line.
+3. Touch targets at least 44px tall. The primary action, and its alternative (Sign in under Sign up), sit in the bottom third where a thumb reaches; full width and pinned to the bottom with a flexible spacer when the frame height is fixed. Only back and the title live in the top corners.
 4. One column. Group content in cards or plain sections with 24-32 between them.
-5. Navigation: a tab bar (4-5 items, icon plus label) or a top bar with back and title.`;
+5. Navigation: a tab bar (4-5 items, icon plus label) or a top bar with back and title.
+6. A table becomes a list of cards showing the two or three fields that matter.`;
 
-const BUILD = `## 6. Building it in Prism
+const BUILD = `## 7. Building it in Prism
 
 - One create_screen per frame. A whole landing page fits in one call (up to 800 nodes).
 - Two ways to write it: a layout tree (root), or HTML + Tailwind (html), which the board tab renders and reads back. Use whichever you write better; HTML suits dense marketing pages and anything you'd reach for flex, grid or absolute positioning for. In HTML:
@@ -172,10 +208,10 @@ const BUILD = `## 6. Building it in Prism
   - The product itself stays drawn UI (a window with a real table, chart or board), not a photo of a screen.
 - Name every component (one groupId) and give it a role, so build_pages can code it. To code a screen, read it with get_screen_code (nested layout, sizes, tokens and component instances) rather than get_board's flat elements, and get_theme in the app's format (css for Tailwind, css-vars for plain CSS, dart for Flutter).
 
-## 7. Check it
+## 8. Check it
 
-1. create_screen returns warnings (text that wraps more than written, content spilling out of its container or frame, low contrast, tiny text, too many sizes or accent colors, side-by-side cards of different heights, blocks just off the main column, a rating of outline-only stars, gray boxes standing in for images). Fix each with update_elements or redraw the section; ignore one only when it is intended. Status chips and charts may use their own colors.
-2. export_image the frame and critique it against your thesis and the references: one focal point per section, everything on the content column, equal sibling spacing, readable contrast, nothing cramped, nothing orphaned. Then the slop check: go through the Refuse list; swap the product's name for an unrelated one, and if the page still fits, its composition, copy or signature move is too generic; ask whether someone could guess this design from the category alone, or mistake it for another of the user's sites (or, on a site with screens, for a page from a different site): compare how it opens, proves and ends with the patterns "This site" lists for them. Fix everything in one batch and look once more; two rounds is the ceiling.
+1. create_screen returns warnings (text that wraps more than written, content spilling out of its container or frame, low contrast, tiny text, too many sizes or accent colors, side-by-side cards of different heights, blocks just off the main column, a rating of outline-only stars, gray boxes standing in for images, pure black or white ink, light weights on small text, line heights out of range, a radius as round as its container's, two filled accent buttons side by side, a label as far from its field as from what's above it, gray shadows on a colored ground). Fix each with update_elements or redraw the section; ignore one only when it is intended. Status chips and charts may use their own colors.
+2. export_image the frame and critique it against your thesis and the references: one focal point per section, everything on the content column, equal sibling spacing, readable contrast, nothing cramped, nothing orphaned. Then the hierarchy check: name the five things on the screen in order of importance and confirm the export reads in that order, even in grayscale. Count the filled accent buttons in each view: more than one is a hierarchy bug unless it's the same action repeated down a list. Then the slop check: go through the Refuse list; swap the product's name for an unrelated one, and if the page still fits, its composition, copy or signature move is too generic; ask whether someone could guess this design from the category alone, or mistake it for another of the user's sites (or, on a site with screens, for a page from a different site): compare how it opens, proves and ends with the patterns "This site" lists for them. Fix everything in one batch and look once more; two rounds is the ceiling.
 3. When the screen follows a reference image on the board, run compare_reference (frameId, referenceId) and fix the differences that matter: layout and tone usually, not the reference's brand colors. Compare again after fixing.
 4. Tell the user the thesis, the direction and structure you chose and what you took from each reference.`;
 
