@@ -7,6 +7,7 @@ import { PrismLoader } from "@/components/feedback/prism-loader";
 import { ApiError, apiErrorMessage } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 import { inviteQuery, rememberPendingInvite, useAcceptInvite } from "@/lib/sharing";
+import { useSignOut } from "@/lib/use-sign-out";
 
 // An invite to a board or project, sent to an email. Signed in with that email, one click
 // accepts it; otherwise the visitor signs in or signs up first and comes back here.
@@ -25,6 +26,7 @@ function InvitePage() {
   const invite = useQuery(inviteQuery(token));
   const session = authClient.useSession();
   const accept = useAcceptInvite(token);
+  const signOut = useSignOut();
 
   if (invite.isPending || session.isPending) {
     return <PrismLoader fullScreen label="Opening invite" />;
@@ -61,10 +63,9 @@ function InvitePage() {
     rememberPendingInvite(token);
     void navigate({ to });
   };
-  const switchAccount = async () => {
+  const switchAccount = () => {
     rememberPendingInvite(token);
-    await authClient.signOut();
-    await navigate({ to: "/login" });
+    return signOut();
   };
   const onAccept = () =>
     accept.mutate(undefined, {

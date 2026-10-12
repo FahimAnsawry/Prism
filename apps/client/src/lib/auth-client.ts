@@ -62,6 +62,8 @@ export async function runAuthAction(
   action: () => Promise<{ error: { code?: string | undefined } | null }>,
 ) {
   try {
+    // Its reply clears the session cookies, so it mustn't land after a new sign-in.
+    if (signingOut) await signingOut;
     const { error } = await action();
     return error ? authErrorMessage(error.code) : undefined;
   } catch (error) {
@@ -96,6 +98,27 @@ authClient.$store.listen("$sessionSignal", () => {
   lastSession = null;
 });
 
+/** A sign-out still on its way to the server. */
+let signingOut: Promise<void> | null = null;
+
+/**
+ * Signs out without waiting for the server: the tab counts as signed out at once, so /login
+ * opens straight away instead of after two round trips. Signing in again waits for it.
+ */
+export function signOut() {
+  lastSession = { at: Date.now(), data: Promise.resolve(null) };
+  const request = authClient.signOut().then(
+    () => {},
+    (error: unknown) => {
+      reportError(error, { source: "promise", during: "auth" });
+    },
+  );
+  signingOut = request;
+  void request.finally(() => {
+    if (signingOut === request) signingOut = null;
+  });
+}
+
 /**
  * Route guard: sends signed-out visitors to /login. If the server can't be reached, the route's
  * error page shows. A signed-in user's session is remembered, so moving between the dashboard
@@ -118,13 +141,16 @@ export async function requireSession() {
 
 /**
  * Route guard for /login and /signup: signed-in users go straight to the dashboard.
+ * A session checked moments ago (just signed out, or just sent here by requireSession) is reused.
  * If the session can't be checked, the form still shows; submitting it then reports the problem.
  */
 export async function redirectIfSignedIn() {
   if (inOAuthFlow()) return;
   let signedIn = false;
   try {
-    signedIn = Boolean((await authClient.getSession()).data);
+    const remembered = lastSession;
+    const fresh = remembered && Date.now() - remembered.at <= SESSION_FRESH_MS;
+    signedIn = Boolean(await (fresh ? remembered.data : checkSession()));
   } catch (error) {
     reportError(error, { source: "router", during: "session check" });
   }

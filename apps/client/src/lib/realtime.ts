@@ -13,3 +13,9 @@ export function getSocket(): PrismSocket {
   socket ??= io(import.meta.env.VITE_SERVER_URL, { withCredentials: true });
   return socket;
 }
+
+/** On sign-out: the open connection still speaks for the old account. The next use opens a new one. */
+export function closeSocket() {
+  socket?.disconnect();
+  socket = null;
+}
