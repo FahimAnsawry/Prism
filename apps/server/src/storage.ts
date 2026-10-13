@@ -1,4 +1,9 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { HttpError } from "./errors.js";
 
 // Object storage for uploaded images, configured only by the provider-neutral S3_* env vars
@@ -48,6 +53,12 @@ export async function putObject(key: string, body: Uint8Array, contentType: stri
   await client.send(
     new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }),
   );
+}
+
+/** Removes an object; a key that's already gone is fine. */
+export async function deleteObject(key: string) {
+  const { client, bucket } = requireStorage();
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 /** The object's bytes and type, or null if there's no such key. */

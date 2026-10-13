@@ -17,7 +17,7 @@ const EXTENSIONS: Record<string, string> = {
 const TYPES_BY_EXTENSION = new Map(Object.entries(EXTENSIONS).map(([type, ext]) => [ext, type]));
 
 /** Checks a raster file's first bytes, so a mislabeled upload can't be served as an image. */
-function matchesSignature(type: string, bytes: Uint8Array) {
+export function matchesSignature(type: string, bytes: Uint8Array) {
   const starts = (...signature: number[]) => signature.every((byte, i) => bytes[i] === byte);
   switch (type) {
     case "image/png":

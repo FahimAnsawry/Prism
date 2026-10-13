@@ -1,124 +1,91 @@
-import { type BoardElement, hiddenMindNodes } from "@prism/shared";
 import { useQuery } from "@tanstack/react-query";
-import { memo, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { byZ } from "@/components/board/board-model";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { fetchBoardElements } from "@/components/board/board-sync";
-import { ElementShape } from "@/components/board/element-shape";
-import { MindBranches } from "@/components/board/mind-branches";
-import { backdropOf } from "@/components/board/geometry";
-import { loadBoardFonts } from "@/components/board/text-layout";
-import { PrismLoader } from "@/components/feedback/prism-loader";
-import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import { previewBox, requestPreviewPicture, usePreviewPicture } from "./preview-pictures";
+import { ProjectLogo } from "./dashboard-parts";
+import { loadPreviewPicture, requestPreviewPicture, usePreviewPicture } from "./preview-pictures";
 import { CanvasPreview } from "./workspace-item-parts";
 
 /**
- * A board's content, drawn small. It shows the board's preview picture (preview-pictures.ts), so
- * mounting a grid of cards costs no more than their images. The elements load only when the
- * picture is missing or older than `editedAt`, once the card scrolls near the viewport; a board
- * with no picture yet draws live meanwhile.
+ * A board's cover picture (preview-pictures.ts), so mounting a grid of cards costs no more than
+ * their images. The picture is downloaded once the card scrolls near the viewport. A board that
+ * has none, or whose picture is older than `editedAt`, is drawn by an editor's tab (the board's
+ * elements load only then) and uploaded for everyone else; until a picture exists the card shows
+ * its project's logo.
  */
 export function BoardPreview({
   boardId,
+  projectId,
   itemCount,
   editedAt,
+  thumbnailEditedAt,
+  canEdit = false,
+  picturePath = `/api/boards/${boardId}/preview`,
   className,
-  load,
 }: {
   boardId: string;
+  /** The board's project, whose logo stands in until there's a picture. */
+  projectId: string | null;
   itemCount: number;
   editedAt: string;
+  /** The board `editedAt` the server's stored picture shows; null if it has none. */
+  thumbnailEditedAt: string | null;
+  /** Whether this user may draw and upload the picture (an owner or editor). */
+  canEdit?: boolean;
+  /** Where the stored picture is downloaded from (a public link has its own). */
+  picturePath?: string;
   className?: string;
-  /** Loads the elements another way than as the signed-in user (a public link). */
-  load?: () => Promise<BoardElement[]>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const near = useNearViewport(ref);
   const empty = itemCount === 0;
-  const { theme } = useTheme();
-  const otherTheme = theme === "dark" ? "light" : "dark";
-  const { picture, checked } = usePreviewPicture(boardId, theme);
-  // Kept ready too: a switch that found no picture would draw every card live mid-transition.
-  const other = usePreviewPicture(boardId, otherTheme);
-  const fresh = picture?.editedAt === editedAt;
-  const otherFresh = other.picture?.editedAt === editedAt;
-  const preview = useQuery({
-    queryKey: ["board-preview", boardId, editedAt, load ? "public" : "user"],
-    queryFn: async () => {
-      const all = await (load ? load() : fetchBoardElements(boardId));
-      // Folded mind map branches aren't shown on the board, so not here either.
-      const hidden = hiddenMindNodes(all);
-      const elements = byZ(all.filter((el) => !hidden.has(el.id)));
-      // Text is laid out with measured widths, so its fonts must be there first.
-      await loadBoardFonts(elements);
-      return elements;
-    },
-    enabled: near && !empty && checked && (!fresh || (other.checked && !otherFresh)),
-    staleTime: Infinity,
-  });
+  const picture = usePreviewPicture(boardId);
 
   useEffect(() => {
-    if (!preview.data || empty) return;
-    if (!fresh) requestPreviewPicture(boardId, editedAt, theme, preview.data);
-    if (!otherFresh) requestPreviewPicture(boardId, editedAt, otherTheme, preview.data);
-  }, [preview.data, fresh, otherFresh, empty, boardId, editedAt, theme, otherTheme]);
+    if (near && !empty && thumbnailEditedAt) {
+      loadPreviewPicture(boardId, thumbnailEditedAt, picturePath);
+    }
+  }, [near, empty, boardId, thumbnailEditedAt, picturePath]);
 
-  // Pictures are decoded before they're handed out, so a card mounting (a filter switch, the
-  // way back from a board) shows its picture in its first frame: `complete` is already true.
-  // Only a picture still decoding, or elements still loading, show the loader meanwhile.
-  const image = useRef<HTMLImageElement>(null);
-  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
-  useLayoutEffect(() => {
-    const node = image.current;
-    if (node?.complete && node.naturalWidth > 0) setLoadedUrl(node.src);
-  }, [picture?.url]);
-  const pictureShown = picture !== undefined && loadedUrl !== null;
-  const drawingLive = !picture && Boolean(preview.data);
-  const loading = !empty && !pictureShown && !drawingLive;
+  // The stored picture shows an older version of the board, or there is none.
+  const drawing =
+    near && !empty && canEdit && picture?.version !== editedAt && thumbnailEditedAt !== editedAt;
+  const elements = useQuery({
+    queryKey: ["board-preview", boardId, editedAt],
+    queryFn: () => fetchBoardElements(boardId),
+    enabled: drawing,
+    staleTime: Infinity,
+    // Big boards are heavy; the picture is all that's kept.
+    gcTime: 30_000,
+  });
+  useEffect(() => {
+    if (drawing && elements.data) requestPreviewPicture(boardId, editedAt, elements.data);
+  }, [drawing, elements.data, boardId, editedAt]);
 
   return (
     <div ref={ref} className={className}>
       <CanvasPreview empty={empty} className="size-full">
         {empty ? null : picture ? (
           <img
-            ref={image}
             src={picture.url}
             alt=""
             draggable={false}
-            onLoad={(event) => setLoadedUrl(event.currentTarget.src)}
             className={cn(
-              "pointer-events-none absolute inset-0 size-full object-contain select-none",
-              !pictureShown && "invisible",
+              "pointer-events-none absolute inset-0 size-full select-none",
+              picture.portrait ? "object-contain" : "object-cover object-top",
             )}
           />
         ) : (
-          preview.data && <PreviewDrawing elements={preview.data} />
+          <ProjectLogo
+            projectId={projectId}
+            size="lg"
+            className={cn(drawing && "motion-safe:animate-pulse")}
+          />
         )}
-        {loading && <PrismLoader className="absolute inset-0" />}
       </CanvasPreview>
     </div>
   );
 }
-
-/** The live drawing, for a board without a picture yet. */
-const PreviewDrawing = memo(function PreviewDrawing({ elements }: { elements: BoardElement[] }) {
-  const below = useMemo(() => elements.map((_, i) => backdropOf(elements, i)), [elements]);
-  const box = previewBox(elements);
-  if (!box) return null;
-  return (
-    <svg
-      viewBox={`${box.x} ${box.y} ${box.width} ${box.height}`}
-      preserveAspectRatio="xMidYMid meet"
-      className="pointer-events-none absolute inset-0 size-full select-none"
-    >
-      <MindBranches elements={elements} />
-      {elements.map((el, i) => (
-        <ElementShape key={el.id} el={el} below={below[i]} />
-      ))}
-    </svg>
-  );
-});
 
 /** True once the element comes within a screen of the viewport (and stays true). */
 function useNearViewport(ref: RefObject<HTMLElement | null>) {

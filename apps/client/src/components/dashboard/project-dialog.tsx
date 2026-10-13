@@ -139,8 +139,11 @@ export function ProjectDialog({
                         {board.kind === "board" ? (
                           <BoardPreview
                             boardId={board.id}
+                            projectId={board.projectId}
                             itemCount={board.itemCount}
                             editedAt={board.editedAt}
+                            thumbnailEditedAt={board.thumbnailEditedAt}
+                            canEdit={board.access !== "viewer"}
                             className="h-12 w-20 shrink-0 border border-divider"
                           />
                         ) : (

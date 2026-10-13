@@ -11,6 +11,7 @@ import { aiRouter } from "./routes/ai.js";
 import { elementsRouter } from "./routes/elements.js";
 import { shareRouter } from "./routes/share.js";
 import { tokensRouter } from "./routes/tokens.js";
+import { previewRouter } from "./routes/previews.js";
 import { fileRouter, uploadRouter } from "./routes/uploads.js";
 import { workspaceRouter } from "./routes/workspace.js";
 
@@ -50,6 +51,7 @@ app.use(avatarFileRouter);
 
 // These parse their own bodies (raw files, large element batches), so they come before express.json().
 app.use("/api", uploadRouter);
+app.use("/api", previewRouter);
 app.use("/api", elementsRouter);
 app.use("/api", photoRouter);
 

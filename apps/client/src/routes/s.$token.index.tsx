@@ -10,7 +10,7 @@ import { PrismMark } from "@/components/prism-logo";
 import { LinkGoneScreen, PublicBoard } from "@/components/share/public-board";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ApiError } from "@/lib/api";
-import { fetchPublicBoardElements, publicShareQuery } from "@/lib/sharing";
+import { publicShareQuery } from "@/lib/sharing";
 
 // A public view-only link: no account needed. It opens one board, or a project's list of boards.
 export const Route = createFileRoute("/s/$token/")({
@@ -95,9 +95,11 @@ function SharedProject({
                 >
                   <BoardPreview
                     boardId={board.id}
+                    projectId={project.id}
                     itemCount={board.itemCount}
                     editedAt={board.editedAt}
-                    load={() => fetchPublicBoardElements(token, board.id)}
+                    thumbnailEditedAt={board.thumbnailEditedAt}
+                    picturePath={`/api/share/${token}/boards/${board.id}/preview`}
                     className="h-[175px] shrink-0 border-b border-divider"
                   />
                   <div className="px-5 pt-3.5">

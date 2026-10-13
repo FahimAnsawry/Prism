@@ -84,6 +84,8 @@ export const publicBoardSchema = z.object({
   description: z.string().nullable(),
   itemCount: z.number().int(),
   editedAt: z.iso.datetime(),
+  /** The board `editedAt` its stored cover picture shows; null before there's one. */
+  thumbnailEditedAt: z.iso.datetime().nullable(),
 });
 
 /** What a public link opens: one board, or a project and its boards. */

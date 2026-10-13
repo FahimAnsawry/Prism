@@ -43,8 +43,11 @@ export function ProjectCard({ project, onAction }: { project: ProjectItem; onAct
             <div key={board.id} className="relative min-h-0 border border-divider">
               <BoardPreview
                 boardId={board.id}
+                projectId={project.id}
                 itemCount={board.itemCount}
                 editedAt={board.editedAt}
+                thumbnailEditedAt={board.thumbnailEditedAt}
+                canEdit={project.access !== "viewer"}
                 className="absolute inset-0"
               />
               <span className="absolute inset-x-0 top-0 truncate bg-card/85 px-2 py-0.5 text-[11px] leading-4 font-bold text-foreground">
@@ -184,8 +187,11 @@ export function ProjectRow({
             <Link to="/board/$boardId" params={{ boardId: board.id }} className="group/tile block">
               <BoardPreview
                 boardId={board.id}
+                projectId={project.id}
                 itemCount={board.itemCount}
                 editedAt={board.editedAt}
+                thumbnailEditedAt={board.thumbnailEditedAt}
+                canEdit={project.access !== "viewer"}
                 className="aspect-[16/10] border border-divider transition-colors duration-150 ease-standard group-hover/tile:border-input"
               />
               <span className="mt-1.5 block truncate text-xs font-bold text-foreground">

@@ -188,6 +188,7 @@ export async function boardForShareToken(tokenParam: unknown, boardIdParam: unkn
       name: true,
       description: true,
       editedAt: true,
+      thumbnailEditedAt: true,
       project: { select: { name: true } },
       owner: { select: { name: true } },
       _count: { select: { elements: { where: { deletedAt: null } } } },

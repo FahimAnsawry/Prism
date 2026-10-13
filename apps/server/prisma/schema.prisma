@@ -32,12 +32,12 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions     Session[]
-  accounts     Account[]
-  projects     Project[]
-  boards       Board[]
-  apiTokens    ApiToken[]
-  editRequests EditRequest[]
+  sessions      Session[]
+  accounts      Account[]
+  projects      Project[]
+  boards        Board[]
+  apiTokens     ApiToken[]
+  editRequests  EditRequest[]
   boardShares   BoardMember[]   @relation("BoardMemberUser")
   projectShares ProjectMember[] @relation("ProjectMemberUser")
   invitesSent   ShareInvite[]
@@ -171,25 +171,27 @@ model Project {
 // One whiteboard. projectId = null means a standalone board.
 // ownerId must equal project.ownerId when projectId is set (checked in app code).
 model Board {
-  id           String    @id @default(uuid())
-  ownerId      String
-  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  projectId    String?
-  project      Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name         String    @default("Untitled board")
-  description  String?
-  // S3 object key of the PNG preview shown on dashboard cards.
-  thumbnailKey String?
+  id                String    @id @default(uuid())
+  ownerId           String
+  owner             User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name              String    @default("Untitled board")
+  description       String?
+  // S3 object key of the cover picture (a WebP or PNG of the cover frame) shown on dashboard
+  // cards, and the board `editedAt` it was drawn from: the picture is stale while this is older.
+  thumbnailKey      String?
+  thumbnailEditedAt DateTime?
   // Swatches added with the color picker (#rrggbb) and Google Fonts family names, newest first.
-  customColors String[]  @default([])
-  customFonts  String[]  @default([])
+  customColors      String[]  @default([])
+  customFonts       String[]  @default([])
   // Secret for the public view-only link (/s/<token>). null = off.
-  shareToken   String?   @unique
+  shareToken        String?   @unique
   // Last content change (rename or any element change).
-  editedAt     DateTime  @default(now())
-  archivedAt   DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  editedAt          DateTime  @default(now())
+  archivedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   elements     Element[]
   editRequests EditRequest[]

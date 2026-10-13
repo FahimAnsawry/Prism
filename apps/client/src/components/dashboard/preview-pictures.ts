@@ -1,38 +1,45 @@
-// Dashboard previews as pictures. A card's live drawing is costly to mount (every element, with
-// its shadows and filters), and the grid mounts all of them at once: on a filter change, on a
-// switch of view, on the way back from a board. So each board's preview is drawn once per
-// version and theme (both, so a theme switch only swaps pictures), rasterized and kept, in
-// memory for this page and in Cache Storage across visits.
-// Cards show the picture (an older one while the new one is made); only a board that was never
-// pictured draws live, until its picture is ready.
+// Dashboard previews as cover pictures. A board's card shows one small picture of its cover
+// frame (the leftmost frame; a board without frames fits the whole drawing). The picture lives on
+// the server, so every device downloads a few KB instead of drawing the board. Whichever editor
+// finds it older than the board draws a new one in this tab and uploads it (the server keeps the
+// newest); the board's other viewers then just download it.
+// Pictures are drawn in the light theme only, on a background of their own, and shown as they are.
 
-import type { BoardElement } from "@prism/shared";
-import { useEffect, useSyncExternalStore } from "react";
-import { boundsOf, type Box } from "@/components/board/geometry";
-import type { Theme } from "@/lib/theme";
+import { hiddenMindNodes, previewStoredSchema, type BoardElement } from "@prism/shared";
+import { useSyncExternalStore } from "react";
+import { byZ } from "@/components/board/board-model";
+import { boundsOf, type Box, elementBounds, intersects } from "@/components/board/geometry";
+import { apiFetch } from "@/lib/api";
 
-const CACHE_NAME = "prism-previews-v1";
 /** Longest side of a picture in px: sharp on a 2x screen at a card's widest. */
-const PICTURE_SIDE = 900;
-/** Space around the drawing, as a share of its larger side. */
+const PICTURE_SIDE = 640;
+/** Space around a whole-board drawing, as a share of its larger side. */
 const PADDING = 0.08;
 /** The smallest area shown (world px), so a lone sticky note isn't blown up to fill the card. */
 const MIN_VIEW = 600;
+/** A whole-board picture is drawn at this width : height, so a card that crops to fill loses nothing. */
+const CARD_ASPECT = 2;
+/** The previous version kept pictures per browser in Cache Storage. */
+const LEGACY_CACHE = "prism-previews-v1";
 
 export interface PreviewPicture {
   /** An object URL of the image. */
   url: string;
-  /** The board version it shows. */
-  editedAt: string;
+  /** The board `editedAt` it shows. */
+  version: string;
+  /** Taller than wide (a phone screen): shown whole instead of cropped to fill the card. */
+  portrait: boolean;
 }
 
-/** The board area a preview shows: the drawing, padded, never smaller than MIN_VIEW. */
-export function previewBox(elements: BoardElement[]): Box | null {
+/** The board area a whole-board picture shows: the drawing, padded, at the card's proportions. */
+function wholeBoardBox(elements: BoardElement[]): Box | null {
   const bounds = boundsOf(elements);
   if (!bounds) return null;
   const pad = Math.max(bounds.width, bounds.height) * PADDING;
-  const width = Math.max(bounds.width + pad * 2, MIN_VIEW);
-  const height = Math.max(bounds.height + pad * 2, MIN_VIEW);
+  let width = Math.max(bounds.width + pad * 2, MIN_VIEW);
+  let height = Math.max(bounds.height + pad * 2, MIN_VIEW);
+  if (width / height < CARD_ASPECT) width = height * CARD_ASPECT;
+  else height = width / CARD_ASPECT;
   return {
     x: bounds.x + bounds.width / 2 - width / 2,
     y: bounds.y + bounds.height / 2 - height / 2,
@@ -41,35 +48,31 @@ export function previewBox(elements: BoardElement[]): Box | null {
   };
 }
 
+/**
+ * What a board's cover picture shows: the leftmost frame (the topmost of those) with what lies
+ * on it, or the whole drawing when the board has no frames. Null for an empty board.
+ */
+export function coverRegion(all: BoardElement[]): { box: Box; shown: BoardElement[] } | null {
+  // Folded mind map branches aren't on the board, so not in its picture either.
+  const hidden = hiddenMindNodes(all);
+  const elements = byZ(all.filter((el) => !hidden.has(el.id)));
+  let cover: BoardElement | undefined;
+  for (const el of elements) {
+    if (el.type !== "frame") continue;
+    if (!cover || el.x < cover.x || (el.x === cover.x && el.y < cover.y)) cover = el;
+  }
+  if (cover) {
+    const box = elementBounds(cover);
+    return { box, shown: elements.filter((el) => intersects(elementBounds(el), box)) };
+  }
+  const box = wholeBoardBox(elements);
+  return box ? { box, shown: elements } : null;
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────
 
-/** Colors are baked into a picture, so each theme has its own. */
-const keyOf = (boardId: string, theme: Theme) => `${boardId}:${theme}`;
-const requestFor = (boardId: string, theme: Theme) =>
-  new Request(new URL(`/__prism-preview/${encodeURIComponent(boardId)}/${theme}`, location.origin));
-
+/** The newest picture known for each board, in memory for this page. */
 const pictures = new Map<string, PreviewPicture>();
-/** The decoded image behind each picture, held so the browser keeps it ready to paint. */
-const decodedImages = new Map<string, HTMLImageElement>();
-
-/**
- * An object URL for `blob`, decoded: an <img> given it later paints in its first frame instead
- * of showing nothing until it decodes.
- */
-async function decodedUrl(key: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const image = new Image();
-  image.src = url;
-  try {
-    await image.decode();
-  } catch {
-    // Shown anyway; the card's loader covers the decode.
-  }
-  decodedImages.set(key, image);
-  return url;
-}
-/** Keys whose stored picture was looked up (found or not). */
-const checked = new Set<string>();
 const listeners = new Set<() => void>();
 
 const notify = () => {
@@ -80,75 +83,77 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener);
 };
 
-function setPicture(key: string, picture: PreviewPicture) {
-  const old = pictures.get(key);
-  pictures.set(key, picture);
-  // An <img> that already shows the old picture keeps it; nothing new loads it.
-  if (old) URL.revokeObjectURL(old.url);
-  notify();
-}
-
-/** Cache Storage, where the browser has it (secure origins only). */
-async function openCache() {
-  try {
-    return "caches" in window ? await caches.open(CACHE_NAME) : null;
-  } catch {
-    return null;
-  }
-}
-
-const lookups = new Map<string, Promise<void>>();
-
-/** Reads the stored picture into memory, once per key. */
-function lookUp(boardId: string, theme: Theme) {
-  const key = keyOf(boardId, theme);
-  let pending = lookups.get(key);
-  if (!pending) {
-    pending = (async () => {
-      try {
-        const response = await (await openCache())?.match(requestFor(boardId, theme));
-        const editedAt = response?.headers.get("x-edited-at");
-        // A picture made meanwhile is newer than the stored one.
-        if (response && editedAt && !pictures.has(key)) {
-          const url = await decodedUrl(key, await response.blob());
-          if (!pictures.has(key)) setPicture(key, { url, editedAt });
-          else URL.revokeObjectURL(url);
-        }
-      } catch {
-        // No stored picture: the card draws live.
-      }
-      checked.add(key);
-      notify();
-    })();
-    lookups.set(key, pending);
-  }
-  return pending;
+/** The board's picture, if one is known (it may show an older version of the board). */
+export function usePreviewPicture(boardId: string) {
+  return useSyncExternalStore(subscribe, () => pictures.get(boardId));
 }
 
 /**
- * The board's preview picture in `theme`, if there is one (it may show an older version), and
- * whether storage was checked yet: until then a card shows nothing rather than draw live.
+ * Keeps `blob` as the board's picture for `version`, unless a newer one is already known. The
+ * image is decoded first: an <img> given it later paints in its first frame.
  */
-export function usePreviewPicture(boardId: string, theme: Theme) {
-  const key = keyOf(boardId, theme);
-  useEffect(() => {
-    void lookUp(boardId, theme);
-  }, [boardId, theme]);
-  const picture = useSyncExternalStore(subscribe, () => pictures.get(key));
-  const ready = useSyncExternalStore(subscribe, () => checked.has(key));
-  return { picture, checked: ready };
+async function keepPicture(boardId: string, version: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const image = new Image();
+  image.src = url;
+  try {
+    await image.decode();
+  } catch {
+    // Shown anyway; it simply decodes when it paints.
+  }
+  const known = pictures.get(boardId);
+  if (known && known.version > version) {
+    URL.revokeObjectURL(url);
+    return;
+  }
+  // An <img> that already shows the old picture keeps it; nothing new loads it.
+  if (known) URL.revokeObjectURL(known.url);
+  pictures.set(boardId, {
+    url,
+    version,
+    portrait: image.naturalHeight > image.naturalWidth * 1.15,
+  });
+  notify();
+}
+
+let cleanedLegacy = false;
+function cleanLegacyCache() {
+  if (cleanedLegacy) return;
+  cleanedLegacy = true;
+  try {
+    if ("caches" in window) void caches.delete(LEGACY_CACHE).catch(() => undefined);
+  } catch {
+    // Nothing stored.
+  }
+}
+
+/** Downloads (once per version) the picture the server holds, shown for `version` of the board. */
+const downloads = new Set<string>();
+export function loadPreviewPicture(boardId: string, version: string, path: string) {
+  const known = pictures.get(boardId);
+  const job = `${boardId}@${version}`;
+  if ((known && known.version >= version) || downloads.has(job)) return;
+  downloads.add(job);
+  cleanLegacyCache();
+  void (async () => {
+    try {
+      // The version in the URL keeps the browser's cache from serving an older picture.
+      const url = new URL(path, import.meta.env.VITE_SERVER_URL);
+      url.searchParams.set("v", version);
+      const response = await fetch(url, { credentials: "include" });
+      if (response.ok) await keepPicture(boardId, version, await response.blob());
+    } catch {
+      // The card keeps its placeholder.
+    }
+  })();
 }
 
 // ── Making pictures ───────────────────────────────────────────────────────
 
-/**
- * One picture at a time, in idle time, so making them never holds up the page. Pictures in the
- * theme on screen come first; the other theme's are made after, so switching finds them ready.
- */
+/** One picture at a time, in idle time, so making them never holds up the page. */
 const queue: (() => Promise<void>)[] = [];
-const later: (() => Promise<void>)[] = [];
 let draining = false;
-/** Pictures asked for (key and version), so a card rendering again doesn't ask twice. */
+/** Pictures asked for (board and version), so a card rendering again doesn't ask twice. */
 const requested = new Set<string>();
 
 const idle = () =>
@@ -160,11 +165,10 @@ const idle = () =>
 async function drain() {
   if (draining) return;
   draining = true;
-  while (queue.length > 0 || later.length > 0) {
+  while (queue.length > 0) {
     await idle();
-    const job = queue.shift() ?? later.shift();
     try {
-      await job?.();
+      await queue.shift()?.();
     } catch (error) {
       console.warn("[Prism] Couldn't make a board preview:", error);
     }
@@ -172,62 +176,45 @@ async function drain() {
   draining = false;
 }
 
-const currentTheme = (): Theme =>
-  document.documentElement.classList.contains("dark") ? "dark" : "light";
-
 /**
- * Makes the picture of `elements` (the board as of `editedAt`, bottom layer first, folded
- * branches left out) in `theme`, then keeps it.
+ * Draws the cover picture of `elements` (the board as of `editedAt`), shows it at once and
+ * uploads it. If the upload fails the picture still shows for this visit.
  */
-export function requestPreviewPicture(
-  boardId: string,
-  editedAt: string,
-  theme: Theme,
-  elements: BoardElement[],
-) {
-  const key = keyOf(boardId, theme);
-  const job = `${key}@${editedAt}`;
-  if (requested.has(job) || pictures.get(key)?.editedAt === editedAt) return;
+export function requestPreviewPicture(boardId: string, editedAt: string, elements: BoardElement[]) {
+  const job = `${boardId}@${editedAt}`;
+  if (requested.has(job) || pictures.get(boardId)?.version === editedAt) return;
   requested.add(job);
-  (theme === currentTheme() ? queue : later).push(async () => {
-    const box = previewBox(elements);
-    // Found in storage meanwhile.
-    if (!box || pictures.get(key)?.editedAt === editedAt) return;
+  queue.push(async () => {
+    const region = coverRegion(elements);
+    if (!region || pictures.get(boardId)?.version === editedAt) return;
     const { canvasBlob, drawSvg, renderSvg } = await import("@/components/board/export-image");
-    const scale = PICTURE_SIDE / Math.max(box.width, box.height);
-    const width = Math.max(1, Math.round(box.width * scale));
-    const height = Math.max(1, Math.round(box.height * scale));
-    const markup = await renderSvg(elements, box, width, height, { background: false, theme });
+    const scale = PICTURE_SIDE / Math.max(region.box.width, region.box.height);
+    const width = Math.max(1, Math.round(region.box.width * scale));
+    const height = Math.max(1, Math.round(region.box.height * scale));
+    const markup = await renderSvg(region.shown, region.box, width, height, { theme: "light" });
     const canvas = await drawSvg(markup, width, height);
     // WebP where the browser can encode it (it falls back to PNG elsewhere).
-    const blob = await canvasBlob(canvas, "image/webp", 0.85);
-    // A newer version may have been pictured meanwhile.
-    const shown = pictures.get(key);
-    if (shown && shown.editedAt > editedAt) return;
-    setPicture(key, { url: await decodedUrl(key, blob), editedAt });
-    const cache = await openCache();
-    await cache?.put(
-      requestFor(boardId, theme),
-      new Response(blob, { headers: { "content-type": blob.type, "x-edited-at": editedAt } }),
-    );
+    const blob = await canvasBlob(canvas, "image/webp", 0.82);
+    await keepPicture(boardId, editedAt, blob);
+    try {
+      await apiFetch(
+        `/api/boards/${boardId}/preview?editedAt=${encodeURIComponent(editedAt)}`,
+        previewStoredSchema,
+        { method: "PUT", body: blob },
+      );
+    } catch (error) {
+      console.warn("[Prism] Couldn't save a board preview:", error);
+    }
   });
   void drain();
 }
 
 /** Drops every picture (signing out: the next user of this browser shouldn't have them). */
-export async function forgetPreviewPictures() {
+export function forgetPreviewPictures() {
   for (const picture of pictures.values()) URL.revokeObjectURL(picture.url);
   pictures.clear();
-  decodedImages.clear();
-  checked.clear();
-  lookups.clear();
+  downloads.clear();
   requested.clear();
   queue.length = 0;
-  later.length = 0;
   notify();
-  try {
-    if ("caches" in window) await caches.delete(CACHE_NAME);
-  } catch {
-    // Nothing stored.
-  }
 }

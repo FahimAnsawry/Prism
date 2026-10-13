@@ -31,6 +31,7 @@ import {
   shareTokenParam,
   uuidParam,
 } from "./board-access.js";
+import { sendPreview } from "./previews.js";
 
 // Sharing a board or a project: the owner's Share dialog (members, invites, the public link),
 // invite links, and the public view-only pages, which need no account.
@@ -346,6 +347,7 @@ const publicBoardSelect = {
   name: true,
   description: true,
   editedAt: true,
+  thumbnailEditedAt: true,
   _count: { select: { elements: { where: { deletedAt: null } } } },
 } as const;
 
@@ -354,6 +356,7 @@ function toPublicBoard(row: {
   name: string;
   description: string | null;
   editedAt: Date;
+  thumbnailEditedAt: Date | null;
   _count: { elements: number };
 }): PublicBoard {
   return {
@@ -362,6 +365,7 @@ function toPublicBoard(row: {
     description: row.description,
     itemCount: row._count.elements,
     editedAt: row.editedAt.toISOString(),
+    thumbnailEditedAt: row.thumbnailEditedAt?.toISOString() ?? null,
   };
 }
 
@@ -407,6 +411,13 @@ shareRouter.get("/share/:token", async (req, res) => {
       boards: project.boards.map(toPublicBoard),
     },
   } satisfies PublicShare);
+});
+
+/** The cover picture of a board behind a public link (what the project page's cards show). */
+shareRouter.get("/share/:token/boards/:boardId/preview", async (req, res) => {
+  const board = await boardForShareToken(req.params.token, req.params.boardId);
+  if (!board) throw notFound(LINK_GONE);
+  await sendPreview(res, board.id);
 });
 
 /** One board behind a public link, with its elements. */

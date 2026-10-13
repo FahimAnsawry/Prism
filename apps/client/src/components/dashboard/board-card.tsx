@@ -56,8 +56,11 @@ export function BoardCard({
       >
         <BoardPreview
           boardId={board.id}
+          projectId={board.projectId}
           itemCount={board.itemCount}
           editedAt={board.editedAt}
+          thumbnailEditedAt={board.thumbnailEditedAt}
+          canEdit={board.access !== "viewer"}
           className="h-[132px] shrink-0 border-b border-divider"
         />
         <div className="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-3.5">
@@ -169,8 +172,11 @@ export function BoardTable({
                 >
                   <BoardPreview
                     boardId={board.id}
+                    projectId={board.projectId}
                     itemCount={board.itemCount}
                     editedAt={board.editedAt}
+                    thumbnailEditedAt={board.thumbnailEditedAt}
+                    canEdit={board.access !== "viewer"}
                     className="h-9 w-14 border border-divider"
                   />
                   <span className="min-w-0">

@@ -32,7 +32,7 @@ export async function apiFetch<T>(
     body,
     headers,
   }: {
-    method?: "GET" | "POST" | "PATCH" | "DELETE";
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     headers?: Record<string, string>;
   } = {},
