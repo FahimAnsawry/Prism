@@ -107,7 +107,8 @@ export function SiteHeader() {
     >
       <nav aria-label="Main">
         <div className={cn(pageContainer, "flex items-center justify-between gap-6 py-2.5")}>
-          <PrismLogo compact />
+          {/* The hero's prism flight starts from this logo's i and builds its mark. */}
+          <PrismLogo compact flight />
 
           <div className="flex items-center gap-3 sm:gap-5">
             <ThemeToggle className="size-[38px] border border-input hover:bg-card" />

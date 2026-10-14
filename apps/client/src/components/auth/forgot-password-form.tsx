@@ -45,7 +45,10 @@ export function ForgotPasswordForm() {
         </h1>
         <div className="mt-4 border border-brand bg-card p-6 text-foreground">
           <div className="flex items-start gap-3">
-            <span aria-hidden="true" className="mt-1 flex size-5 shrink-0 items-center justify-center bg-brand text-slate">
+            <span
+              aria-hidden="true"
+              className="mt-1 flex size-5 shrink-0 items-center justify-center bg-brand text-slate"
+            >
               <Check className="size-3.5 stroke-[3]" />
             </span>
             <div>
@@ -61,10 +64,7 @@ export function ForgotPasswordForm() {
         </div>
 
         <div className="mt-6 flex flex-col gap-3">
-          <Link
-            to="/login"
-            className={ctaVariants({ size: "block" })}
-          >
+          <Link to="/login" className={ctaVariants({ size: "block" })}>
             Back to log in
             <ArrowRight aria-hidden="true" />
           </Link>

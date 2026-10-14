@@ -46,8 +46,8 @@ declare module "@tanstack/react-router" {
 }
 
 /**
- * The startup splash belongs to the landing page, whose hero waits for it. App pages (the
- * dashboard, boards, sign-in) open straight away: a fixed 1.8s cover only made them feel slow.
+ * The startup loader belongs to the landing page, whose hero waits for it. App pages (the
+ * dashboard, boards, sign-in) open straight away.
  */
 const SPLASH_PATH = /^\/?$/;
 
@@ -69,7 +69,7 @@ createRoot(rootElement, {
           <Suspense fallback={<PrismLoader fullScreen />}>
             <RouterProvider router={router} />
           </Suspense>
-          {/* Only the landing page opens behind the splash. */}
+          {/* Only the landing page opens behind the loader. */}
           <AppSplash skip={!SPLASH_PATH.test(router.state.location.pathname)} />
         </QueryClientProvider>
       </ThemeProvider>

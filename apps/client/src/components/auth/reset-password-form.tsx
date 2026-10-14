@@ -10,13 +10,7 @@ import { authClient, authErrorMessage, runAuthAction } from "@/lib/auth-client";
 import { FormError, FormField } from "./form-field";
 import { PasswordStrength } from "./password-strength";
 
-export function ResetPasswordForm({
-  token,
-  tokenError,
-}: {
-  token?: string;
-  tokenError?: string;
-}) {
+export function ResetPasswordForm({ token, tokenError }: { token?: string; tokenError?: string }) {
   const [formError, setFormError] = useState<string | undefined>(() =>
     tokenError ? authErrorMessage(tokenError) : undefined,
   );
@@ -65,16 +59,10 @@ export function ResetPasswordForm({
           This password reset link is invalid or has expired.
         </p>
 
-        <FormError
-          message={formError ?? "Invalid or expired reset link."}
-          className="mt-5"
-        />
+        <FormError message={formError ?? "Invalid or expired reset link."} className="mt-5" />
 
         <div className="mt-6 flex flex-col gap-3">
-          <Link
-            to="/forgot-password"
-            className={ctaVariants({ size: "block" })}
-          >
+          <Link to="/forgot-password" className={ctaVariants({ size: "block" })}>
             Request new reset link
             <ArrowRight aria-hidden="true" />
           </Link>
@@ -100,7 +88,10 @@ export function ResetPasswordForm({
         </h1>
         <div className="mt-4 border border-brand bg-card p-6 text-foreground">
           <div className="flex items-start gap-3">
-            <span aria-hidden="true" className="mt-1 flex size-5 shrink-0 items-center justify-center bg-brand text-slate">
+            <span
+              aria-hidden="true"
+              className="mt-1 flex size-5 shrink-0 items-center justify-center bg-brand text-slate"
+            >
               <Check className="size-3.5 stroke-[3]" />
             </span>
             <div>
@@ -108,17 +99,15 @@ export function ResetPasswordForm({
                 Your password has been successfully reset.
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                You have been signed out of Prism on every other device. You can now log in with your new password.
+                You have been signed out of Prism on every other device. You can now log in with
+                your new password.
               </p>
             </div>
           </div>
         </div>
 
         <div className="mt-6">
-          <Link
-            to="/login"
-            className={ctaVariants({ size: "block" })}
-          >
+          <Link to="/login" className={ctaVariants({ size: "block" })}>
             Log in
             <ArrowRight aria-hidden="true" />
           </Link>

@@ -6,6 +6,7 @@ import {
   MindMapArt,
   WireframeArt,
 } from "@/components/landing/view-art";
+import { CENTER_FACET, CORNER_FACETS } from "@/components/prism-shapes";
 
 type ArtComponent = ComponentType<
   Omit<SVGProps<SVGSVGElement>, "viewBox"> & { tone?: "theme" | "light" }
@@ -42,17 +43,22 @@ export function PrismPanel({ button }: { button: string }) {
           </pattern>
         </defs>
         <rect x="-4000" y="-4000" width="8000" height="8900" fill="url(#prism-panel-dots)" />
-        <path d="M-4000 -1737 352 468" strokeWidth="3" strokeLinecap="round" className="stroke-fog" />
+        <path
+          d="M-4000 -1737 352 468"
+          strokeWidth="3"
+          strokeLinecap="round"
+          className="stroke-fog"
+        />
         <g strokeWidth="3" strokeLinecap="round">
           {RAYS.map(({ y, from, stroke }) => (
             <path key={y} d={`M${from[0]} ${from[1]} 540 ${y}`} className={stroke} />
           ))}
         </g>
         <g transform="translate(306 400) scale(3)">
-          <path className="fill-fog" d="M18 0 25.86 15.72H10.14Z" />
-          <path className="fill-fog" d="M7.86 20.28 15.72 36H0Z" />
-          <path className="fill-fog" d="M28.14 20.28 36 36H20.28Z" />
-          <path className="fill-brand" d="M10.14 18.54h15.72L18 34.26Z" />
+          {CORNER_FACETS.map((d) => (
+            <path key={d} className="fill-fog" d={d} />
+          ))}
+          <path className="fill-brand" d={CENTER_FACET} />
         </g>
         {RAYS.map(({ y, art: Art }) => (
           <g key={y}>

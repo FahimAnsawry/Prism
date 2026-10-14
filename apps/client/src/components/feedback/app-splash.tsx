@@ -3,11 +3,11 @@ import { cn } from "@/lib/utils";
 import { PrismLoader } from "./prism-loader";
 import { finishSplash } from "./splash-state";
 
-const SPLASH_MS = 1500;
-const FADE_MS = 300;
+const SPLASH_MS = 500;
+const FADE_MS = 0;
 
 /**
- * Startup splash: covers the app with the loader for 1.5s on the first load, then fades out.
+ * Startup splash: covers the app with the loader for 0.5s on the first load, then lifts.
  * The router renders underneath meanwhile, so the page is ready when the splash lifts. The
  * wrapper is opaque from the first frame, so only the mark itself fades in. Client
  * navigation never remounts it, so it plays once per page load. `skip` drops it entirely.

@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="1.24 2.47 33.53 33.53">
   <style>
-    .ink { fill: #3d3b4f; }
+    .ink { fill: #2a2a2a; }
     @media (prefers-color-scheme: dark) { .ink { fill: #eeeeee; } }
   </style>
-  <path class="ink" d="M18 0 25.86 15.72H10.14Z" />
-  <path class="ink" d="M7.86 20.28 15.72 36H0Z" />
-  <path class="ink" d="M28.14 20.28 36 36H20.28Z" />
-  <path fill="#28e99f" d="M10.14 18.54h15.72L18 34.26Z" />
+  <path class="ink" d="M19.79 3.58L24.41 12.83A2 2 0 0 1 22.62 15.72L13.38 15.72A2 2 0 0 1 11.59 12.83L16.21 3.58A2 2 0 0 1 19.79 3.58Z" />
+  <path class="ink" d="M9.65 23.86L14.27 33.11A2 2 0 0 1 12.48 36L3.24 36A2 2 0 0 1 1.45 33.11L6.07 23.86A2 2 0 0 1 9.65 23.86Z" />
+  <path class="ink" d="M29.93 23.86L34.55 33.11A2 2 0 0 1 32.76 36L23.52 36A2 2 0 0 1 21.73 33.11L26.35 23.86A2 2 0 0 1 29.93 23.86Z" />
+  <path fill="#28e99f" d="M13.38 18.54L22.62 18.54A2 2 0 0 1 24.41 21.43L19.79 30.68A2 2 0 0 1 16.21 30.68L11.59 21.43A2 2 0 0 1 13.38 18.54Z" />
 </svg>

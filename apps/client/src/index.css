@@ -146,6 +146,339 @@
   --animate-facet-break:
     facet-break 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both,
     facet-drift 3.6s ease-in-out 1.1s infinite;
+  /* PrismLogo: the i's dot flies over and builds the mark one facet at a time (it lands on each
+     at 18%, 32%, 46% and 62%), then flies home. Its wings show only on the flights out and
+     home. On each landing the dot sinks into the facet that pops in, through animation-delay:
+     0.7s, 1.25s, 1.8s and 2.42s, then comes back out for the next hop. */
+  --animate-logo-dot-travel: logo-dot-travel 3.9s linear;
+  --animate-logo-dot-land: logo-dot-land 3.9s linear both;
+  --animate-logo-facet-pop: logo-facet-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-logo-wings:
+    logo-wings-show 3.9s linear both, logo-wing-flap 0.32s ease-in-out infinite alternate;
+  /* The landing page's prism flight (landing/prism-flight.tsx) beats its wings twice per long
+     flight (`logo-wing-beat`, set by the wing's own class) and shows or hides them itself. */
+  --animate-hero-glow: hero-glow 250ms ease-out both;
+
+  /* Sampled every 1% from smooth arcs, so the linear timing only eases at each takeoff and
+     landing. Offsets are in the logo's svg units, from the dot's home on the i to each facet's
+     center; the dot leans into each hop, grows to facet size and flips into the center facet. */
+  @keyframes logo-dot-travel {
+    0%,
+    2% {
+      transform: translate(0px, 0px) scale(1) rotate(0deg);
+    }
+    3% {
+      transform: translate(-1.27px, -0.49px) scale(1) rotate(-0.3deg);
+    }
+    4% {
+      transform: translate(-5.02px, -1.89px) scale(1.02) rotate(-1.19deg);
+    }
+    5% {
+      transform: translate(-11.12px, -3.92px) scale(1.03) rotate(-2.62deg);
+    }
+    6% {
+      transform: translate(-19.33px, -6.23px) scale(1.06) rotate(-4.44deg);
+    }
+    7% {
+      transform: translate(-29.33px, -8.37px) scale(1.09) rotate(-6.43deg);
+    }
+    8% {
+      transform: translate(-40.74px, -9.9px) scale(1.12) rotate(-8.25deg);
+    }
+    9% {
+      transform: translate(-53.12px, -10.46px) scale(1.16) rotate(-9.53deg);
+    }
+    10% {
+      transform: translate(-66px, -9.85px) scale(1.2) rotate(-10deg);
+    }
+    11% {
+      transform: translate(-78.88px, -8.01px) scale(1.24) rotate(-9.53deg);
+    }
+    12% {
+      transform: translate(-91.26px, -5.07px) scale(1.28) rotate(-8.25deg);
+    }
+    13% {
+      transform: translate(-102.67px, -1.37px) scale(1.31) rotate(-6.43deg);
+    }
+    14% {
+      transform: translate(-112.67px, 2.68px) scale(1.34) rotate(-4.44deg);
+    }
+    15% {
+      transform: translate(-120.88px, 6.55px) scale(1.37) rotate(-2.62deg);
+    }
+    16% {
+      transform: translate(-126.98px, 9.76px) scale(1.38) rotate(-1.19deg);
+    }
+    17% {
+      transform: translate(-130.73px, 11.86px) scale(1.4) rotate(-0.3deg);
+    }
+    18%,
+    21% {
+      transform: translate(-132px, 12.6px) scale(1.4) rotate(0deg);
+    }
+    22% {
+      transform: translate(-132.37px, 12.06px) scale(1.4) rotate(-0.51deg);
+    }
+    23% {
+      transform: translate(-133.44px, 10.78px) scale(1.4) rotate(-1.97deg);
+    }
+    24% {
+      transform: translate(-135.14px, 9.68px) scale(1.4) rotate(-4.13deg);
+    }
+    25% {
+      transform: translate(-137.32px, 9.91px) scale(1.4) rotate(-6.36deg);
+    }
+    26% {
+      transform: translate(-139.8px, 12.42px) scale(1.4) rotate(-7.8deg);
+    }
+    27% {
+      transform: translate(-142.4px, 17.58px) scale(1.4) rotate(-7.8deg);
+    }
+    28% {
+      transform: translate(-144.88px, 24.99px) scale(1.4) rotate(-6.36deg);
+    }
+    29% {
+      transform: translate(-147.06px, 33.45px) scale(1.4) rotate(-4.13deg);
+    }
+    30% {
+      transform: translate(-148.76px, 41.32px) scale(1.4) rotate(-1.97deg);
+    }
+    31% {
+      transform: translate(-149.83px, 46.89px) scale(1.4) rotate(-0.51deg);
+    }
+    32%,
+    35% {
+      transform: translate(-150.2px, 48.9px) scale(1.4) rotate(0deg);
+    }
+    36% {
+      transform: translate(-149.46px, 48.27px) scale(1.4) rotate(0.51deg);
+    }
+    37% {
+      transform: translate(-147.32px, 46.56px) scale(1.4) rotate(1.97deg);
+    }
+    38% {
+      transform: translate(-143.94px, 44.33px) scale(1.4) rotate(4.13deg);
+    }
+    39% {
+      transform: translate(-139.59px, 42.28px) scale(1.4) rotate(6.36deg);
+    }
+    40% {
+      transform: translate(-134.63px, 41.06px) scale(1.4) rotate(7.8deg);
+    }
+    41% {
+      transform: translate(-129.47px, 41.06px) scale(1.4) rotate(7.8deg);
+    }
+    42% {
+      transform: translate(-124.51px, 42.28px) scale(1.4) rotate(6.36deg);
+    }
+    43% {
+      transform: translate(-120.16px, 44.33px) scale(1.4) rotate(4.13deg);
+    }
+    44% {
+      transform: translate(-116.78px, 46.56px) scale(1.4) rotate(1.97deg);
+    }
+    45% {
+      transform: translate(-114.64px, 48.27px) scale(1.4) rotate(0.51deg);
+    }
+    46%,
+    49% {
+      transform: translate(-113.9px, 48.9px) scale(1.4) rotate(0deg);
+    }
+    50% {
+      transform: translate(-114.16px, 48.12px) scale(1.4) rotate(2.34deg);
+    }
+    51% {
+      transform: translate(-114.94px, 45.94px) scale(1.4) rotate(9.24deg);
+    }
+    52% {
+      transform: translate(-116.18px, 42.76px) scale(1.4) rotate(20.32deg);
+    }
+    53% {
+      transform: translate(-117.81px, 39.15px) scale(1.4) rotate(35.11deg);
+    }
+    54% {
+      transform: translate(-119.74px, 35.74px) scale(1.4) rotate(52.99deg);
+    }
+    55% {
+      transform: translate(-121.86px, 33.08px) scale(1.4) rotate(73.26deg);
+    }
+    56% {
+      transform: translate(-124.04px, 31.52px) scale(1.4) rotate(94.96deg);
+    }
+    57% {
+      transform: translate(-126.16px, 31.13px) scale(1.4) rotate(116.82deg);
+    }
+    58% {
+      transform: translate(-128.09px, 31.77px) scale(1.4) rotate(137.36deg);
+    }
+    59% {
+      transform: translate(-129.72px, 33.03px) scale(1.4) rotate(155.06deg);
+    }
+    60% {
+      transform: translate(-130.96px, 34.43px) scale(1.4) rotate(168.62deg);
+    }
+    61% {
+      transform: translate(-131.74px, 35.5px) scale(1.4) rotate(177.11deg);
+    }
+    62%,
+    65% {
+      transform: translate(-132px, 35.9px) scale(1.4) rotate(180deg);
+    }
+    66% {
+      transform: translate(-131.26px, 35.17px) scale(1.4) rotate(181.18deg);
+    }
+    67% {
+      transform: translate(-129.07px, 33.02px) scale(1.39) rotate(184.7deg);
+    }
+    68% {
+      transform: translate(-125.46px, 29.61px) scale(1.38) rotate(190.46deg);
+    }
+    69% {
+      transform: translate(-120.53px, 25.17px) scale(1.37) rotate(198.33deg);
+    }
+    70% {
+      transform: translate(-114.38px, 20.02px) scale(1.35) rotate(208.1deg);
+    }
+    71% {
+      transform: translate(-107.15px, 14.49px) scale(1.32) rotate(219.46deg);
+    }
+    72% {
+      transform: translate(-99px, 8.94px) scale(1.3) rotate(232.07deg);
+    }
+    73% {
+      transform: translate(-90.11px, 3.73px) scale(1.27) rotate(245.52deg);
+    }
+    74% {
+      transform: translate(-80.69px, -0.84px) scale(1.24) rotate(259.37deg);
+    }
+    75% {
+      transform: translate(-70.93px, -4.55px) scale(1.21) rotate(273.21deg);
+    }
+    76% {
+      transform: translate(-61.07px, -7.23px) scale(1.19) rotate(286.66deg);
+    }
+    77% {
+      transform: translate(-51.31px, -8.83px) scale(1.16) rotate(299.42deg);
+    }
+    78% {
+      transform: translate(-41.89px, -9.38px) scale(1.13) rotate(311.28deg);
+    }
+    79% {
+      transform: translate(-33px, -9.01px) scale(1.1) rotate(322.07deg);
+    }
+    80% {
+      transform: translate(-24.85px, -7.9px) scale(1.08) rotate(331.69deg);
+    }
+    81% {
+      transform: translate(-17.62px, -6.3px) scale(1.05) rotate(340.05deg);
+    }
+    82% {
+      transform: translate(-11.47px, -4.49px) scale(1.03) rotate(347.06deg);
+    }
+    83% {
+      transform: translate(-6.54px, -2.74px) scale(1.02) rotate(352.64deg);
+    }
+    84% {
+      transform: translate(-2.93px, -1.29px) scale(1.01) rotate(356.7deg);
+    }
+    85% {
+      transform: translate(-0.74px, -0.33px) scale(1) rotate(359.17deg);
+    }
+    86%,
+    100% {
+      transform: translate(0px, 0px) scale(1) rotate(360deg);
+    }
+  }
+  /* The wings show only on the flight out to the mark (2-18%) and the flight home (65-86%);
+     while the dot builds the mark, hopping from facet to facet, they stay folded away. */
+  @keyframes logo-wings-show {
+    0%,
+    2%,
+    18%,
+    65%,
+    86%,
+    100% {
+      opacity: 0;
+    }
+    3.5%,
+    16.5%,
+    66.5%,
+    84.5% {
+      opacity: 1;
+    }
+  }
+  /* On each facet landing the dot fades into the facet popping in, and back out at takeoff. */
+  @keyframes logo-dot-land {
+    0%,
+    17.5%,
+    22.5%,
+    31.5%,
+    36.5%,
+    45.5%,
+    50.5%,
+    61.5%,
+    66.5%,
+    100% {
+      opacity: 1;
+    }
+    19%,
+    21%,
+    33%,
+    35%,
+    47%,
+    49%,
+    63%,
+    65% {
+      opacity: 0;
+    }
+  }
+  /* Each wing sets the angles it beats between (--wing-up, --wing-down) around its root. */
+  @keyframes logo-wing-flap {
+    from {
+      transform: rotate(var(--wing-up));
+    }
+    to {
+      transform: rotate(var(--wing-down));
+    }
+  }
+  /* One beat: up, down, up. The flight plays it twice, over its whole length. */
+  @keyframes logo-wing-beat {
+    0%,
+    100% {
+      transform: rotate(var(--wing-up));
+    }
+    50% {
+      transform: rotate(var(--wing-down));
+    }
+  }
+  /* A pulse on the hero prism as its last facet lands: it swells and fades in 250ms. */
+  @keyframes hero-glow {
+    0% {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+    40% {
+      opacity: 0.8;
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.5);
+    }
+  }
+  @keyframes logo-facet-pop {
+    0% {
+      opacity: 0;
+      transform: scale(0);
+    }
+    60% {
+      opacity: 1;
+      transform: scale(1.12);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
 
   @keyframes facet-pulse {
     0%,
@@ -840,7 +1173,7 @@
 
 /* ==========================================================================
    Hero entrance (components/landing/hero.tsx)
-   Plays once, after the startup splash. Start times live in the hero's TIMELINE and arrive here as --d (and --dur
+   Plays when the landing page mounts. Start times live in the hero's TIMELINE and arrive here as --d (and --dur
    for strokes); `both` keeps each piece hidden until its turn and finished after. With reduced
    motion none of this applies and the hero shows complete. Strokes need pathLength="1".
    ========================================================================== */
@@ -865,16 +1198,30 @@
     animation: hero-slide-in var(--dur, 0.5s) var(--ease-decelerate) var(--d, 0ms) both;
   }
 
-  /* Until the startup splash lifts, every piece holds on its first (hidden) frame. Delays only
-     count while running, so the timeline starts when the splash is gone. */
+  /* Until the hero is on screen, every piece holds on its first (hidden) frame. Delays only
+     count while running, so the timeline starts when the hero shows. */
   [data-hero="wait"] :is(.hero-fade, .hero-pop, .hero-draw, .hero-slide-in) {
     animation-play-state: paused;
   }
 
-  /* Stopped (the hero left the screen): no animation at all leaves every piece in its finished,
-     fully drawn state. */
-  [data-hero="settled"] :is(.hero-fade, .hero-pop, .hero-draw, .hero-slide-in) {
+  /* With the prism flight the rays and cards wait for the prism's last facet, while the note and
+     connector have already played. */
+  [data-rays="wait"] :is(.hero-pop, .hero-draw, .hero-slide-in),
+  [data-rays="wait"]:is(.hero-pop, .hero-draw, .hero-slide-in) {
+    animation-play-state: paused;
+  }
+
+  /* Skipped with a key or press: every piece jumps to its
+     final frame. */
+  [data-hero="skip"] :is(.hero-fade, .hero-pop, .hero-draw, .hero-slide-in) {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+    animation-play-state: running !important;
+  }
+
+  [data-hero="skip"] .animate-hero-glow {
     animation: none;
+    opacity: 0;
   }
 }
 

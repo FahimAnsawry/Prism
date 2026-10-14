@@ -7,7 +7,7 @@ const facetPulse =
   "motion-safe:*:animate-facet-pulse [&>path:nth-child(2)]:[animation-delay:0.2s] [&>path:nth-child(3)]:[animation-delay:0.4s] [&>path:nth-child(4)]:[animation-delay:0.6s]";
 
 /**
- * The app's one loading indicator: the startup splash, the route pending component and every
+ * The app's one loading indicator: the startup loader, the route pending component and every
  * Suspense fallback. `fullScreen` is a whole page in the theme's background with the mark
  * centered; otherwise it sits inline in its container.
  */
