@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
+import { motion, type TargetAndTransition } from "motion/react";
 import {
   useEffect,
   useMemo,
@@ -7,13 +8,19 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentType,
-  type CSSProperties,
   type SVGProps,
 } from "react";
 import { ctaVariants } from "@/components/cta";
 import { useSplashDone } from "@/components/feedback/splash-state";
 import { resetFlight, updateFlight, usePrismFlight } from "@/components/prism-flight-state";
 import { CENTER_FACET, CORNER_FACETS } from "@/components/prism-shapes";
+import {
+  EASE_DECELERATE,
+  EASE_POP,
+  EASE_SPRING_OUT,
+  prefersReducedMotion,
+  type Bezier,
+} from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
   InviteCodeArt,
@@ -91,7 +98,7 @@ const NOTE_TEXT = "Let teammates\njoin a board\nwith a role.";
  * One run of the hero's entrance, in ms from its start: the note types out, the connector draws
  * down, the prism pops in, then one view at a time its ray draws and its card slides in, and only
  * then does the next ray start. Each step starts from the one before, so changing one number
- * shifts everything after it. The keyframes are the `.hero-*` classes in index.css. It plays once
+ * shifts everything after it. The pieces animate with `enter` below. It plays once
  * on every mount of the landing page, and stays finished; below xl only the note types and the view
  * cards reveal on scroll instead.
  *
@@ -120,16 +127,64 @@ const CARD_SLIDE = 240;
 /** The board with its rays and prism shows from Tailwind's xl. */
 const WIDE_QUERY = "(min-width: 80rem)";
 
-/** Starts a `.hero-*` animation at `delay` ms; `duration` sets how long a stroke draw or card slide takes. */
-function at(delay: number, duration?: number): CSSProperties {
-  return {
-    "--d": `${delay}ms`,
-    ...(duration !== undefined && { "--dur": `${duration}ms` }),
-  } as CSSProperties;
-}
+/**
+ * The hero's four entrances, each from a hidden first frame to its finished one: a fade, a pop
+ * (grows from 60% with a little overshoot), a stroke draw (strokes need pathLength="1" and a
+ * dash of 1) and a card sliding in from the right.
+ */
+const ENTRANCES = {
+  fade: {
+    hidden: { opacity: 0 },
+    shown: { opacity: 1 },
+    seconds: 0.4,
+    ease: EASE_DECELERATE,
+  },
+  pop: {
+    hidden: { opacity: 0, scale: 0.6 },
+    shown: { opacity: 1, scale: 1 },
+    seconds: 0.35,
+    ease: EASE_POP,
+  },
+  draw: {
+    hidden: { strokeDashoffset: 1 },
+    shown: { strokeDashoffset: 0 },
+    seconds: 0.5,
+    ease: EASE_DECELERATE,
+  },
+  slide: {
+    hidden: { opacity: 0, x: 24 },
+    shown: { opacity: 1, x: 0 },
+    seconds: 0.5,
+    ease: EASE_DECELERATE,
+  },
+} satisfies Record<
+  string,
+  { hidden: TargetAndTransition; shown: TargetAndTransition; seconds: number; ease: Bezier }
+>;
 
-function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+/**
+ * The motion props that play one piece of the hero's entrance. Until `on` turns true the piece
+ * holds on its hidden first frame, and `delay` (ms) counts from the moment it does. `skip` (a key
+ * or press) jumps it to its final frame. With reduced motion the hero shows complete.
+ */
+function enter(
+  kind: keyof typeof ENTRANCES,
+  {
+    on,
+    skip,
+    delay = 0,
+    duration,
+  }: { on: boolean; skip: boolean; delay?: number; duration?: number },
+) {
+  const { hidden, shown, seconds, ease } = ENTRANCES[kind];
+  const reduced = prefersReducedMotion();
+  return {
+    initial: reduced ? false : hidden,
+    animate: on || skip || reduced ? shown : hidden,
+    transition: skip
+      ? { duration: 0 }
+      : { duration: (duration ?? seconds * 1000) / 1000, delay: delay / 1000, ease },
+  } as const;
 }
 
 function subscribeWide(onChange: () => void) {
@@ -220,6 +275,35 @@ function useTypewriter(
   return finished ? { count: text.length, caret: false } : state;
 }
 
+/** Pops grow from their own center. */
+const popBox = { transformBox: "fill-box", transformOrigin: "center" } as const;
+
+/** A facet the flight places: it pops in as the dot lands on it (see prism-logo.tsx). */
+const FACET_STATES = {
+  static: { opacity: 1, scale: 1, transition: { duration: 0 } },
+  hidden: { opacity: 0, scale: 1, transition: { duration: 0 } },
+  pop: {
+    opacity: [0, 1, 1],
+    scale: [0, 1.12, 1],
+    transition: { duration: 0.5, times: [0, 0.6, 1], ease: EASE_SPRING_OUT },
+  },
+};
+
+function HeroFacet({
+  mode,
+  ...props
+}: { mode: keyof typeof FACET_STATES } & Omit<SVGProps<SVGPathElement>, "ref" | "style">) {
+  return (
+    <motion.path
+      {...(props as object)}
+      style={popBox}
+      variants={FACET_STATES}
+      initial={false}
+      animate={mode}
+    />
+  );
+}
+
 /**
  * The idea hangs from the sticky note into the prism and splits into one ray per view. With
  * `byFlight` (the prism flight is on) the prism isn't part of the entrance: the flight places
@@ -229,20 +313,20 @@ function Refraction({
   byFlight,
   placed,
   timeline,
+  play,
+  finished,
   rays,
   className,
 }: {
   byFlight: boolean;
   placed: number;
   timeline: Timeline;
+  play: boolean;
+  finished: boolean;
   rays: boolean;
   className?: string;
 }) {
-  const facetClass = (index: number) =>
-    byFlight &&
-    (index < placed
-      ? "animate-logo-facet-pop origin-center [transform-box:fill-box]"
-      : "opacity-0");
+  const facetMode = (index: number) => (!byFlight ? "static" : index < placed ? "pop" : "hidden");
   return (
     <svg viewBox="0 0 228 440" aria-hidden="true" className={cn("block size-full", className)}>
       <defs>
@@ -251,67 +335,91 @@ function Refraction({
           <stop offset="1" stopColor="var(--color-brand)" stopOpacity="0" />
         </radialGradient>
       </defs>
-      <path
+      <motion.path
         d="M25 97V199"
         pathLength={1}
         strokeWidth="4"
-        className="hero-draw stroke-foreground"
-        style={at(timeline.connectorIn, timeline.connectorDraw)}
+        strokeDasharray={1}
+        className="stroke-foreground"
+        {...enter("draw", {
+          on: play,
+          skip: finished,
+          delay: timeline.connectorIn,
+          duration: timeline.connectorDraw,
+        })}
       />
-      <g data-rays={rays ? "play" : "wait"}>
-        <g strokeWidth="1.6" strokeLinecap="round">
-          {RAYS.map((ray, i) => {
-            const start = rayStartPoint(ray.y);
-            return (
-              <path
-                key={ray.y}
-                d={`M${start.x} ${start.y} ${RAY_END_X} ${ray.y}`}
-                pathLength={1}
-                className={cn("hero-draw", ray.stroke)}
-                style={at(timeline.rayStart(i), RAY_DRAW)}
-              />
-            );
-          })}
-        </g>
-        {RAYS.map((ray, i) => (
-          <circle
-            key={ray.y}
-            cx={RAY_END_X}
-            cy={ray.y}
-            r="6.5"
-            className={cn("hero-pop", ray.fill)}
-            style={at(timeline.rayEnd(i))}
-          />
-        ))}
+      <g strokeWidth="1.6" strokeLinecap="round">
+        {RAYS.map((ray, i) => {
+          const start = rayStartPoint(ray.y);
+          return (
+            <motion.path
+              key={ray.y}
+              d={`M${start.x} ${start.y} ${RAY_END_X} ${ray.y}`}
+              pathLength={1}
+              strokeDasharray={1}
+              className={ray.stroke}
+              {...enter("draw", {
+                on: rays,
+                skip: finished,
+                delay: timeline.rayStart(i),
+                duration: RAY_DRAW,
+              })}
+            />
+          );
+        })}
       </g>
+      {RAYS.map((ray, i) => (
+        <motion.circle
+          key={ray.y}
+          cx={RAY_END_X}
+          cy={ray.y}
+          r="6.5"
+          className={ray.fill}
+          style={popBox}
+          {...enter("pop", { on: rays, skip: finished, delay: timeline.rayEnd(i) })}
+        />
+      ))}
       {/* A 250ms glow as the flight places the prism's last facet, before the connector and rays. */}
-      {byFlight && placed === 4 && (
-        <circle
+      {byFlight && placed === 4 && !finished && (
+        <motion.circle
           cx={PRISM_CENTER.x}
           cy={PRISM_CENTER.y + 4}
           r="34"
           fill="url(#hero-prism-glow)"
-          className="animate-hero-glow origin-center [transform-box:fill-box]"
+          style={popBox}
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: [0, 0.8, 0], scale: [0.5, 1, 1.5] }}
+          transition={{
+            opacity: { duration: 0.25, times: [0, 0.4, 1], ease: "easeOut" },
+            scale: { duration: 0.25, times: [0, 0.5, 1], ease: "linear" },
+          }}
         />
       )}
-      {/* The pop goes on a wrapper: a CSS transform would replace the transform attribute. */}
-      <g className={cn(!byFlight && "hero-pop")} style={at(timeline.prismIn)}>
+      {/* The pop goes on a wrapper: the facets sit in a group with its own transform attribute. */}
+      <motion.g
+        style={popBox}
+        {...(byFlight
+          ? { initial: false, animate: { opacity: 1, scale: 1 } }
+          : enter("pop", { on: play, skip: finished, delay: timeline.prismIn }))}
+      >
         <g transform="translate(5 199) scale(1.1111)">
           {CORNER_FACETS.map((d, i) => (
-            <path
+            <HeroFacet
               key={d}
               d={d}
-              className={cn("fill-foreground", facetClass(i))}
+              className="fill-foreground"
+              mode={facetMode(i)}
               data-flight-target={`hero-${i}`}
             />
           ))}
-          <path
+          <HeroFacet
             d={CENTER_FACET}
-            className={cn("fill-brand", facetClass(3))}
+            className="fill-brand"
+            mode={facetMode(3)}
             data-flight-target="hero-3"
           />
         </g>
-      </g>
+      </motion.g>
     </svg>
   );
 }
@@ -336,7 +444,10 @@ function IdeaNote({
   });
 
   return (
-    <Sticky className={cn("hero-fade px-6 pt-5 pb-4", className)}>
+    <Sticky
+      className={cn("px-6 pt-5 pb-4", className)}
+      {...enter("fade", { on: play, skip: finished })}
+    >
       <p className="text-2xl leading-[1.05] whitespace-pre-line">
         <span className="sr-only">{NOTE_TEXT}</span>
         {/* The untyped rest stays in place, invisible, so the note keeps its size while typing. */}
@@ -344,20 +455,28 @@ function IdeaNote({
           {NOTE_TEXT.slice(0, count)}
           {caret && (
             <span className="relative">
-              <span
-                className={cn(
-                  "absolute top-[0.05em] left-0 h-[0.9em] w-0.5 bg-current",
-                  count === NOTE_TEXT.length && "hero-caret-blink",
-                )}
+              <motion.span
+                className="absolute top-[0.05em] left-0 h-[0.9em] w-0.5 bg-current"
+                animate={
+                  count === NOTE_TEXT.length
+                    ? { opacity: [1, 1, 0, 0] }
+                    : { opacity: 1, transition: { duration: 0 } }
+                }
+                transition={{
+                  duration: 1,
+                  times: [0, 0.4999, 0.5, 1],
+                  ease: "linear",
+                  repeat: Infinity,
+                }}
               />
             </span>
           )}
           <span className="invisible">{NOTE_TEXT.slice(count)}</span>
         </span>
       </p>
-      <p
-        className="hero-fade mt-4 flex items-center gap-3 font-mono text-[10px] text-graphite"
-        style={at(timeline.bylineIn)}
+      <motion.p
+        className="mt-4 flex items-center gap-3 font-mono text-[10px] text-graphite"
+        {...enter("fade", { on: play, skip: finished, delay: timeline.bylineIn })}
       >
         <img
           src="/landing/avatar-fahim.png"
@@ -367,7 +486,7 @@ function IdeaNote({
           className="size-5 rounded-full bg-fog"
         />
         Fahim · the idea
-      </p>
+      </motion.p>
     </Sticky>
   );
 }
@@ -411,21 +530,31 @@ function ViewsBoard({
         className="absolute top-0 left-0 w-[34.4%]"
       />
       <div className="absolute top-[9.3%] left-[13.16%] h-[81.82%] w-[36.8%]">
-        <Refraction byFlight={byFlight} placed={placed} timeline={timeline} rays={rays} />
+        <Refraction
+          byFlight={byFlight}
+          placed={placed}
+          timeline={timeline}
+          play={play}
+          finished={finished}
+          rays={rays}
+        />
       </div>
-      <ul data-rays={rays ? "play" : "wait"}>
+      <ul>
         {VIEWS.map(({ name, tool, art: Art }, i) => (
-          <li
+          <motion.li
             key={name}
-            className="hero-slide-in absolute left-[48.43%] flex h-[22.32%] w-[51.57%] items-center gap-[13%] bg-card pl-[3.3%]"
-            style={{
-              top: `${(i * 139.25 * 100) / 537.75}%`,
-              ...at(timeline.rayEnd(i), CARD_SLIDE),
-            }}
+            className="absolute left-[48.43%] flex h-[22.32%] w-[51.57%] items-center gap-[13%] bg-card pl-[3.3%]"
+            style={{ top: `${(i * 139.25 * 100) / 537.75}%` }}
+            {...enter("slide", {
+              on: rays,
+              skip: finished,
+              delay: timeline.rayEnd(i),
+              duration: CARD_SLIDE,
+            })}
           >
             <Art className="w-[37.6%] shrink-0" />
             <ViewLabel name={name} tool={tool} />
-          </li>
+          </motion.li>
         ))}
       </ul>
     </div>
@@ -510,11 +639,7 @@ export function Hero() {
           </p>
         </div>
 
-        <div
-          id="views"
-          data-hero={finished ? "skip" : play ? "play" : "wait"}
-          className="xl:min-w-0 xl:flex-1"
-        >
+        <div id="views" className="xl:min-w-0 xl:flex-1">
           <div className="hidden xl:block">
             <ViewsBoard
               play={play}

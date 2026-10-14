@@ -2,9 +2,10 @@
 // Google fonts this board added, and a field to add another Google font by name.
 
 import { type FontFamily, googleFontNameSchema } from "@prism/shared";
-import { ChevronDown, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
+import { TurningChevron } from "@/components/motion-parts";
 import {
   BUILTIN_FONT_IDS,
   FONT_CATEGORIES,
@@ -57,10 +58,7 @@ export function FontPicker({
         <span className="truncate" style={{ fontFamily: info.stack }}>
           {info.label}
         </span>
-        <ChevronDown
-          aria-hidden="true"
-          className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-180")}
-        />
+        <TurningChevron turned={open} seconds={0.15} className="size-3.5 shrink-0" />
       </button>
 
       {open && (

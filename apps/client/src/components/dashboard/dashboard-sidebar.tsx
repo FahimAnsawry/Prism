@@ -11,8 +11,10 @@ import {
   PlugZap,
   UsersRound,
 } from "lucide-react";
-import { type ComponentType, useState } from "react";
+import { motion } from "motion/react";
+import { type ComponentType, type ReactNode, useState } from "react";
 import { editorsQuery } from "@/lib/account";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { ProjectLogo } from "./dashboard-parts";
 import { toolForEditor } from "./ai-tools";
@@ -66,7 +68,33 @@ function useSidebarCollapsed() {
 }
 
 /** Labels fade instead of vanishing, so the sidebar's width change reads as one motion. */
-const fade = "transition-opacity duration-200 ease-standard";
+function Fade({
+  hidden,
+  className,
+  children,
+}: {
+  hidden?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <motion.span
+      className={className}
+      initial={false}
+      animate={{ opacity: hidden ? 0 : 1 }}
+      transition={{ duration: 0.2, ease: EASE_STANDARD }}
+    >
+      {children}
+    </motion.span>
+  );
+}
+
+/** The AI tools card fades in when it appears (collapsing or expanding swaps it). */
+const fadeIn = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  transition: { duration: 0.3, ease: "easeIn" },
+} as const;
 
 const projectRow =
   "flex h-9 w-full items-center gap-3 overflow-hidden px-3.5 text-left text-sm text-foreground transition-colors duration-150 ease-standard hover:bg-background";
@@ -81,14 +109,12 @@ function ProjectRowContent({
   return (
     <>
       <ProjectLogo projectId={project.id} />
-      <span className={cn(fade, "min-w-0 flex-1 truncate", collapsed && "opacity-0")}>
+      <Fade hidden={collapsed} className="min-w-0 flex-1 truncate">
         {project.name}
-      </span>
-      <span
-        className={cn(fade, "font-mono text-2xs text-muted-foreground", collapsed && "opacity-0")}
-      >
+      </Fade>
+      <Fade hidden={collapsed} className="font-mono text-2xs text-muted-foreground">
         {project.boardCount}
-      </span>
+      </Fade>
     </>
   );
 }
@@ -109,18 +135,20 @@ export function SidebarNav({
       <nav aria-label="Dashboard">
         <ul className="relative flex flex-col gap-1">
           {/* One highlight that slides to the current section instead of each link switching. */}
-          <li
+          <motion.li
             aria-hidden="true"
-            className={cn(
-              "pointer-events-none absolute inset-x-0 top-0 h-10 bg-seafoam transition-[translate,opacity] duration-300 ease-standard dark:bg-seafoam/14",
-              activeIndex < 0 && "opacity-0",
-            )}
-            style={{ translate: `0 ${Math.max(activeIndex, 0) * 2.75}rem` }}
+            className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-seafoam dark:bg-seafoam/14"
+            initial={false}
+            animate={{
+              y: `${Math.max(activeIndex, 0) * 2.75}rem`,
+              opacity: activeIndex < 0 ? 0 : 1,
+            }}
+            transition={{ duration: 0.3, ease: EASE_STANDARD }}
           />
           {NAV.map(({ id, label, Icon }) => {
             const active = section === id;
             return (
-              <li key={id}>
+              <motion.li key={id} whileHover="hover">
                 <Link
                   to="/dashboard"
                   search={sectionSearch(id)}
@@ -129,33 +157,35 @@ export function SidebarNav({
                   aria-label={collapsed ? label : undefined}
                   title={collapsed ? label : undefined}
                   className={cn(
-                    "group/nav relative flex h-10 items-center gap-3 overflow-hidden px-3.5 text-sm transition-colors duration-200 ease-standard",
+                    "relative flex h-10 items-center gap-3 overflow-hidden px-3.5 text-sm transition-colors duration-200 ease-standard",
                     active
                       ? "font-bold text-slate dark:text-ink"
                       : "text-foreground hover:bg-background",
                   )}
                 >
-                  <Icon
-                    aria-hidden="true"
-                    className="size-5 shrink-0 transition-transform duration-200 ease-standard group-hover/nav:scale-110"
-                  />
-                  <span className={cn(fade, "min-w-0 flex-1 truncate", collapsed && "opacity-0")}>
+                  <motion.span
+                    className="inline-flex shrink-0"
+                    variants={{ hover: { scale: 1.1 } }}
+                    transition={{ duration: 0.2, ease: EASE_STANDARD }}
+                  >
+                    <Icon aria-hidden="true" className="size-5" />
+                  </motion.span>
+                  <Fade hidden={collapsed} className="min-w-0 flex-1 truncate">
                     {label}
-                  </span>
+                  </Fade>
                   {counts && (
-                    <span
+                    <Fade
+                      hidden={collapsed}
                       className={cn(
-                        fade,
                         "font-mono text-2xs",
                         active ? "text-current" : "text-muted-foreground",
-                        collapsed && "opacity-0",
                       )}
                     >
                       {counts[id]}
-                    </span>
+                    </Fade>
                   )}
                 </Link>
-              </li>
+              </motion.li>
             );
           })}
         </ul>
@@ -256,29 +286,32 @@ function EditorsCard({ onConnectAi, collapsed }: { onConnectAi: () => void; coll
 
   if (collapsed) {
     return (
-      <button
+      <motion.button
         type="button"
         onClick={onConnectAi}
         aria-label={tools.length ? `AI tools: ${names}` : "Connect AI tools"}
         title={tools.length ? names : "Connect AI tools"}
         key="rail"
-        className="animate-fade-in mt-auto flex flex-col items-center gap-2 border border-divider bg-background p-1.5 transition-colors duration-150 ease-standard hover:border-input"
+        className="mt-auto flex flex-col items-center gap-2 border border-divider bg-background p-1.5 transition-colors duration-150 ease-standard hover:border-input"
+        {...fadeIn}
       >
         {tools.length ? (
           tools.slice(0, 3).map((tool) => <LogoTile key={tool.clientId} name={tool.name} />)
         ) : (
           <PlugZap aria-hidden="true" className="my-2 size-4 text-muted-foreground" />
         )}
-      </button>
+      </motion.button>
     );
   }
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onConnectAi}
       key="card"
-      className="group animate-fade-in mt-auto border border-divider bg-background px-4 py-3.5 text-left transition-colors duration-150 ease-standard hover:border-input"
+      className="mt-auto border border-divider bg-background px-4 py-3.5 text-left transition-colors duration-150 ease-standard hover:border-input"
+      whileHover="hover"
+      {...fadeIn}
     >
       <span className="flex items-center gap-2 text-[13px] font-bold text-foreground">
         <span
@@ -308,12 +341,15 @@ function EditorsCard({ onConnectAi, collapsed }: { onConnectAi: () => void; coll
       )}
       <span className="mt-3 flex items-center gap-1.5 text-[13px] font-bold text-foreground">
         {tools.length ? "Manage tools" : "Connect AI tools"}
-        <ArrowRight
-          aria-hidden="true"
-          className="size-3.5 transition-transform duration-150 ease-standard group-hover:translate-x-0.5"
-        />
+        <motion.span
+          className="inline-flex"
+          variants={{ hover: { x: 2 } }}
+          transition={{ duration: 0.15, ease: EASE_STANDARD }}
+        >
+          <ArrowRight aria-hidden="true" className="size-3.5" />
+        </motion.span>
       </span>
-    </button>
+    </motion.button>
   );
 }
 
@@ -325,12 +361,11 @@ export function DashboardSidebar({
   const [collapsed, toggle] = useSidebarCollapsed();
   const Toggle = collapsed ? PanelLeftOpen : PanelLeftClose;
   return (
-    <aside
-      className={cn(
-        "sticky top-16 hidden h-[calc(100dvh-4rem)] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-r border-divider bg-card pt-3 pb-4 transition-[width] duration-300 ease-standard lg:flex",
-        "px-2",
-        collapsed ? "w-16" : "w-64",
-      )}
+    <motion.aside
+      className="sticky top-16 hidden h-[calc(100dvh-4rem)] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-r border-divider bg-card px-2 pt-3 pb-4 lg:flex"
+      initial={false}
+      animate={{ width: collapsed ? "4rem" : "16rem" }}
+      transition={{ duration: 0.3, ease: EASE_STANDARD }}
     >
       <button
         type="button"
@@ -347,6 +382,6 @@ export function DashboardSidebar({
       </button>
       <SidebarNav {...props} collapsed={collapsed} />
       <EditorsCard onConnectAi={onConnectAi} collapsed={collapsed} />
-    </aside>
+    </motion.aside>
   );
 }

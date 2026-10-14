@@ -1,4 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { AnimatePresence, motion } from "motion/react";
+import { backdropMotion, dialogPopup, usePopupExit } from "@/components/popup-motion";
 import type { ShareKind, ShareMember, ShareRole, ShareSettings } from "@prism/shared";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown, Copy, Link2, RefreshCw, X } from "lucide-react";
@@ -7,6 +9,7 @@ import { FormError, fieldInputClass } from "@/components/auth/form-field";
 import { ctaVariants } from "@/components/cta";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { apiErrorMessage } from "@/lib/api";
+import { EASE_STANDARD } from "@/lib/motion";
 import {
   shareSettingsQuery,
   useCancelInvite,
@@ -39,32 +42,43 @@ export function ShareDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { actionsRef, onExitComplete } = usePopupExit(open);
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate/40 transition-opacity duration-150 ease-standard data-ending-style:opacity-0 data-starting-style:opacity-0 dark:bg-black/60" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[36rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-nested-dialog-open:opacity-60 data-starting-style:scale-[0.98] data-starting-style:opacity-0 sm:p-8">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <Dialog.Title className="truncate text-[26px] leading-8 font-bold text-ink">
-                Share “{name}”
-              </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                {kind === "project"
-                  ? "Members get every board in this project, including new ones."
-                  : "Invite your team to edit or view this board."}
-              </Dialog.Description>
-            </div>
-            <Dialog.Close
-              aria-label="Close"
-              className="-mt-1 -mr-2 flex size-9 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-standard hover:text-ink"
+    <Dialog.Root actionsRef={actionsRef} open={open} onOpenChange={onOpenChange}>
+      <AnimatePresence>
+        {open && (
+          <Dialog.Portal keepMounted>
+            <Dialog.Backdrop
+              className="fixed inset-0 z-50 bg-slate/40 dark:bg-black/60"
+              render={<motion.div {...backdropMotion} />}
+            />
+            <Dialog.Popup
+              className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[36rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none sm:p-8"
+              render={dialogPopup(onExitComplete)}
             >
-              <X aria-hidden="true" className="size-4" />
-            </Dialog.Close>
-          </div>
-          <ShareSettingsView kind={kind} id={id} />
-        </Dialog.Popup>
-      </Dialog.Portal>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <Dialog.Title className="truncate text-[26px] leading-8 font-bold text-ink">
+                    Share “{name}”
+                  </Dialog.Title>
+                  <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+                    {kind === "project"
+                      ? "Members get every board in this project, including new ones."
+                      : "Invite your team to edit or view this board."}
+                  </Dialog.Description>
+                </div>
+                <Dialog.Close
+                  aria-label="Close"
+                  className="-mt-1 -mr-2 flex size-9 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-standard hover:text-ink"
+                >
+                  <X aria-hidden="true" className="size-4" />
+                </Dialog.Close>
+              </div>
+              <ShareSettingsView kind={kind} id={id} />
+            </Dialog.Popup>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
     </Dialog.Root>
   );
 }
@@ -295,12 +309,15 @@ function PublicLink({
             on ? "border-transparent bg-brand" : "border-input bg-card",
           )}
         >
-          <span
+          <motion.span
             aria-hidden="true"
             className={cn(
-              "absolute top-0.5 size-[18px] transition-[left] duration-150 ease-standard",
-              on ? "left-[22px] bg-slate" : "left-0.5 bg-muted-foreground",
+              "absolute top-0.5 left-0.5 size-[18px]",
+              on ? "bg-slate" : "bg-muted-foreground",
             )}
+            initial={false}
+            animate={{ x: on ? 20 : 0 }}
+            transition={{ duration: 0.15, ease: EASE_STANDARD }}
           />
         </button>
       </div>

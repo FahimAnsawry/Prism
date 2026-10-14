@@ -1,4 +1,5 @@
-import { useEffect, useRef, type Ref } from "react";
+import { animate, motion, motionValue, type MotionValue } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { updateFlight } from "@/components/prism-flight-state";
 import {
@@ -6,6 +7,7 @@ import {
   DOT_OUTLINE_WIDTH,
   OUTLINE_CLASS,
   WING_HAIRLINE,
+  WING_SCALE,
   WINGS,
 } from "@/components/prism-shapes";
 
@@ -38,8 +40,24 @@ const WINGS_FOLD_MS = 160;
 /** A long flight leaves this many ghost copies of the dot behind it, each this much later. */
 const TRAIL_OPACITY = [0.3, 0.15, 0.07];
 const TRAIL_DELAY_MS = 40;
-/** The wings beat this many times on a long flight (see `--beat`). */
+/** The wings beat this many times on a long flight. */
 const WING_BEATS = 2;
+/** The wings fade in and out over this long, and the dot over DOT_FADE_SECONDS. */
+const WING_FADE_SECONDS = 0.2;
+const DOT_FADE_SECONDS = 0.15;
+
+/** What the traveler's wings and dot do while it flies: each is a motion value. */
+interface Rig {
+  wings: { opacity: MotionValue<number>; rotate: MotionValue<number> }[];
+  dotOpacity: MotionValue<number>;
+}
+
+function createRig(): Rig {
+  return {
+    wings: WINGS.map(() => ({ opacity: motionValue(0), rotate: motionValue(0) })),
+    dotOpacity: motionValue(1),
+  };
+}
 
 const ease = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2; // easeInOutSine
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -172,6 +190,7 @@ interface MoveOptions {
   duration: number;
   wings: boolean;
   signal: AbortSignal;
+  rig: Rig;
   /** A hop's arc: its top sits this far above the higher end. */
   lift?: number;
   /** A long flight's path; without it the dot arcs over by `lift`. */
@@ -188,12 +207,12 @@ async function move(
   traveler: HTMLElement,
   from: Pose,
   to: Pose,
-  { duration, lift = 0, route, wings, ghosts = [], signal }: MoveOptions,
+  { duration, lift = 0, route, wings, ghosts = [], signal, rig }: MoveOptions,
 ) {
   const bank = Math.sign(to.x - from.x) * (wings ? 10 : 6);
   const [c1, c2] = arcControls(from, to, lift);
   const steps = Math.max(12, Math.round(duration / 24));
-  const frames: Keyframe[] = [];
+  const frames: string[] = [];
   for (let i = 0; i <= steps; i++) {
     const u = ease(i / steps);
     let x: number;
@@ -208,53 +227,79 @@ async function move(
       x = a * from.x + b * c1[0] + c * c2[0] + d * to.x;
       y = a * from.y + b * c1[1] + c * c2[1] + d * to.y;
     }
-    frames.push({
-      transform: transform({
+    frames.push(
+      transform({
         x,
         y,
         s: from.s + (to.s - from.s) * u,
         r: from.r + (to.r - from.r) * u + bank * Math.sin(Math.PI * u),
       }),
-    });
+    );
   }
 
-  // Wings spread for the long flights and fold just before landing.
-  traveler.style.setProperty("--beat", `${duration / WING_BEATS}ms`);
-  traveler.dataset.wings = wings ? "on" : "off";
-  const fold = wings
-    ? window.setTimeout(() => (traveler.dataset.wings = "off"), duration - WINGS_FOLD_MS)
-    : 0;
-  const animation = traveler.animate(frames, { duration, easing: "linear", fill: "forwards" });
-  // The ghosts fly the same path a little later, each fainter than the one before.
+  // Wings spread for the long flights, beat while it lasts and fold just before landing.
+  const controls: { stop: () => void }[] = [];
+  const track = <T extends { stop: () => void }>(control: T) => {
+    controls.push(control);
+    return control;
+  };
+  let fold = 0;
+  if (wings) {
+    WINGS.forEach((wing, i) => {
+      const values = rig.wings[i] as Rig["wings"][number];
+      track(animate(values.opacity, 1, { duration: WING_FADE_SECONDS }));
+      track(
+        animate(values.rotate, [wing.up, wing.down, wing.up], {
+          duration: duration / WING_BEATS / 1000,
+          ease: "easeInOut",
+          repeat: WING_BEATS - 1,
+        }),
+      );
+    });
+    fold = window.setTimeout(() => {
+      for (const values of rig.wings) {
+        track(animate(values.opacity, 0, { duration: WING_FADE_SECONDS }));
+      }
+    }, duration - WINGS_FOLD_MS);
+  }
+  const flyFrames = { transform: frames };
+  const flight = { duration: duration / 1000, ease: "linear" } as const;
+  const animation = track(animate(traveler, flyFrames, flight));
+  // The ghosts fly the same path a little later, each fainter than the one before. They wait
+  // on the first frame until their turn.
   const trail = ghosts.map((ghost, i) => {
     ghost.style.opacity = String(TRAIL_OPACITY[i] ?? 0);
-    return ghost.animate(frames, {
-      duration,
-      delay: TRAIL_DELAY_MS * (i + 1),
-      easing: "linear",
-      fill: "both",
-    });
+    ghost.style.transform = frames[0] as string;
+    return track(
+      animate(ghost, flyFrames, { ...flight, delay: (TRAIL_DELAY_MS * (i + 1)) / 1000 }),
+    );
   });
   const hideGhosts = () => {
     for (const ghost of ghosts) ghost.style.opacity = "0";
   };
+  // Resolves when the dot lands, and rejects if the flight is aborted first.
+  const until = (control: { then: (onResolve: () => void) => unknown }) =>
+    new Promise<void>((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      if (signal.aborted) return abort();
+      signal.addEventListener("abort", abort, { once: true });
+      control.then(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      });
+    });
   signal.addEventListener(
     "abort",
     () => {
       window.clearTimeout(fold);
-      animation.cancel();
-      for (const ghost of trail) ghost.cancel();
+      for (const control of controls) control.stop();
       hideGhosts();
     },
     { once: true },
   );
-  await animation.finished;
-  // Keep the end pose as a plain style, so finished animations don't pile up.
-  animation.commitStyles();
-  animation.cancel();
+  await until(animation);
   // The last ghost lands 120ms after the dot; then they all go.
-  await Promise.all(trail.map((ghost) => ghost.finished));
-  for (const ghost of trail) ghost.cancel();
+  await until({ then: (onResolve) => Promise.all(trail).then(onResolve) });
   hideGhosts();
   return to;
 }
@@ -264,27 +309,23 @@ async function move(
  * sets its time (1.7s to 2s on a desktop window, just under 1s at least), so the whole intro
  * ends about 5s after the page shows.
  */
-function long(route: Route, signal: AbortSignal, ghosts: HTMLElement[]): MoveOptions {
+function long(route: Route, signal: AbortSignal, ghosts: HTMLElement[], rig: Rig): MoveOptions {
   return {
     duration: clamp(800 + route.total * 0.8, 960, 2000),
     wings: true,
     route,
     ghosts,
     signal,
+    rig,
   };
 }
 
 /** A hop from facet to facet, wings folded, arcing about a facet's height. */
-function hop(facetHeight: number, signal: AbortSignal): MoveOptions {
-  return { duration: HOP_MS, lift: facetHeight * 0.8, wings: false, signal };
+function hop(facetHeight: number, signal: AbortSignal, rig: Rig): MoveOptions {
+  return { duration: HOP_MS, lift: facetHeight * 0.8, wings: false, signal, rig };
 }
 
-async function fly(
-  traveler: HTMLElement,
-  dot: SVGElement,
-  ghosts: HTMLElement[],
-  signal: AbortSignal,
-) {
+async function fly(traveler: HTMLElement, rig: Rig, ghosts: HTMLElement[], signal: AbortSignal) {
   const home = target("logo-dot");
   const unit = home.width / 14; // px per logo unit
   const size = VIEW * unit;
@@ -324,10 +365,12 @@ async function fly(
 
   // The dot sinks into each facet it places, and comes back out as it takes off again.
   const sink = async () => {
-    dot.style.opacity = "0";
+    animate(rig.dotOpacity, 0, { duration: DOT_FADE_SECONDS });
     await sleep(SINK_MS, signal);
   };
-  const rise = () => (dot.style.opacity = "1");
+  const rise = () => {
+    animate(rig.dotOpacity, 1, { duration: DOT_FADE_SECONDS });
+  };
 
   // Builds the hero's prism: lands on its first facet, then hops to each next one, placing as it
   // goes.
@@ -340,7 +383,7 @@ async function fly(
         traveler,
         pose,
         next,
-        i === 0 ? long(longRoute(pose, next), signal, ghosts) : hop(next.height, signal),
+        i === 0 ? long(longRoute(pose, next), signal, ghosts, rig) : hop(next.height, signal, rig),
       );
       updateFlight({ heroPlaced: i + 1 });
       await sink();
@@ -353,7 +396,7 @@ async function fly(
   async function returnToLogo(from: Pose) {
     rise();
     const end = homePose(1);
-    await move(traveler, from, end, long(longRoute(from, end), signal, ghosts));
+    await move(traveler, from, end, long(longRoute(from, end), signal, ghosts, rig));
   }
 
   let pose = homePose(0);
@@ -361,7 +404,7 @@ async function fly(
   traveler.style.opacity = "1";
   // Tell the hero when the dot will land on its prism, so its connector arrives with it.
   const first = facetPose("hero-0", 0, 0);
-  const landMs = long(longRoute(pose, first), signal, []).duration;
+  const landMs = long(longRoute(pose, first), signal, [], rig).duration;
   updateFlight({ dotAway: true, heroPlaced: 0, landMs });
 
   pose = await buildHero(pose);
@@ -377,13 +420,12 @@ async function fly(
  */
 export function PrismFlight({ active }: { active: boolean }) {
   const travelerRef = useRef<HTMLDivElement>(null);
-  const dotRef = useRef<SVGGElement>(null);
   const ghostRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [rig] = useState(createRig);
 
   useEffect(() => {
     const traveler = travelerRef.current;
-    const dot = dotRef.current;
-    if (!active || !traveler || !dot) return;
+    if (!active || !traveler) return;
     const controller = new AbortController();
     const ghosts = ghostRefs.current.filter((ghost): ghost is HTMLDivElement => !!ghost);
     const finishAtOnce = (changes: Parameters<typeof updateFlight>[0]) =>
@@ -398,7 +440,7 @@ export function PrismFlight({ active }: { active: boolean }) {
     const skipEvents = ["keydown", "pointerdown"] as const;
     for (const type of skipEvents) window.addEventListener(type, skip, { passive: true });
 
-    fly(traveler, dot, ghosts, controller.signal).catch((error: unknown) => {
+    fly(traveler, rig, ghosts, controller.signal).catch((error: unknown) => {
       if (controller.signal.aborted) return;
       // Something it needs went missing: finish the build at once rather than leave it half done.
       console.error(error);
@@ -408,7 +450,7 @@ export function PrismFlight({ active }: { active: boolean }) {
       controller.abort();
       for (const type of skipEvents) window.removeEventListener(type, skip);
     };
-  }, [active]);
+  }, [active, rig]);
 
   if (!active) return null;
   return createPortal(
@@ -431,18 +473,25 @@ export function PrismFlight({ active }: { active: boolean }) {
       <div
         ref={travelerRef}
         aria-hidden="true"
-        data-wings="off"
-        className="group pointer-events-none fixed top-0 left-0 z-50 size-0 opacity-0"
+        className="pointer-events-none fixed top-0 left-0 z-50 size-0 opacity-0"
       >
         <svg viewBox={VIEW_BOX} className="absolute overflow-visible">
-          {WINGS.map((wing) => (
-            <path
+          {WINGS.map((wing, i) => (
+            <motion.path
               key={wing.d}
               d={wing.d}
-              className={`${wing.className} ${WING_HAIRLINE} fill-brand/85 transition-opacity duration-200 [transform-box:view-box] group-data-[wings=off]:opacity-0 group-data-[wings=on]:[animation:logo-wing-beat_var(--beat,0.8s)_ease-in-out_2]`}
+              className={`${WING_HAIRLINE} fill-brand/85`}
+              style={{
+                opacity: rig.wings[i]?.opacity,
+                rotate: rig.wings[i]?.rotate,
+                scale: WING_SCALE,
+                transformBox: "view-box",
+                originX: wing.originX,
+                originY: wing.originY,
+              }}
             />
           ))}
-          <DotShape ref={dotRef} />
+          <DotShape opacity={rig.dotOpacity} />
         </svg>
       </div>
     </>,
@@ -451,9 +500,9 @@ export function PrismFlight({ active }: { active: boolean }) {
 }
 
 /** The dot: brand green over its ink outline (light mode only, see prism-shapes.ts). */
-function DotShape({ ref }: { ref?: Ref<SVGGElement> }) {
+function DotShape({ opacity }: { opacity?: MotionValue<number> }) {
   return (
-    <g ref={ref} className="transition-opacity duration-150">
+    <motion.g style={{ opacity }}>
       <path
         d={DOT}
         strokeWidth={DOT_OUTLINE_WIDTH}
@@ -461,6 +510,6 @@ function DotShape({ ref }: { ref?: Ref<SVGGElement> }) {
         className={OUTLINE_CLASS}
       />
       <path d={DOT} strokeWidth="3" strokeLinejoin="round" className="fill-brand stroke-brand" />
-    </g>
+    </motion.g>
   );
 }

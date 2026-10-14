@@ -1,6 +1,14 @@
-import { useState, type AnimationEvent } from "react";
 import { Link } from "@tanstack/react-router";
+import {
+  animate,
+  motion,
+  motionValue,
+  type MotionValue,
+  type ValueAnimationTransition,
+} from "motion/react";
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import { usePrismFlight } from "@/components/prism-flight-state";
+import { DOT_TRAVEL } from "@/components/prism-logo-keyframes";
 import {
   CENTER_FACET,
   CORNER_FACETS,
@@ -8,40 +16,163 @@ import {
   DOT_OUTLINE_WIDTH,
   OUTLINE_CLASS,
   WING_HAIRLINE,
+  WING_SCALE,
   WINGS,
 } from "@/components/prism-shapes";
+import { EASE_SPRING_OUT, prefersReducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+
+/** Draws one facet of the mark: `index` runs top, left, right, then the green center. */
+export type FacetRenderer = (facet: { d: string; index: number; className?: string }) => ReactNode;
+
+const plainFacet: FacetRenderer = ({ d, className }) => <path d={d} className={className} />;
 
 /**
  * The prism mark: one triangle cut into four facets. The corner facets take the svg's fill,
  * which defaults to ink so the mark holds up on the light canvas; the center facet is always
  * brand green. The loader and the status screen animate the facets in their order: top, left,
- * right, center.
+ * right, center, by drawing them with `renderFacet`. With `fadeIn` the whole mark fades in.
  */
-export function PrismMark({ className }: { className?: string }) {
+export function PrismMark({
+  className,
+  renderFacet = plainFacet,
+  fadeIn = false,
+}: {
+  className?: string;
+  renderFacet?: FacetRenderer;
+  fadeIn?: boolean;
+}) {
   return (
-    <svg
+    <motion.svg
       viewBox="1.24 2.47 33.53 33.53"
       aria-hidden="true"
       className={cn("size-9 fill-ink", className)}
+      initial={fadeIn ? { opacity: 0 } : false}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.6, ease: "easeInOut" }}
     >
-      {CORNER_FACETS.map((d) => (
-        <path key={d} d={d} />
+      {CORNER_FACETS.map((d, index) => (
+        <Fragment key={d}>{renderFacet({ d, index })}</Fragment>
       ))}
-      <path className="fill-brand" d={CENTER_FACET} />
-    </svg>
+      {renderFacet({ d: CENTER_FACET, index: 3, className: "fill-brand" })}
+    </motion.svg>
   );
 }
 
-/** When each facet pops in during the logo animation: as the flying dot lands on it. */
-const FACET_POP_DELAYS = [
-  "[animation-delay:0.7s]",
-  "[animation-delay:1.25s]",
-  "[animation-delay:1.8s]",
-  "[animation-delay:2.42s]",
-];
+/** How long the dot's flight takes, from the first hop out to landing back on the i. */
+const FLIGHT_SECONDS = 3.9;
+const linear = { duration: FLIGHT_SECONDS, ease: "linear" } as const;
 
-const FACET_POP = "animate-logo-facet-pop origin-center [transform-box:fill-box]";
+/** When each facet pops in during the logo animation: as the flying dot lands on it. */
+const FACET_POP_DELAYS = [0.7, 1.25, 1.8, 2.42];
+const FACET_POP = { times: [0, 0.6, 1], duration: 0.5, ease: EASE_SPRING_OUT };
+
+/**
+ * The wings show only on the flight out to the mark (2-18%) and the flight home (65-86%);
+ * while the dot builds the mark, hopping from facet to facet, they stay folded away.
+ */
+const WINGS_SHOW = {
+  times: [0, 0.02, 0.035, 0.165, 0.18, 0.65, 0.665, 0.845, 0.86, 1],
+  opacity: [0, 0, 1, 1, 0, 0, 1, 1, 0, 0],
+};
+
+/** On each facet landing the dot fades into the facet popping in, and back out at takeoff. */
+const DOT_LAND = {
+  times: [
+    0, 0.175, 0.19, 0.21, 0.225, 0.315, 0.33, 0.35, 0.365, 0.455, 0.47, 0.49, 0.505, 0.615, 0.63,
+    0.65, 0.665, 1,
+  ],
+  opacity: [1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1],
+};
+
+/** The values the dot's flight drives: every piece of the logo that moves while it plays. */
+function createFlightValues() {
+  return {
+    facets: FACET_POP_DELAYS.map(() => ({ opacity: motionValue(1), scale: motionValue(1) })),
+    wings: WINGS.map(() => ({ opacity: motionValue(0), rotate: motionValue(0) })),
+    dot: {
+      x: motionValue(0),
+      y: motionValue(0),
+      scale: motionValue(1),
+      rotate: motionValue(0),
+    },
+    dotOpacity: motionValue(1),
+  };
+}
+
+/**
+ * Plays the flight while `playing`: the i's dot grows wings, leaves the i, builds the mark one
+ * facet at a time and flies home. `onDone` fires when the dot is back; the values then return to
+ * the still logo.
+ */
+function useLogoFlight(
+  values: ReturnType<typeof createFlightValues>,
+  playing: boolean,
+  onDone: () => void,
+) {
+  useEffect(() => {
+    if (!playing) return;
+    let cancelled = false;
+    const controls: { stop: () => void }[] = [];
+    const run = (
+      value: MotionValue<number>,
+      keyframes: number[],
+      transition: ValueAnimationTransition<number>,
+    ) => {
+      const control = animate(value, keyframes, transition);
+      controls.push(control);
+      return control;
+    };
+    const { facets, wings, dot, dotOpacity } = values;
+
+    // Each facet waits hidden until the dot lands on it, then pops in.
+    facets.forEach((facet, i) => {
+      facet.opacity.set(0);
+      facet.scale.set(0);
+      const pop = { ...FACET_POP, delay: FACET_POP_DELAYS[i] };
+      run(facet.opacity, [0, 1, 1], pop);
+      run(facet.scale, [0, 1.12, 1], pop);
+    });
+
+    wings.forEach((wing, i) => {
+      const { up, down } = WINGS[i] as (typeof WINGS)[number];
+      run(wing.opacity, WINGS_SHOW.opacity, { ...linear, times: WINGS_SHOW.times });
+      run(wing.rotate, [up, down], {
+        duration: 0.32,
+        ease: "easeInOut",
+        repeat: Infinity,
+        repeatType: "reverse",
+      });
+    });
+
+    run(dotOpacity, DOT_LAND.opacity, { ...linear, times: DOT_LAND.times });
+    const travel = { ...linear, times: DOT_TRAVEL.times };
+    run(dot.x, [...DOT_TRAVEL.x], travel);
+    run(dot.y, [...DOT_TRAVEL.y], travel);
+    run(dot.scale, [...DOT_TRAVEL.scale], travel);
+    run(dot.rotate, [...DOT_TRAVEL.rotate], travel).then(() => {
+      if (!cancelled) onDone();
+    });
+
+    return () => {
+      cancelled = true;
+      for (const control of controls) control.stop();
+      for (const facet of facets) {
+        facet.opacity.set(1);
+        facet.scale.set(1);
+      }
+      for (const wing of wings) {
+        wing.opacity.set(0);
+        wing.rotate.set(0);
+      }
+      dot.x.set(0);
+      dot.y.set(0);
+      dot.scale.set(1);
+      dot.rotate.set(0);
+      dotOpacity.set(1);
+    };
+  }, [values, playing, onDone]);
+}
 
 /**
  * The mark beside the "prism" wordmark (monoline lowercase whose i is dotted with a green
@@ -64,10 +195,9 @@ export function PrismLogo({
   flight?: boolean;
 }) {
   const flightState = usePrismFlight();
-  const [reducedMotion] = useState(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
+  const [reducedMotion] = useState(prefersReducedMotion);
   const [replaying, setReplaying] = useState(false);
+  const [values] = useState(createFlightValues);
   // byFlight: the flight has this logo's dot (or is still deciding); flying: it is under way.
   const byFlight = flight && flightState.plan !== "off";
   const flying = byFlight && !flightState.done;
@@ -81,13 +211,8 @@ export function PrismLogo({
     setReplaying(true);
   }
 
-  // Wing and facet animations end inside the dot or bubble up to it too; only its flight counts.
-  function finish(event: AnimationEvent<SVGGElement>) {
-    if (event.target !== event.currentTarget) return;
-    setReplaying(false);
-  }
-
-  const facetClass = (index: number) => cn(playing && FACET_POP, FACET_POP_DELAYS[index]);
+  const finish = useCallback(() => setReplaying(false), []);
+  useLogoFlight(values, playing, finish);
 
   return (
     <Link
@@ -102,10 +227,19 @@ export function PrismLogo({
         className={cn("w-auto overflow-visible", compact ? "h-8" : "h-9")}
       >
         <g transform="translate(0 12) scale(1.7895) translate(-1.24 -2.47)" className="fill-ink">
-          {CORNER_FACETS.map((d, i) => (
-            <path key={d} d={d} className={facetClass(i)} />
+          {[...CORNER_FACETS, CENTER_FACET].map((d, i) => (
+            <motion.path
+              key={d}
+              d={d}
+              className={cn(i === 3 && "fill-brand")}
+              style={{
+                opacity: values.facets[i]?.opacity,
+                scale: values.facets[i]?.scale,
+                transformBox: "fill-box",
+                transformOrigin: "center",
+              }}
+            />
           ))}
-          <path d={CENTER_FACET} className={cn("fill-brand", facetClass(3))} />
         </g>
         <g
           transform="translate(80 0)"
@@ -124,39 +258,46 @@ export function PrismLogo({
         </g>
         {/* The i's dot, which is also the traveler: it turns around its own center (162, 14).
             While the prism flight has it out flying, the one on the i hides. */}
-        <g
-          onAnimationEnd={finish}
-          className={cn(
-            playing && "animate-logo-dot-travel origin-[162px_14px] [transform-box:view-box]",
-            flying && flightState.dotAway && "opacity-0",
-          )}
+        <motion.g
+          className={cn(flying && flightState.dotAway && "opacity-0")}
+          style={{
+            ...values.dot,
+            transformBox: "view-box",
+            originX: "162px",
+            originY: "14px",
+          }}
         >
-          {WINGS.map((wing) => (
-            <path
+          {WINGS.map((wing, i) => (
+            <motion.path
               key={wing.d}
               d={wing.d}
-              className={cn(
-                "fill-brand/85 [transform-box:view-box]",
-                WING_HAIRLINE,
-                wing.className,
-                playing ? "animate-logo-wings" : "opacity-0",
-              )}
+              className={cn("fill-brand/85", WING_HAIRLINE)}
+              style={{
+                opacity: values.wings[i]?.opacity,
+                rotate: values.wings[i]?.rotate,
+                scale: WING_SCALE,
+                transformBox: "view-box",
+                originX: wing.originX,
+                originY: wing.originY,
+              }}
             />
           ))}
-          <path
+          <motion.path
             d={DOT}
             strokeWidth={DOT_OUTLINE_WIDTH}
             strokeLinejoin="round"
-            className={cn(OUTLINE_CLASS, playing && "animate-logo-dot-land")}
+            className={OUTLINE_CLASS}
+            style={{ opacity: values.dotOpacity }}
           />
-          <path
+          <motion.path
             d={DOT}
             strokeWidth="3"
             strokeLinejoin="round"
-            className={cn("fill-brand stroke-brand", playing && "animate-logo-dot-land")}
+            className="fill-brand stroke-brand"
+            style={{ opacity: values.dotOpacity }}
             data-flight-target={flight ? "logo-dot" : undefined}
           />
-        </g>
+        </motion.g>
       </svg>
     </Link>
   );

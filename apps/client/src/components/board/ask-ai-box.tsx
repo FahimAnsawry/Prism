@@ -14,9 +14,12 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { type FormEvent, memo, useCallback, useEffect, useRef, useState } from "react";
+import { Spinner } from "@/components/motion-parts";
 import { apiErrorMessage } from "@/lib/api";
 import { useCreateEdit, useDeleteEdit, useStopEdit, useUpdateEdit } from "@/lib/ai";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /** How long a finished request's result stays before it hides itself. */
@@ -93,19 +96,22 @@ function AskAiBoxView({
                 className="h-11 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
               />
             </label>
-            <button
+            <motion.button
               type="submit"
               disabled={!prompt.trim() || create.isPending}
               aria-label="Send to AI"
               title="Send to AI (Enter)"
-              className="flex size-8 shrink-0 items-center justify-center bg-secondary text-secondary-foreground transition-opacity duration-150 ease-standard disabled:opacity-40"
+              className="flex size-8 shrink-0 items-center justify-center bg-secondary text-secondary-foreground"
+              initial={false}
+              animate={{ opacity: !prompt.trim() || create.isPending ? 0.4 : 1 }}
+              transition={{ duration: 0.15, ease: EASE_STANDARD }}
             >
               {create.isPending ? (
-                <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+                <Spinner className="size-4" />
               ) : (
                 <ArrowUp aria-hidden="true" className="size-4" />
               )}
-            </button>
+            </motion.button>
           </div>
           {create.error && (
             <p role="alert" className="border-t border-divider px-3 py-2 text-xs text-foreground">
@@ -192,19 +198,21 @@ function RequestStatus({
         request.status === "failed" ? "border-coral" : "border-chrome",
       )}
     >
-      <Icon
-        aria-hidden="true"
-        className={cn(
-          "mt-0.5 size-4 shrink-0",
-          finished
-            ? request.status === "done"
-              ? "text-brand"
-              : "text-coral"
-            : paused
-              ? "text-muted-foreground"
-              : "animate-spin text-violet",
-        )}
-      />
+      {!finished && !paused ? (
+        <Spinner className="mt-0.5 size-4 shrink-0 text-violet" />
+      ) : (
+        <Icon
+          aria-hidden="true"
+          className={cn(
+            "mt-0.5 size-4 shrink-0",
+            finished
+              ? request.status === "done"
+                ? "text-brand"
+                : "text-coral"
+              : "text-muted-foreground",
+          )}
+        />
+      )}
       <div className="min-w-0 flex-1">
         {editing ? (
           <form

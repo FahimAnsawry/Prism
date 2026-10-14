@@ -1,10 +1,34 @@
-import { PrismMark } from "@/components/prism-logo";
+import { motion } from "motion/react";
+import { PrismMark, type FacetRenderer } from "@/components/prism-logo";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 // The four facets dim one after another (top, left, right, then the green center), like light
-// passing through the prism. Reduced-motion users get the still mark.
-const facetPulse =
-  "motion-safe:*:animate-facet-pulse [&>path:nth-child(2)]:[animation-delay:0.2s] [&>path:nth-child(3)]:[animation-delay:0.4s] [&>path:nth-child(4)]:[animation-delay:0.6s]";
+// passing through the prism. Reduced-motion users get the still mark. How far they dim
+// (`--facet-dim`) depends on the theme: light canvas washes out faint slate and the brand green.
+function facetDim() {
+  const value = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue("--facet-dim"),
+  );
+  return Number.isFinite(value) ? value : 0.4;
+}
+
+function pulseFacets(dim: number): FacetRenderer {
+  return ({ d, index, className }) => (
+    <motion.path
+      d={d}
+      className={className}
+      animate={{ opacity: [1, dim, 1] }}
+      transition={{
+        duration: 1.6,
+        times: [0, 0.4, 1],
+        ease: EASE_STANDARD,
+        repeat: Infinity,
+        delay: index * 0.2,
+      }}
+    />
+  );
+}
 
 /**
  * The app's one loading indicator: the startup loader, the route pending component and every
@@ -31,7 +55,9 @@ export function PrismLoader({
       )}
     >
       <PrismMark
-        className={cn(fullScreen ? "size-[57.6px] animate-fade-in-slow" : "size-6", facetPulse)}
+        className={fullScreen ? "size-[57.6px]" : "size-6"}
+        fadeIn={fullScreen}
+        renderFacet={pulseFacets(facetDim())}
       />
       {label ? (
         <span className="type-label-xs text-muted-foreground uppercase">{label}</span>

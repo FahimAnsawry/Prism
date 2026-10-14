@@ -1,4 +1,6 @@
 import { Menu } from "@base-ui/react/menu";
+import { AnimatePresence, motion } from "motion/react";
+import { popupMotion, usePopupExit } from "@/components/popup-motion";
 import { NAME_MAX_LENGTH, type BoardSummary } from "@prism/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -102,6 +104,8 @@ function BoardName({ board }: { board: BoardSummary | undefined }) {
  * "New board".
  */
 function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId: string }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { actionsRef, onExitComplete } = usePopupExit(menuOpen);
   const navigate = useNavigate();
   const workspace = useQuery(workspaceQuery);
   // Targets stay set while their dialog animates closed.
@@ -131,7 +135,7 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
 
   return (
     <>
-      <Menu.Root>
+      <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
         <Menu.Trigger
           aria-label={`Project ${project.name}: switch board`}
           className={cn(
@@ -142,85 +146,100 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
           <span className="truncate">{project.name}</span>
           <ChevronDown aria-hidden="true" className="size-3.5 shrink-0" />
         </Menu.Trigger>
-        <Menu.Portal>
-          <Menu.Positioner side="bottom" align="start" sideOffset={6} className="z-50 outline-none">
-            <Menu.Popup className="max-h-[min(24rem,var(--available-height))] w-72 origin-(--transform-origin) overflow-y-auto border border-input bg-popover p-1 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0">
-              <Menu.Group>
-                <Menu.GroupLabel className="truncate px-2.5 pt-1.5 pb-2 font-mono text-3xs font-bold text-muted-foreground uppercase">
-                  {project.name}
-                </Menu.GroupLabel>
-                <Menu.RadioGroup
-                  value={board.id}
-                  onValueChange={(boardId: string) =>
-                    void navigate({ to: "/board/$boardId", params: { boardId } })
-                  }
+        <AnimatePresence>
+          {menuOpen && (
+            <Menu.Portal keepMounted>
+              <Menu.Positioner
+                side="bottom"
+                align="start"
+                sideOffset={6}
+                className="z-50 outline-none"
+              >
+                <Menu.Popup
+                  className="max-h-[min(24rem,var(--available-height))] w-72 origin-(--transform-origin) overflow-y-auto border border-input bg-popover p-1 outline-none"
+                  render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
                 >
-                  {boards.map((b) => (
-                    <div key={b.id} className="flex items-center">
-                      <Menu.RadioItem
-                        value={b.id}
-                        closeOnClick
-                        className={cn(itemClass, "min-w-0 flex-1")}
-                      >
-                        <span className="flex size-3.5 shrink-0 items-center justify-center">
-                          <Menu.RadioItemIndicator>
-                            <Check aria-hidden="true" />
-                          </Menu.RadioItemIndicator>
-                        </span>
-                        <span className="truncate">{b.name}</span>
-                      </Menu.RadioItem>
-                      {b.access !== "viewer" && (
-                        <Menu.Item
-                          aria-label={`Edit ${b.name}`}
-                          title="Edit"
-                          onClick={() =>
-                            setItemDialog({
-                              open: true,
-                              target: { mode: "edit", item: itemFor(b) },
-                            })
-                          }
-                          className={cn(rowActionClass, "hover:text-ink data-highlighted:text-ink")}
-                        >
-                          <Pencil aria-hidden="true" />
-                        </Menu.Item>
-                      )}
-                      {b.access === "owner" && (
-                        <Menu.Item
-                          aria-label={`Delete ${b.name}`}
-                          title="Delete"
-                          onClick={() => setDeleteDialog({ open: true, item: itemFor(b) })}
-                          className={cn(
-                            rowActionClass,
-                            "hover:text-destructive data-highlighted:text-destructive",
+                  <Menu.Group>
+                    <Menu.GroupLabel className="truncate px-2.5 pt-1.5 pb-2 font-mono text-3xs font-bold text-muted-foreground uppercase">
+                      {project.name}
+                    </Menu.GroupLabel>
+                    <Menu.RadioGroup
+                      value={board.id}
+                      onValueChange={(boardId: string) =>
+                        void navigate({ to: "/board/$boardId", params: { boardId } })
+                      }
+                    >
+                      {boards.map((b) => (
+                        <div key={b.id} className="flex items-center">
+                          <Menu.RadioItem
+                            value={b.id}
+                            closeOnClick
+                            className={cn(itemClass, "min-w-0 flex-1")}
+                          >
+                            <span className="flex size-3.5 shrink-0 items-center justify-center">
+                              <Menu.RadioItemIndicator>
+                                <Check aria-hidden="true" />
+                              </Menu.RadioItemIndicator>
+                            </span>
+                            <span className="truncate">{b.name}</span>
+                          </Menu.RadioItem>
+                          {b.access !== "viewer" && (
+                            <Menu.Item
+                              aria-label={`Edit ${b.name}`}
+                              title="Edit"
+                              onClick={() =>
+                                setItemDialog({
+                                  open: true,
+                                  target: { mode: "edit", item: itemFor(b) },
+                                })
+                              }
+                              className={cn(
+                                rowActionClass,
+                                "hover:text-ink data-highlighted:text-ink",
+                              )}
+                            >
+                              <Pencil aria-hidden="true" />
+                            </Menu.Item>
                           )}
-                        >
-                          <Trash2 aria-hidden="true" />
-                        </Menu.Item>
-                      )}
-                    </div>
-                  ))}
-                </Menu.RadioGroup>
-              </Menu.Group>
-              {project.access !== "viewer" && (
-                <>
-                  <Menu.Separator className="my-1 h-px bg-divider" />
-                  <Menu.Item
-                    onClick={() =>
-                      setItemDialog({
-                        open: true,
-                        target: { mode: "create", kind: "whiteboard", projectId },
-                      })
-                    }
-                    className={itemClass}
-                  >
-                    <Plus aria-hidden="true" />
-                    New board
-                  </Menu.Item>
-                </>
-              )}
-            </Menu.Popup>
-          </Menu.Positioner>
-        </Menu.Portal>
+                          {b.access === "owner" && (
+                            <Menu.Item
+                              aria-label={`Delete ${b.name}`}
+                              title="Delete"
+                              onClick={() => setDeleteDialog({ open: true, item: itemFor(b) })}
+                              className={cn(
+                                rowActionClass,
+                                "hover:text-destructive data-highlighted:text-destructive",
+                              )}
+                            >
+                              <Trash2 aria-hidden="true" />
+                            </Menu.Item>
+                          )}
+                        </div>
+                      ))}
+                    </Menu.RadioGroup>
+                  </Menu.Group>
+                  {project.access !== "viewer" && (
+                    <>
+                      <Menu.Separator className="my-1 h-px bg-divider" />
+                      <Menu.Item
+                        onClick={() =>
+                          setItemDialog({
+                            open: true,
+                            target: { mode: "create", kind: "whiteboard", projectId },
+                          })
+                        }
+                        className={itemClass}
+                      >
+                        <Plus aria-hidden="true" />
+                        New board
+                      </Menu.Item>
+                    </>
+                  )}
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          )}
+        </AnimatePresence>
       </Menu.Root>
       <span aria-hidden="true" className={cn(titleText, "shrink-0 px-0.5 text-input")}>
         /

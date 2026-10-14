@@ -9,7 +9,7 @@ export type Theme = "light" | "dark";
 export const STORAGE_KEY = "prism:theme";
 
 /** Browser chrome color per theme: the page background (--color-canvas / .dark --background). */
-const THEME_COLOR: Record<Theme, string> = { light: "#e9e9e9", dark: "#1d1c23" };
+const THEME_COLOR: Record<Theme, string> = { light: "#fcfcfd", dark: "#1d1c23" };
 
 export const DARK_QUERY = "(prefers-color-scheme: dark)";
 

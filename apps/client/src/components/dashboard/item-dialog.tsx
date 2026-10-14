@@ -1,4 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { AnimatePresence, motion } from "motion/react";
+import { backdropMotion, dialogPopup, usePopupExit } from "@/components/popup-motion";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   createBoardSchema,
@@ -106,21 +108,32 @@ export function ItemDialog({
       ? `Your edits to “${target.item.name}” won't be saved.`
       : "What you've entered won't be saved.";
 
+  const { actionsRef, onExitComplete } = usePopupExit(open);
   return (
-    <Dialog.Root open={open} onOpenChange={requestOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate/40 transition-opacity duration-150 ease-standard data-ending-style:opacity-0 data-starting-style:opacity-0 dark:bg-black/60" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[30rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-nested-dialog-open:opacity-60 sm:p-8">
-          <ItemForm
-            target={target}
-            projects={projects}
-            onStateChange={(state) => {
-              formState.current = state;
-            }}
-            onDone={() => onOpenChange(false)}
-          />
-        </Dialog.Popup>
-      </Dialog.Portal>
+    <Dialog.Root actionsRef={actionsRef} open={open} onOpenChange={requestOpenChange}>
+      <AnimatePresence>
+        {open && (
+          <Dialog.Portal keepMounted>
+            <Dialog.Backdrop
+              className="fixed inset-0 z-50 bg-slate/40 dark:bg-black/60"
+              render={<motion.div {...backdropMotion} />}
+            />
+            <Dialog.Popup
+              className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[30rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none sm:p-8"
+              render={dialogPopup(onExitComplete)}
+            >
+              <ItemForm
+                target={target}
+                projects={projects}
+                onStateChange={(state) => {
+                  formState.current = state;
+                }}
+                onDone={() => onOpenChange(false)}
+              />
+            </Dialog.Popup>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
 
       <ConfirmDialog
         open={confirmDiscard}

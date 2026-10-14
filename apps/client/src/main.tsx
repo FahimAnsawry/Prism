@@ -9,10 +9,12 @@ import { NotFoundPage } from "./components/feedback/not-found-page";
 import { PrismLoader } from "./components/feedback/prism-loader";
 import { ThemeProvider } from "./components/theme-provider";
 import { installGlobalErrorHandlers, reportError } from "./lib/errors";
+import { installMotionPreferences } from "./lib/motion";
 import { routeTree } from "./routeTree.gen";
 import "./index.css";
 
 installGlobalErrorHandlers();
+installMotionPreferences();
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({

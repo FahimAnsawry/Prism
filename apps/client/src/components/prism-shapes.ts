@@ -20,17 +20,26 @@ export const CENTER_FACET =
 export const DOT = "M162 6 169 18H155Z";
 
 /**
- * The dot's wings, rooted on its sides and drawn behind it, each with the angles it beats
- * between around its root (the `logo-wing-flap` keyframes).
+ * The dot's wings, rooted on its sides and drawn behind it. Each turns around its root (`origin`,
+ * in the logo's svg units) and beats between the angles `up` and `down`; `scale` is the size the
+ * wings are drawn at. (Motion takes the origin as `originX`/`originY`: it ignores a plain
+ * `transformOrigin` style on svg elements.)
  */
+export const WING_SCALE = 1.4;
 export const WINGS = [
   {
     d: "M158 12C152 4 143 4 139 8C144 9 148 12 158 15Z",
-    className: "origin-[158px_13px] scale-[1.4] [--wing-down:-18deg] [--wing-up:28deg]",
+    originX: "158px",
+    originY: "13px",
+    up: 28,
+    down: -18,
   },
   {
     d: "M166 12C172 4 181 4 185 8C180 9 176 12 166 15Z",
-    className: "origin-[166px_13px] scale-[1.4] [--wing-down:18deg] [--wing-up:-28deg]",
+    originX: "166px",
+    originY: "13px",
+    up: -28,
+    down: 18,
   },
 ];
 

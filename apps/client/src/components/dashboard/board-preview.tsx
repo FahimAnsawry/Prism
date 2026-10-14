@@ -76,11 +76,7 @@ export function BoardPreview({
             )}
           />
         ) : (
-          <ProjectLogo
-            projectId={projectId}
-            size="lg"
-            className={cn(drawing && "motion-safe:animate-pulse")}
-          />
+          <ProjectLogo projectId={projectId} size="lg" pulse={drawing} />
         )}
       </CanvasPreview>
     </div>

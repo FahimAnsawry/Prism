@@ -1,7 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { PrismLogo } from "@/components/prism-logo";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { PrismPanel } from "./prism-panel";
 
@@ -38,16 +40,21 @@ export function AuthLayout({
         <div className="flex items-center justify-between gap-4">
           <PrismLogo />
           {panel && (
-            <Link
-              to="/"
-              className="group inline-flex items-center gap-2 text-sm font-medium text-foreground underline-offset-4 transition-colors hover:text-ink hover:underline"
-            >
-              <ArrowLeft
-                aria-hidden="true"
-                className="size-4 transition-transform duration-150 group-hover:-translate-x-0.5"
-              />
-              Back to home
-            </Link>
+            <motion.span className="inline-flex" whileHover="hover">
+              <Link
+                to="/"
+                className="inline-flex items-center gap-2 text-sm font-medium text-foreground underline-offset-4 transition-colors hover:text-ink hover:underline"
+              >
+                <motion.span
+                  className="inline-flex"
+                  variants={{ hover: { x: -2 } }}
+                  transition={{ duration: 0.15, ease: EASE_STANDARD }}
+                >
+                  <ArrowLeft aria-hidden="true" className="size-4" />
+                </motion.span>
+                Back to home
+              </Link>
+            </motion.span>
           )}
         </div>
         <div className={cn("my-auto w-full max-w-112 py-6", !panel && "mx-auto")}>{children}</div>

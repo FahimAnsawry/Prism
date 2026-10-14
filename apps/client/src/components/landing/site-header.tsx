@@ -1,9 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Menu, X } from "lucide-react";
+import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ctaVariants } from "@/components/cta";
 import { PrismLogo } from "@/components/prism-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { EASE_CSS, EASE_DECELERATE } from "@/lib/motion";
+import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { pageContainer } from "./page-container";
 
@@ -44,6 +47,13 @@ function useNavScroll() {
 
   return state;
 }
+
+/** The soft shadow under the bar once the page has scrolled, per theme. */
+const SHADOW = {
+  none: "0px 10px 24px -14px rgba(0, 0, 0, 0)",
+  light: "0px 10px 24px -14px rgba(42, 42, 42, 0.35)",
+  dark: "0px 10px 24px -14px rgba(0, 0, 0, 0.8)",
+};
 
 /** Below this (Tailwind's sm) the links fold into the burger menu. */
 const INLINE_NAV_QUERY = "(min-width: 40rem)";
@@ -91,19 +101,31 @@ export function SiteHeader() {
   const { hidden, scrolled } = useNavScroll();
   const { open, setOpen, headerRef, buttonRef } = useMenu();
   const close = () => setOpen(false);
+  const { theme } = useTheme();
+  const [entered, setEntered] = useState(false);
+  const [focusWithin, setFocusWithin] = useState(false);
 
   // Sticky nav: slides in on load, tucks away while scrolling down, returns on scroll up (but
-  // stays while the menu is open). focus-within keeps it visible for keyboard users tabbing in.
+  // stays while the menu is open). Focus inside keeps it visible for keyboard users tabbing in.
+  const tucked = hidden && !open && !focusWithin;
   return (
-    <header
+    <motion.header
       ref={headerRef}
-      className={cn(
-        "sticky top-0 z-40 border-b border-border bg-background animate-in fade-in slide-in-from-top-4",
-        "transition-[translate,box-shadow] duration-300 ease-decelerate focus-within:translate-y-0",
-        hidden && !open && "-translate-y-full",
-        scrolled &&
-          "shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] dark:shadow-[0_10px_24px_-14px_rgb(0_0_0/0.8)]",
-      )}
+      className="sticky top-0 z-40 border-b border-border bg-background"
+      initial={{ opacity: 0, y: -16, boxShadow: SHADOW.none }}
+      animate={{
+        opacity: 1,
+        y: tucked ? "-100%" : 0,
+        boxShadow: scrolled ? SHADOW[theme] : SHADOW.none,
+      }}
+      transition={
+        entered ? { duration: 0.3, ease: EASE_DECELERATE } : { duration: 0.15, ease: EASE_CSS }
+      }
+      onAnimationComplete={() => setEntered(true)}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocusWithin(false);
+      }}
     >
       <nav aria-label="Main">
         <div className={cn(pageContainer, "flex items-center justify-between gap-6 py-2.5")}>
@@ -111,7 +133,10 @@ export function SiteHeader() {
           <PrismLogo compact flight />
 
           <div className="flex items-center gap-3 sm:gap-5">
-            <ThemeToggle className="size-[38px] border border-input hover:bg-card" />
+            <ThemeToggle
+              className="size-[38px] border border-input"
+              hoverBackground="var(--card)"
+            />
             <Link to="/login" className={cn(loginLink, "max-sm:hidden")}>
               Log in
             </Link>
@@ -148,9 +173,12 @@ export function SiteHeader() {
         </div>
 
         {open && (
-          <div
+          <motion.div
             id="site-menu"
-            className="absolute inset-x-0 top-full border-b border-border bg-background shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] animate-in fade-in slide-in-from-top-2 duration-200 sm:hidden dark:shadow-[0_10px_24px_-14px_rgb(0_0_0/0.8)]"
+            className="absolute inset-x-0 top-full border-b border-border bg-background shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] sm:hidden dark:shadow-[0_10px_24px_-14px_rgb(0_0_0/0.8)]"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: EASE_CSS }}
           >
             <div className={cn(pageContainer, "flex flex-col items-stretch gap-5 py-5")}>
               <Link to="/login" onClick={close} className={cn(loginLink, "py-1 text-base")}>
@@ -165,9 +193,9 @@ export function SiteHeader() {
                 <ArrowRight aria-hidden="true" />
               </Link>
             </div>
-          </div>
+          </motion.div>
         )}
       </nav>
-    </header>
+    </motion.header>
   );
 }

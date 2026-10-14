@@ -1,4 +1,6 @@
+import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 // A hard-coded emoji grid with category tabs (tools.md §1, tool 14), in place of emoji-picker-react.
@@ -75,6 +77,7 @@ export function EmojiPicker({
   value: string | null;
   onPick: (emoji: string) => void;
 }) {
+  const reducedMotion = useReducedMotion();
   const [tab, setTab] = useState(0);
   const grid = GRIDS[tab] ?? [];
 
@@ -112,19 +115,21 @@ export function EmojiPicker({
         className="grid max-h-64 grid-cols-8 gap-0.5 overflow-y-auto p-2"
       >
         {grid.map((emoji) => (
-          <button
+          <motion.button
             key={emoji}
             type="button"
             aria-label={emoji}
             aria-pressed={emoji === value}
             onClick={() => onPick(emoji)}
             className={cn(
-              "flex size-[34px] items-center justify-center text-xl transition-transform duration-100 ease-standard hover:scale-110 hover:bg-background motion-reduce:hover:scale-100",
+              "flex size-[34px] items-center justify-center text-xl hover:bg-background",
               emoji === value && "bg-brand/40",
             )}
+            whileHover={reducedMotion ? undefined : { scale: 1.1 }}
+            transition={{ duration: 0.1, ease: EASE_STANDARD }}
           >
             {emoji}
-          </button>
+          </motion.button>
         ))}
       </div>
       <p className="border-t border-divider px-3 py-2 text-xs text-muted-foreground">

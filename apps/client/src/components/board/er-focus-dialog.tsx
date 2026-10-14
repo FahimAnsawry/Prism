@@ -1,4 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { AnimatePresence, motion } from "motion/react";
+import { backdropMotion, dialogPopup, usePopupExit } from "@/components/popup-motion";
 import { ArrowLeft, ArrowRight, ChevronRight, Maximize, Minus, Plus } from "lucide-react";
 import {
   type PointerEvent,
@@ -10,6 +12,7 @@ import {
   useState,
 } from "react";
 import { isTyping } from "@/lib/keyboard";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { BoardElement } from "./board-model";
 import { ElementShape } from "./element-shape";
@@ -58,33 +61,43 @@ export function ErFocusDialog({
   if (tableId && tableId !== shownId) setShownId(tableId);
   const popup = useRef<HTMLDivElement>(null);
   const last = useRef<string | null>(null);
+  const { actionsRef, onExitComplete } = usePopupExit(tableId !== null);
   return (
     <Dialog.Root
+      actionsRef={actionsRef}
       open={tableId !== null}
       onOpenChange={(open) => {
         if (!open && tableId) onClose(last.current ?? tableId);
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate/40 transition-opacity duration-150 ease-standard data-ending-style:opacity-0 data-starting-style:opacity-0 dark:bg-black/60" />
-        {/* Focus goes to the popup (Esc and Tab work) rather than ringing the first button. */}
-        <Dialog.Popup
-          ref={popup}
-          initialFocus={popup}
-          className="fixed inset-2 z-50 flex flex-col border border-input bg-popover outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0 sm:inset-4"
-        >
-          {shownId && (
-            <FocusContent
-              key={shownId}
-              start={shownId}
-              elements={elements}
-              onFocusChange={(id) => {
-                if (id) last.current = id;
-              }}
+      <AnimatePresence>
+        {tableId !== null && (
+          <Dialog.Portal keepMounted>
+            <Dialog.Backdrop
+              className="fixed inset-0 z-50 bg-slate/40 dark:bg-black/60"
+              render={<motion.div {...backdropMotion} />}
             />
-          )}
-        </Dialog.Popup>
-      </Dialog.Portal>
+            {/* Focus goes to the popup (Esc and Tab work) rather than ringing the first button. */}
+            <Dialog.Popup
+              ref={popup}
+              initialFocus={popup}
+              className="fixed inset-2 z-50 flex flex-col border border-input bg-popover outline-none sm:inset-4"
+              render={dialogPopup(onExitComplete)}
+            >
+              {shownId && (
+                <FocusContent
+                  key={shownId}
+                  start={shownId}
+                  elements={elements}
+                  onFocusChange={(id) => {
+                    if (id) last.current = id;
+                  }}
+                />
+              )}
+            </Dialog.Popup>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
     </Dialog.Root>
   );
 }
@@ -566,13 +579,14 @@ export function FocusView({
         />
 
         {shown.map((el) => (
-          <g
+          <motion.g
             key={el.id}
-            opacity={lit && !lit.has(el.id) ? 0.18 : undefined}
-            className="transition-opacity duration-150 ease-standard"
+            initial={false}
+            animate={{ opacity: lit && !lit.has(el.id) ? 0.18 : 1 }}
+            transition={{ duration: 0.15, ease: EASE_STANDARD }}
           >
             <ElementShape el={el} />
-          </g>
+          </motion.g>
         ))}
 
         {/* The picked relation again on top, so no table hides it. */}

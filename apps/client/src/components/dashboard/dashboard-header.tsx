@@ -1,11 +1,14 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { Link } from "@tanstack/react-router";
+import { AnimatePresence, motion } from "motion/react";
 import { LogOut, Menu as MenuIcon, Moon, PlugZap, Search, Sun, X } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
+import { backdropMotion, usePopupExit } from "@/components/popup-motion";
 import { PrismLogo } from "@/components/prism-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserAvatar } from "@/components/user-avatar";
 import { authClient } from "@/lib/auth-client";
+import { EASE_DECELERATE, EASE_STANDARD } from "@/lib/motion";
 import { useTheme } from "@/lib/theme";
 import { useSignOut } from "@/lib/use-sign-out";
 import { SidebarNav, type SidebarProps } from "./dashboard-sidebar";
@@ -23,6 +26,18 @@ function useSearchShortcut(input: RefObject<HTMLInputElement | null>) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [input]);
 }
+
+/** The search box: a brand-green ring and the card color while it has focus. */
+const SEARCH_RESTING = {
+  borderColor: "var(--input)",
+  backgroundColor: "var(--background)",
+  boxShadow: "0 0 0 4px rgba(40, 233, 159, 0)",
+};
+const SEARCH_FOCUSED = {
+  borderColor: "#28e99f",
+  backgroundColor: "var(--card)",
+  boxShadow: "0 0 0 4px rgba(40, 233, 159, 0.3)",
+};
 
 type User = { name: string; email: string; image?: string | null; imageKey?: unknown };
 
@@ -45,6 +60,7 @@ export function DashboardHeader({
   autoFocusSearch?: boolean;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
   useSearchShortcut(searchRef);
   const logOut = useSignOut();
   // The route guard already loaded the session, so this is normally filled on first render.
@@ -62,18 +78,28 @@ export function DashboardHeader({
             aria-hidden="true"
             className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
           />
-          <input
+          <motion.input
             ref={searchRef}
             autoFocus={autoFocusSearch}
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Search boards and projects"
-            className="h-10 w-full min-w-0 rounded-full border border-input bg-background pr-2 pl-10 text-sm text-ellipsis text-foreground placeholder:text-muted-foreground transition-[border-color,box-shadow,background-color] duration-200 ease-standard focus-visible:border-brand focus-visible:bg-card focus-visible:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-brand)_30%,transparent)] focus-visible:outline-none motion-reduce:transition-none sm:pr-18 [&::-webkit-search-cancel-button]:hidden"
+            className="h-10 w-full min-w-0 rounded-full border border-input bg-background pr-2 pl-10 text-sm text-ellipsis text-foreground placeholder:text-muted-foreground focus-visible:outline-none sm:pr-18 [&::-webkit-search-cancel-button]:hidden"
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            initial={false}
+            animate={searchFocused ? SEARCH_FOCUSED : SEARCH_RESTING}
+            transition={{ duration: 0.2, ease: EASE_STANDARD }}
           />
-          <kbd className="pointer-events-none absolute top-1/2 right-2 hidden h-6 w-[52px] -translate-y-1/2 items-center justify-center rounded-full border border-divider bg-card font-mono text-3xs text-muted-foreground transition-opacity duration-200 ease-standard group-focus-within:opacity-0 motion-reduce:transition-none sm:flex">
+          <motion.kbd
+            className="pointer-events-none absolute top-1/2 right-2 hidden h-6 w-[52px] -translate-y-1/2 items-center justify-center rounded-full border border-divider bg-card font-mono text-3xs text-muted-foreground sm:flex"
+            initial={false}
+            animate={{ opacity: searchFocused ? 0 : 1 }}
+            transition={{ duration: 0.2, ease: EASE_STANDARD }}
+          >
             Ctrl K
-          </kbd>
+          </motion.kbd>
         </label>
 
         <MobileDrawer
@@ -140,70 +166,97 @@ function MobileDrawer({
   const dark = theme === "dark";
   const close = () => setOpen(false);
 
+  const { actionsRef, onExitComplete } = usePopupExit(open);
+
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Root open={open} onOpenChange={setOpen} actionsRef={actionsRef}>
       <Dialog.Trigger aria-label="Menu" className={`${iconButton} justify-self-end lg:hidden`}>
         <MenuIcon aria-hidden="true" className="size-5" />
       </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate/50 transition-opacity duration-200 ease-standard data-ending-style:opacity-0 data-starting-style:opacity-0 lg:hidden dark:bg-black/60" />
-        <Dialog.Popup className="fixed inset-y-0 left-0 z-50 flex w-[min(20rem,85vw)] flex-col overflow-y-auto border-r border-divider bg-card px-4 pt-4 pb-4 outline-none transition-transform duration-200 ease-(--ease-decelerate) data-ending-style:-translate-x-full data-starting-style:-translate-x-full motion-reduce:transition-none lg:hidden">
-          <Dialog.Title className="sr-only">Menu</Dialog.Title>
-          <div className="flex items-center justify-between">
-            <PrismLogo compact />
-            <Dialog.Close aria-label="Close menu" className={iconButton}>
-              <X aria-hidden="true" className="size-5" />
-            </Dialog.Close>
-          </div>
-
-          {user && (
-            <Link
-              to="/profile"
-              onClick={close}
-              className="mt-5 flex min-w-0 items-center gap-3 border-b border-divider pb-5"
+      <AnimatePresence>
+        {open && (
+          <Dialog.Portal keepMounted>
+            <Dialog.Backdrop
+              className="fixed inset-0 z-50 bg-slate/50 lg:hidden dark:bg-black/60"
+              render={
+                <motion.div
+                  {...backdropMotion}
+                  transition={{ duration: 0.2, ease: EASE_STANDARD }}
+                />
+              }
+            />
+            <Dialog.Popup
+              className="fixed inset-y-0 left-0 z-50 flex w-[min(20rem,85vw)] flex-col overflow-y-auto border-r border-divider bg-card px-4 pt-4 pb-4 outline-none lg:hidden"
+              render={
+                <motion.div
+                  initial={{ x: "-100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "-100%" }}
+                  transition={{ duration: 0.2, ease: EASE_DECELERATE }}
+                  onAnimationComplete={onExitComplete}
+                />
+              }
             >
-              <UserAvatar user={user} className="size-10" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-foreground">{user.name}</p>
-                <p className="truncate font-mono text-2xs text-muted-foreground">{user.email}</p>
+              <Dialog.Title className="sr-only">Menu</Dialog.Title>
+              <div className="flex items-center justify-between">
+                <PrismLogo compact />
+                <Dialog.Close aria-label="Close menu" className={iconButton}>
+                  <X aria-hidden="true" className="size-5" />
+                </Dialog.Close>
               </div>
-            </Link>
-          )}
 
-          <div className="mt-5">
-            <SidebarNav {...nav} onNavigate={close} />
-          </div>
+              {user && (
+                <Link
+                  to="/profile"
+                  onClick={close}
+                  className="mt-5 flex min-w-0 items-center gap-3 border-b border-divider pb-5"
+                >
+                  <UserAvatar user={user} className="size-10" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-foreground">{user.name}</p>
+                    <p className="truncate font-mono text-2xs text-muted-foreground">
+                      {user.email}
+                    </p>
+                  </div>
+                </Link>
+              )}
 
-          <div className="mt-auto flex flex-col border-t border-divider pt-3">
-            <button
-              type="button"
-              onClick={() => {
-                close();
-                onConnectAi();
-              }}
-              className={drawerItem}
-            >
-              <PlugZap aria-hidden="true" />
-              Connect AI tools
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                const box = event.currentTarget.getBoundingClientRect();
-                toggleTheme({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-              }}
-              className={drawerItem}
-            >
-              {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
-              {dark ? "Light mode" : "Dark mode"}
-            </button>
-            <button type="button" onClick={onLogOut} className={drawerItem}>
-              <LogOut aria-hidden="true" />
-              Log out
-            </button>
-          </div>
-        </Dialog.Popup>
-      </Dialog.Portal>
+              <div className="mt-5">
+                <SidebarNav {...nav} onNavigate={close} />
+              </div>
+
+              <div className="mt-auto flex flex-col border-t border-divider pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    onConnectAi();
+                  }}
+                  className={drawerItem}
+                >
+                  <PlugZap aria-hidden="true" />
+                  Connect AI tools
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    const box = event.currentTarget.getBoundingClientRect();
+                    toggleTheme({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+                  }}
+                  className={drawerItem}
+                >
+                  {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+                  {dark ? "Light mode" : "Dark mode"}
+                </button>
+                <button type="button" onClick={onLogOut} className={drawerItem}>
+                  <LogOut aria-hidden="true" />
+                  Log out
+                </button>
+              </div>
+            </Dialog.Popup>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
     </Dialog.Root>
   );
 }

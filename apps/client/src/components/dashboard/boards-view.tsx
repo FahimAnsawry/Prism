@@ -1,5 +1,8 @@
 import { Menu } from "@base-ui/react/menu";
-import { Check, ChevronDown, Folder, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { popupMotion, usePopupExit } from "@/components/popup-motion";
+import { TurningChevron } from "@/components/motion-parts";
+import { Check, Folder, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BoardGrid, BoardTable } from "./board-card";
 import {
@@ -129,6 +132,8 @@ function ProjectMenu({
   projects: { id: string; name: string }[];
   onChange: (value: ProjectFilter) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { actionsRef, onExitComplete } = usePopupExit(menuOpen);
   const label =
     value === "all"
       ? "All projects"
@@ -137,46 +142,60 @@ function ProjectMenu({
         : (projects.find((p) => p.id === value)?.name ?? "All projects");
 
   return (
-    <Menu.Root>
+    <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
       <Menu.Trigger
         aria-label={`Project: ${label}`}
         className="inline-flex h-[38px] max-w-56 items-center gap-2 border border-divider bg-card px-3 text-[13px] text-foreground transition-colors select-none hover:bg-background data-popup-open:border-input"
       >
         <Folder aria-hidden="true" className="size-4 shrink-0" />
         <span className="truncate">{label}</span>
-        <ChevronDown
-          aria-hidden="true"
-          className="size-3.5 shrink-0 transition-transform duration-150 ease-standard in-data-popup-open:rotate-180"
-        />
+        <TurningChevron turned={menuOpen} className="size-3.5 shrink-0" />
       </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner side="bottom" align="start" sideOffset={6} className="z-50 outline-none">
-          <Menu.Popup className="max-h-80 w-60 origin-(--transform-origin) overflow-y-auto border border-input bg-popover p-1 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0">
-            <Menu.RadioGroup value={value} onValueChange={(next: string) => onChange(next)}>
-              <Menu.GroupLabel className="px-2.5 pt-1.5 pb-2 font-mono text-3xs font-bold text-muted-foreground">
-                PROJECT
-              </Menu.GroupLabel>
-              {[
-                { id: "all", name: "All projects", swatch: undefined },
-                { id: "none", name: "Unfiled", swatch: null },
-                ...projects.map((p) => ({ id: p.id, name: p.name, swatch: p.id })),
-              ].map((option) => (
-                <Menu.RadioItem key={option.id} value={option.id} closeOnClick className={menuItem}>
-                  <Menu.RadioItemIndicator className="col-start-1">
-                    <Check aria-hidden="true" className="size-3.5" strokeWidth={2.5} />
-                  </Menu.RadioItemIndicator>
-                  <span className="col-start-2 flex">
-                    {option.swatch !== undefined && (
-                      <ProjectLogo projectId={option.swatch} size="xs" />
-                    )}
-                  </span>
-                  <span className="col-start-3 truncate">{option.name}</span>
-                </Menu.RadioItem>
-              ))}
-            </Menu.RadioGroup>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
+      <AnimatePresence>
+        {menuOpen && (
+          <Menu.Portal keepMounted>
+            <Menu.Positioner
+              side="bottom"
+              align="start"
+              sideOffset={6}
+              className="z-50 outline-none"
+            >
+              <Menu.Popup
+                className="max-h-80 w-60 origin-(--transform-origin) overflow-y-auto border border-input bg-popover p-1 outline-none"
+                render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
+              >
+                <Menu.RadioGroup value={value} onValueChange={(next: string) => onChange(next)}>
+                  <Menu.GroupLabel className="px-2.5 pt-1.5 pb-2 font-mono text-3xs font-bold text-muted-foreground">
+                    PROJECT
+                  </Menu.GroupLabel>
+                  {[
+                    { id: "all", name: "All projects", swatch: undefined },
+                    { id: "none", name: "Unfiled", swatch: null },
+                    ...projects.map((p) => ({ id: p.id, name: p.name, swatch: p.id })),
+                  ].map((option) => (
+                    <Menu.RadioItem
+                      key={option.id}
+                      value={option.id}
+                      closeOnClick
+                      className={menuItem}
+                    >
+                      <Menu.RadioItemIndicator className="col-start-1">
+                        <Check aria-hidden="true" className="size-3.5" strokeWidth={2.5} />
+                      </Menu.RadioItemIndicator>
+                      <span className="col-start-2 flex">
+                        {option.swatch !== undefined && (
+                          <ProjectLogo projectId={option.swatch} size="xs" />
+                        )}
+                      </span>
+                      <span className="col-start-3 truncate">{option.name}</span>
+                    </Menu.RadioItem>
+                  ))}
+                </Menu.RadioGroup>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        )}
+      </AnimatePresence>
     </Menu.Root>
   );
 }

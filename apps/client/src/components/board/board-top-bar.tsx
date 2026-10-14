@@ -1,4 +1,8 @@
 import { Menu } from "@base-ui/react/menu";
+import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { popupMotion, usePopupExit } from "@/components/popup-motion";
+import { TurningChevron } from "@/components/motion-parts";
 import type { BoardSummary } from "@prism/shared";
 import { Link } from "@tanstack/react-router";
 import {
@@ -48,47 +52,53 @@ export function ModeMenu({
   mode: BoardMode;
   onChange: (mode: BoardMode) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { actionsRef, onExitComplete } = usePopupExit(menuOpen);
   const current = MODES.find((m) => m.id === mode) ?? MODES[0];
   return (
-    <Menu.Root>
+    <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
       <Menu.Trigger
         aria-label={`Mode: ${current.label}`}
         className="flex h-9 items-center gap-2 border border-chrome bg-card px-3 text-xs font-medium text-foreground select-none transition-colors duration-150 ease-standard hover:bg-background data-popup-open:bg-background"
       >
         <current.Icon aria-hidden="true" className="size-3.5" />
         {current.label}
-        <ChevronDown
-          aria-hidden="true"
-          className="size-3.5 transition-transform duration-150 ease-standard in-data-popup-open:rotate-180"
-        />
+        <TurningChevron turned={menuOpen} className="size-3.5" />
       </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
-          <Menu.Popup className="w-56 origin-(--transform-origin) border border-input bg-popover p-1 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0">
-            <Menu.RadioGroup value={mode} onValueChange={(next: BoardMode) => onChange(next)}>
-              {MODES.map(({ id, label, hint, Icon }) => (
-                <Menu.RadioItem
-                  key={id}
-                  value={id}
-                  closeOnClick
-                  className="grid h-11 cursor-default grid-cols-[1rem_1fr_1rem] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-checked:font-bold data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
-                >
-                  <Icon aria-hidden="true" className="size-3.5" />
-                  <span className="min-w-0">
-                    <span className="block leading-4">{label}</span>
-                    <span className="block text-3xs leading-4 font-normal text-muted-foreground">
-                      {hint}
-                    </span>
-                  </span>
-                  <Menu.RadioItemIndicator>
-                    <Check aria-hidden="true" className="size-3.5" strokeWidth={2.5} />
-                  </Menu.RadioItemIndicator>
-                </Menu.RadioItem>
-              ))}
-            </Menu.RadioGroup>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
+      <AnimatePresence>
+        {menuOpen && (
+          <Menu.Portal keepMounted>
+            <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
+              <Menu.Popup
+                className="w-56 origin-(--transform-origin) border border-input bg-popover p-1 outline-none"
+                render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
+              >
+                <Menu.RadioGroup value={mode} onValueChange={(next: BoardMode) => onChange(next)}>
+                  {MODES.map(({ id, label, hint, Icon }) => (
+                    <Menu.RadioItem
+                      key={id}
+                      value={id}
+                      closeOnClick
+                      className="grid h-11 cursor-default grid-cols-[1rem_1fr_1rem] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-checked:font-bold data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
+                    >
+                      <Icon aria-hidden="true" className="size-3.5" />
+                      <span className="min-w-0">
+                        <span className="block leading-4">{label}</span>
+                        <span className="block text-3xs leading-4 font-normal text-muted-foreground">
+                          {hint}
+                        </span>
+                      </span>
+                      <Menu.RadioItemIndicator>
+                        <Check aria-hidden="true" className="size-3.5" strokeWidth={2.5} />
+                      </Menu.RadioItemIndicator>
+                    </Menu.RadioItem>
+                  ))}
+                </Menu.RadioGroup>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        )}
+      </AnimatePresence>
     </Menu.Root>
   );
 }

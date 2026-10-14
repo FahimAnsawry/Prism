@@ -1,4 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { AnimatePresence, motion } from "motion/react";
+import { backdropMotion, dialogPopup, usePopupExit } from "@/components/popup-motion";
 import { X } from "lucide-react";
 import { TOOL_GROUPS } from "./tools";
 
@@ -64,62 +66,73 @@ export function ShortcutsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { actionsRef, onExitComplete } = usePopupExit(open);
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate/40 transition-opacity duration-150 ease-standard data-ending-style:opacity-0 data-starting-style:opacity-0 dark:bg-black/60" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[44rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0 sm:p-8">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <Dialog.Title className="text-[26px] leading-8 font-bold text-ink">
-                Shortcuts
-              </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                Keys and mouse gestures for the board. ⌘ works wherever Ctrl does.
-              </Dialog.Description>
-            </div>
-            <Dialog.Close
-              aria-label="Close"
-              className="-mt-1 -mr-2 flex size-9 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-standard hover:text-ink"
+    <Dialog.Root actionsRef={actionsRef} open={open} onOpenChange={onOpenChange}>
+      <AnimatePresence>
+        {open && (
+          <Dialog.Portal keepMounted>
+            <Dialog.Backdrop
+              className="fixed inset-0 z-50 bg-slate/40 dark:bg-black/60"
+              render={<motion.div {...backdropMotion} />}
+            />
+            <Dialog.Popup
+              className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[44rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none sm:p-8"
+              render={dialogPopup(onExitComplete)}
             >
-              <X aria-hidden="true" className="size-4" />
-            </Dialog.Close>
-          </div>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Dialog.Title className="text-[26px] leading-8 font-bold text-ink">
+                    Shortcuts
+                  </Dialog.Title>
+                  <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+                    Keys and mouse gestures for the board. ⌘ works wherever Ctrl does.
+                  </Dialog.Description>
+                </div>
+                <Dialog.Close
+                  aria-label="Close"
+                  className="-mt-1 -mr-2 flex size-9 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-standard hover:text-ink"
+                >
+                  <X aria-hidden="true" className="size-4" />
+                </Dialog.Close>
+              </div>
 
-          <div className="mt-6 grid gap-x-10 gap-y-6 sm:grid-cols-2">
-            {SECTIONS.map((section) => (
-              <section
-                key={section.title}
-                className={section.title === "Tools" ? "sm:row-span-2" : undefined}
-              >
-                <h3 className="font-mono text-3xs font-bold text-muted-foreground uppercase">
-                  {section.title}
-                </h3>
-                <dl className="mt-2">
-                  {section.items.map((item) => (
-                    <div
-                      key={`${item.label}-${item.keys.join("+")}`}
-                      className="flex h-8 items-center justify-between gap-4 border-b border-divider text-[13px] last:border-b-0"
-                    >
-                      <dt className="text-foreground">{item.label}</dt>
-                      <dd className="flex shrink-0 items-center gap-1">
-                        {item.keys.map((key) => (
-                          <kbd
-                            key={key}
-                            className="flex h-6 min-w-[26px] items-center justify-center border border-divider bg-card px-1.5 font-mono text-2xs text-muted-foreground"
-                          >
-                            {key}
-                          </kbd>
-                        ))}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
-            ))}
-          </div>
-        </Dialog.Popup>
-      </Dialog.Portal>
+              <div className="mt-6 grid gap-x-10 gap-y-6 sm:grid-cols-2">
+                {SECTIONS.map((section) => (
+                  <section
+                    key={section.title}
+                    className={section.title === "Tools" ? "sm:row-span-2" : undefined}
+                  >
+                    <h3 className="font-mono text-3xs font-bold text-muted-foreground uppercase">
+                      {section.title}
+                    </h3>
+                    <dl className="mt-2">
+                      {section.items.map((item) => (
+                        <div
+                          key={`${item.label}-${item.keys.join("+")}`}
+                          className="flex h-8 items-center justify-between gap-4 border-b border-divider text-[13px] last:border-b-0"
+                        >
+                          <dt className="text-foreground">{item.label}</dt>
+                          <dd className="flex shrink-0 items-center gap-1">
+                            {item.keys.map((key) => (
+                              <kbd
+                                key={key}
+                                className="flex h-6 min-w-[26px] items-center justify-center border border-divider bg-card px-1.5 font-mono text-2xs text-muted-foreground"
+                              >
+                                {key}
+                              </kbd>
+                            ))}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                ))}
+              </div>
+            </Dialog.Popup>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
     </Dialog.Root>
   );
 }

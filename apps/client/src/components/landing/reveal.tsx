@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { EASE_DECELERATE } from "@/lib/motion";
 
 /** Gap between siblings that reveal together, and the most steps a group can stack up. */
-const STEP_MS = 80;
+const STEP_SECONDS = 0.08;
 const MAX_STEPS = 5;
 
 /**
- * Fades its children in and up once, when they scroll into view (styles: `[data-reveal]` in
- * index.css, which also turns the effect off for reduced motion). `step` staggers siblings that
- * enter together: 0 plays right away, each step after waits another 80ms (capped at 5 steps).
- * Layout classes for the wrapper go in `className`.
+ * Fades its children in and up once, when they scroll into view: the content rises 24px and
+ * fades in, and only opacity and transform change, so nothing shifts. With reduced motion the
+ * content just shows. `step` staggers siblings that enter together: 0 plays right away, each
+ * step after waits another 80ms (capped at 5 steps). Layout classes for the wrapper go in
+ * `className`.
  *
  * With `whole` it waits until the content is completely on screen. A plain full-height wrapper is
  * what gets watched (the content itself sits 24px low until it shows, which would skew the
@@ -26,6 +29,7 @@ export function Reveal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
   // Without IntersectionObserver there is nothing to wait for, so content shows straight away.
   const [shown, setShown] = useState(() => typeof IntersectionObserver === "undefined");
 
@@ -49,23 +53,28 @@ export function Reveal({
     return () => observer.disconnect();
   }, [whole]);
 
-  const style = step
-    ? ({ "--reveal-delay": `${Math.min(step, MAX_STEPS) * STEP_MS}ms` } as CSSProperties)
-    : undefined;
+  const content = {
+    initial: false,
+    animate: shown || reducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 },
+    transition: {
+      duration: 0.7,
+      ease: EASE_DECELERATE,
+      delay: Math.min(step, MAX_STEPS) * STEP_SECONDS,
+    },
+    className,
+  };
 
   if (whole) {
     return (
       <div ref={ref} className="h-full">
-        <div data-reveal={shown ? "in" : "out"} style={style} className={className}>
-          {children}
-        </div>
+        <motion.div {...content}>{children}</motion.div>
       </div>
     );
   }
 
   return (
-    <div ref={ref} data-reveal={shown ? "in" : "out"} style={style} className={className}>
+    <motion.div ref={ref} {...content}>
       {children}
-    </div>
+    </motion.div>
   );
 }

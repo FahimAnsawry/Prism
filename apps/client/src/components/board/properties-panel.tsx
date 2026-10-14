@@ -28,9 +28,11 @@ import {
   type TableData,
   type UpdateBoardStyleInput,
 } from "@prism/shared";
+import { motion } from "motion/react";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { memo, type ReactNode, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { EASE_STANDARD } from "@/lib/motion";
 import {
   type BoardElement,
   displayColor,
@@ -1491,11 +1493,14 @@ function Toggle({
           checked ? "bg-secondary" : "bg-divider",
         )}
       >
-        <span
+        <motion.span
           className={cn(
-            "absolute top-px left-px size-4 bg-card transition-transform duration-150 ease-standard",
-            checked ? "translate-x-5" : "dark:bg-muted-foreground",
+            "absolute top-px left-px size-4 bg-card",
+            !checked && "dark:bg-muted-foreground",
           )}
+          initial={false}
+          animate={{ x: checked ? 20 : 0 }}
+          transition={{ duration: 0.15, ease: EASE_STANDARD }}
         />
       </button>
     </label>

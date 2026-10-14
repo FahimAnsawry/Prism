@@ -1,4 +1,6 @@
+import { motion } from "motion/react";
 import { useEffect, useLayoutEffect, useState } from "react";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { PrismLoader } from "./prism-loader";
 import { finishSplash } from "./splash-state";
@@ -50,13 +52,16 @@ export function AppSplash({ skip = false }: { skip?: boolean }) {
   if (phase === "done") return null;
 
   return (
-    <div
+    <motion.div
       className={cn(
-        "fixed top-0 left-0 z-50 h-dvh w-screen bg-background transition-opacity duration-300 ease-standard",
-        phase === "fade" && "pointer-events-none opacity-0",
+        "fixed top-0 left-0 z-50 h-dvh w-screen bg-background",
+        phase === "fade" && "pointer-events-none",
       )}
+      initial={false}
+      animate={{ opacity: phase === "fade" ? 0 : 1 }}
+      transition={{ duration: 0.3, ease: EASE_STANDARD }}
     >
       <PrismLoader fullScreen />
-    </div>
+    </motion.div>
   );
 }

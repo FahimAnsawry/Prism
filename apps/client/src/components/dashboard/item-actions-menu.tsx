@@ -1,4 +1,7 @@
 import { Menu } from "@base-ui/react/menu";
+import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { popupMotion, usePopupExit } from "@/components/popup-motion";
 import { Ellipsis, LogOut, Pencil, Share2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkspaceItem } from "./workspace-data";
@@ -31,6 +34,8 @@ export function ItemActionsMenu({
   /** False for a board reached through a shared project: it can only be left with the project. */
   canLeave?: boolean;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { actionsRef, onExitComplete } = usePopupExit(menuOpen);
   const kind = item.kind === "project" ? "project" : "whiteboard";
   const actions = menuActions(item, { canLeave });
   const itemClass =
@@ -38,7 +43,7 @@ export function ItemActionsMenu({
   if (actions.length === 0) return null;
 
   return (
-    <Menu.Root>
+    <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
       <Menu.Trigger
         aria-label={`Actions for ${item.name}`}
         className={cn(
@@ -48,54 +53,66 @@ export function ItemActionsMenu({
       >
         <Ellipsis aria-hidden="true" className="size-4" />
       </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-[60] outline-none">
-          <Menu.Popup className="w-48 origin-(--transform-origin) border border-input bg-popover p-1 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0">
-            {actions.includes("edit") && (
-              <Menu.Item
-                onClick={() => onAction("edit", item)}
-                className={cn(itemClass, "text-foreground")}
+      <AnimatePresence>
+        {menuOpen && (
+          <Menu.Portal keepMounted>
+            <Menu.Positioner
+              side="bottom"
+              align="end"
+              sideOffset={6}
+              className="z-[60] outline-none"
+            >
+              <Menu.Popup
+                className="w-48 origin-(--transform-origin) border border-input bg-popover p-1 outline-none"
+                render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
               >
-                <Pencil aria-hidden="true" />
-                Edit {kind}
-              </Menu.Item>
-            )}
-            {actions.includes("share") && (
-              <Menu.Item
-                onClick={() => onAction("share", item)}
-                className={cn(itemClass, "text-foreground")}
-              >
-                <Share2 aria-hidden="true" />
-                Share…
-              </Menu.Item>
-            )}
-            {actions.includes("delete") && (
-              <>
-                <Menu.Separator className="my-1 h-px bg-divider" />
-                <Menu.Item
-                  onClick={() => onAction("delete", item)}
-                  className={cn(itemClass, "text-destructive")}
-                >
-                  <Trash2 aria-hidden="true" />
-                  Delete {kind}…
-                </Menu.Item>
-              </>
-            )}
-            {actions.includes("leave") && (
-              <>
-                {actions.length > 1 && <Menu.Separator className="my-1 h-px bg-divider" />}
-                <Menu.Item
-                  onClick={() => onAction("leave", item)}
-                  className={cn(itemClass, "text-destructive")}
-                >
-                  <LogOut aria-hidden="true" />
-                  Leave {kind}…
-                </Menu.Item>
-              </>
-            )}
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
+                {actions.includes("edit") && (
+                  <Menu.Item
+                    onClick={() => onAction("edit", item)}
+                    className={cn(itemClass, "text-foreground")}
+                  >
+                    <Pencil aria-hidden="true" />
+                    Edit {kind}
+                  </Menu.Item>
+                )}
+                {actions.includes("share") && (
+                  <Menu.Item
+                    onClick={() => onAction("share", item)}
+                    className={cn(itemClass, "text-foreground")}
+                  >
+                    <Share2 aria-hidden="true" />
+                    Share…
+                  </Menu.Item>
+                )}
+                {actions.includes("delete") && (
+                  <>
+                    <Menu.Separator className="my-1 h-px bg-divider" />
+                    <Menu.Item
+                      onClick={() => onAction("delete", item)}
+                      className={cn(itemClass, "text-destructive")}
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Delete {kind}…
+                    </Menu.Item>
+                  </>
+                )}
+                {actions.includes("leave") && (
+                  <>
+                    {actions.length > 1 && <Menu.Separator className="my-1 h-px bg-divider" />}
+                    <Menu.Item
+                      onClick={() => onAction("leave", item)}
+                      className={cn(itemClass, "text-destructive")}
+                    >
+                      <LogOut aria-hidden="true" />
+                      Leave {kind}…
+                    </Menu.Item>
+                  </>
+                )}
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        )}
+      </AnimatePresence>
     </Menu.Root>
   );
 }

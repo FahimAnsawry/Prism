@@ -1,6 +1,8 @@
 import type { Workspace } from "@prism/shared";
 import { LayoutGrid, List } from "lucide-react";
+import { motion } from "motion/react";
 import { type ComponentType, type ReactNode, use, useLayoutEffect, useRef, useState } from "react";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { DashboardPrefs } from "./dashboard-prefs";
 import { ProjectLookContext } from "./dashboard-styles";
@@ -23,16 +25,25 @@ const LOGO_SIZES = {
 export function ProjectLogo({
   projectId,
   size = "sm",
+  pulse = false,
   className,
 }: {
   projectId: string | null | undefined;
   size?: keyof typeof LOGO_SIZES;
+  /** Breathes (fades down and back, every 2s) while something is being drawn. */
+  pulse?: boolean;
   className?: string;
 }) {
   const look = use(ProjectLookContext).get(projectId ?? "");
   return (
-    <span
+    <motion.span
       aria-hidden="true"
+      animate={pulse ? { opacity: [1, 0.5, 1] } : { opacity: 1 }}
+      transition={
+        pulse
+          ? { duration: 2, ease: [0.4, 0, 0.6, 1], times: [0, 0.5, 1], repeat: Infinity }
+          : { duration: 0 }
+      }
       className={cn(
         "inline-flex shrink-0 items-center justify-center [&_svg]:stroke-[2.25]",
         LOGO_SIZES[size],
@@ -41,7 +52,7 @@ export function ProjectLogo({
       )}
     >
       {look && <look.Icon />}
-    </span>
+    </motion.span>
   );
 }
 
@@ -166,10 +177,12 @@ export function Segmented<T extends string>({
       className={cn("relative flex max-w-full border border-divider bg-card p-[3px]", className)}
     >
       {fill && (
-        <span
+        <motion.span
           aria-hidden="true"
-          className="absolute top-[3px] bottom-[3px] left-0 bg-secondary transition-[translate,width] duration-250 ease-standard motion-reduce:transition-none"
-          style={{ width: fill.width, translate: `${fill.left}px 0` }}
+          className="absolute top-[3px] bottom-[3px] left-0 bg-secondary"
+          initial={false}
+          animate={{ width: fill.width, x: fill.left }}
+          transition={{ duration: 0.25, ease: EASE_STANDARD }}
         />
       )}
       {options.map((option) => (

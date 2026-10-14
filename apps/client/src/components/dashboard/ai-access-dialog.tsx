@@ -1,20 +1,13 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { AnimatePresence, motion } from "motion/react";
+import { backdropMotion, dialogPopup, usePopupExit } from "@/components/popup-motion";
 import type { ApiToken, CreatedApiToken } from "@prism/shared";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ArrowUpRight,
-  Check,
-  ChevronLeft,
-  ChevronUp,
-  Circle,
-  Copy,
-  PlugZap,
-  Plus,
-  X,
-} from "lucide-react";
+import { ArrowUpRight, Check, ChevronLeft, Circle, Copy, PlugZap, Plus, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { FormError, FormField } from "@/components/auth/form-field";
 import { ctaVariants } from "@/components/cta";
+import { TurningChevron } from "@/components/motion-parts";
 import { editorsQuery } from "@/lib/account";
 import { apiTokensQuery, MCP_URL, useCreateApiToken, useRevokeApiToken } from "@/lib/ai";
 import { apiErrorMessage } from "@/lib/api";
@@ -43,14 +36,25 @@ export function AiAccessDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { actionsRef, onExitComplete } = usePopupExit(open);
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate/40 transition-opacity duration-150 ease-standard data-ending-style:opacity-0 data-starting-style:opacity-0 dark:bg-black/60" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[55rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col border border-input bg-popover outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-nested-dialog-open:opacity-60">
-          <AiAccess />
-        </Dialog.Popup>
-      </Dialog.Portal>
+    <Dialog.Root actionsRef={actionsRef} open={open} onOpenChange={onOpenChange}>
+      <AnimatePresence>
+        {open && (
+          <Dialog.Portal keepMounted>
+            <Dialog.Backdrop
+              className="fixed inset-0 z-50 bg-slate/40 dark:bg-black/60"
+              render={<motion.div {...backdropMotion} />}
+            />
+            <Dialog.Popup
+              className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[55rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col border border-input bg-popover outline-none"
+              render={dialogPopup(onExitComplete)}
+            >
+              <AiAccess />
+            </Dialog.Popup>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
     </Dialog.Root>
   );
 }
@@ -188,13 +192,7 @@ function ToolGrid({
             className="flex items-center gap-2 text-sm font-semibold text-foreground"
           >
             {open ? "Collapse" : "Expand"}
-            <ChevronUp
-              aria-hidden="true"
-              className={cn(
-                "size-4 transition-transform duration-200 ease-standard",
-                !open && "rotate-180",
-              )}
-            />
+            <TurningChevron up turned={!open} seconds={0.2} className="size-4" />
           </button>
         </div>
         {open && (

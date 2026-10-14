@@ -1,4 +1,6 @@
 import { Menu } from "@base-ui/react/menu";
+import { AnimatePresence, motion } from "motion/react";
+import { popupMotion, usePopupExit } from "@/components/popup-motion";
 import { Plus } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { isTyping } from "@/lib/keyboard";
@@ -33,6 +35,7 @@ function shortcutOption(event: {
 /** "+ New": one button, one menu with both things a workspace can hold (frame 14). */
 export function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => void }) {
   const [open, setOpen] = useState(false);
+  const { actionsRef, onExitComplete } = usePopupExit(open);
 
   const create = (kind: CreateKind) => {
     setOpen(false);
@@ -68,7 +71,7 @@ export function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => void }) 
   }, []);
 
   return (
-    <Menu.Root open={open} onOpenChange={setOpen}>
+    <Menu.Root open={open} onOpenChange={setOpen} actionsRef={actionsRef}>
       <Menu.Trigger
         title="New project (P) or whiteboard (B)"
         className="inline-flex h-11 w-[140px] shrink-0 max-sm:w-full items-center justify-center gap-2 border border-transparent bg-brand text-[15px] font-bold text-slate transition-colors duration-150 ease-standard select-none hover:bg-brand/80 data-popup-open:border-foreground"
@@ -76,43 +79,53 @@ export function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => void }) 
         <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />
         New
       </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner side="bottom" align="end" sideOffset={14} className="z-50 outline-none">
-          <Menu.Popup
-            onKeyDown={onKeyDown}
-            className="w-80 max-w-[calc(100vw-2rem)] origin-(--transform-origin) border border-input bg-popover p-1.5 outline-none transition-[scale,opacity] duration-150 ease-standard data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
-          >
-            <Menu.Group>
-              <Menu.GroupLabel className="px-2.5 pt-1.5 pb-2.5 font-mono text-3xs font-bold text-muted-foreground">
-                CREATE
-              </Menu.GroupLabel>
-              <div className="flex flex-col gap-1">
-                {OPTIONS.map((option) => (
-                  <Menu.Item
-                    key={option.kind}
-                    onClick={() => create(option.kind)}
-                    aria-keyshortcuts={option.shortcut}
-                    className="flex h-18 cursor-default items-center gap-3.5 pr-2.5 pl-3 outline-none select-none data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
-                  >
-                    {option.kind === "project" ? <ProjectIcon /> : <WhiteboardIcon />}
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] leading-[21px] font-bold text-foreground">
-                        {option.title}
-                      </span>
-                      <span className="block text-xs leading-[17px] text-muted-foreground">
-                        {option.description}
-                      </span>
-                    </span>
-                    <kbd className="flex h-6 w-[26px] shrink-0 items-center justify-center border border-divider bg-card font-mono text-2xs text-muted-foreground">
-                      {option.shortcut}
-                    </kbd>
-                  </Menu.Item>
-                ))}
-              </div>
-            </Menu.Group>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
+      <AnimatePresence>
+        {open && (
+          <Menu.Portal keepMounted>
+            <Menu.Positioner
+              side="bottom"
+              align="end"
+              sideOffset={14}
+              className="z-50 outline-none"
+            >
+              <Menu.Popup
+                onKeyDown={onKeyDown}
+                className="w-80 max-w-[calc(100vw-2rem)] origin-(--transform-origin) border border-input bg-popover p-1.5 outline-none"
+                render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
+              >
+                <Menu.Group>
+                  <Menu.GroupLabel className="px-2.5 pt-1.5 pb-2.5 font-mono text-3xs font-bold text-muted-foreground">
+                    CREATE
+                  </Menu.GroupLabel>
+                  <div className="flex flex-col gap-1">
+                    {OPTIONS.map((option) => (
+                      <Menu.Item
+                        key={option.kind}
+                        onClick={() => create(option.kind)}
+                        aria-keyshortcuts={option.shortcut}
+                        className="flex h-18 cursor-default items-center gap-3.5 pr-2.5 pl-3 outline-none select-none data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
+                      >
+                        {option.kind === "project" ? <ProjectIcon /> : <WhiteboardIcon />}
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[15px] leading-[21px] font-bold text-foreground">
+                            {option.title}
+                          </span>
+                          <span className="block text-xs leading-[17px] text-muted-foreground">
+                            {option.description}
+                          </span>
+                        </span>
+                        <kbd className="flex h-6 w-[26px] shrink-0 items-center justify-center border border-divider bg-card font-mono text-2xs text-muted-foreground">
+                          {option.shortcut}
+                        </kbd>
+                      </Menu.Item>
+                    ))}
+                  </div>
+                </Menu.Group>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        )}
+      </AnimatePresence>
     </Menu.Root>
   );
 }
