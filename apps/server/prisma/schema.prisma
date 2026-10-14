@@ -322,6 +322,7 @@ model ApiToken {
 
 enum EditStatus {
   pending
+  paused
   working
   done
   failed

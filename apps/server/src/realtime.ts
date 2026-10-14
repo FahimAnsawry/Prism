@@ -212,6 +212,10 @@ export function broadcastEdit(request: EditRequest) {
   io?.to(room(request.boardId)).emit("edit:update", request);
 }
 
+export function broadcastEditDeleted(boardId: string, id: string) {
+  io?.to(room(boardId)).emit("edit:delete", { boardId, id });
+}
+
 /**
  * The user's most recently reported selection: on `boardId` if given, else on whichever board
  * they touched last. Null when no tab of theirs has reported one.

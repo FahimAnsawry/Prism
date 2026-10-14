@@ -81,6 +81,7 @@ import {
   loadElements,
   selectionFor,
   sourceFileStem,
+  takeStops,
   waitForEdits,
 } from "../ai-actions.js";
 import { HttpError } from "../errors.js";
@@ -463,7 +464,25 @@ async function createHtmlScreen(
 const sharedBy = (item: { access: string; ownerName: string }) =>
   item.access === "owner" ? {} : { access: item.access, owner: item.ownerName };
 
+/**
+ * Makes every tool answer, once, with the news that the user stopped an Ask AI request instead
+ * of running: an AI editor can't be interrupted, but it reads its next tool result.
+ */
+function refuseAfterStop(server: McpServer, userId: string) {
+  type Handler = (...args: unknown[]) => unknown;
+  type Register = (name: string, config: unknown, handler: Handler) => unknown;
+  const register = server.registerTool.bind(server) as unknown as Register;
+  server.registerTool = ((name: string, config: unknown, handler: Handler) =>
+    register(name, config, (...args) => {
+      const stopped = takeStops(userId);
+      if (stopped) return { content: [{ type: "text", text: stopped }], isError: true };
+      return handler(...args);
+    })) as unknown as typeof server.registerTool;
+}
+
 export function registerTools(server: McpServer, userId: string) {
+  refuseAfterStop(server, userId);
+
   // ── Boards ───────────────────────────────────────────────────────────────
 
   server.registerTool(

@@ -50,8 +50,11 @@ export const createdApiTokenSchema = apiTokenSchema.extend({ token: z.string() }
 
 // ── "Ask AI" edit requests ─────────────────────────────────────────────────
 
-/** pending → working (an AI editor picked it up) → done or failed. */
-export const EDIT_STATUSES = ["pending", "working", "done", "failed"] as const;
+/**
+ * pending → working (an AI editor picked it up) → done or failed. A pending request can be
+ * paused (AI editors skip it) and resumed, and its prompt edited, until an editor picks it up.
+ */
+export const EDIT_STATUSES = ["pending", "paused", "working", "done", "failed"] as const;
 export const EDIT_PROMPT_MAX = 2_000;
 export const EDIT_NOTE_MAX = 500;
 
@@ -63,6 +66,16 @@ export const createEditRequestSchema = z.object({
     .max(EDIT_PROMPT_MAX, `Use ${EDIT_PROMPT_MAX} characters or fewer.`),
   elementIds: z.array(z.uuid()).max(500),
 });
+
+/** Change a request an AI editor hasn't picked up yet: its prompt, and/or pause or resume it. */
+export const updateEditRequestSchema = z
+  .object({
+    prompt: createEditRequestSchema.shape.prompt.optional(),
+    paused: z.boolean().optional(),
+  })
+  .refine((body) => body.prompt !== undefined || body.paused !== undefined, {
+    message: "Nothing to change.",
+  });
 
 export const editRequestSchema = z.object({
   id: z.uuid(),
@@ -280,6 +293,8 @@ export interface ServerToClientEvents {
   "element:ops": (payload: { boardId: string; ops: ElementOp[] }) => void;
   /** An edit request was created or changed status. */
   "edit:update": (request: EditRequest) => void;
+  /** An edit request was deleted. */
+  "edit:delete": (payload: { boardId: string; id: string }) => void;
   /** An AI editor wants to see part of the board: render it and reply with the image. */
   "export:image": (request: ExportImageRequest, ack: (reply: ExportImageReply) => void) => void;
   /** An AI editor's compare_reference: measure a screen against a reference image and reply. */
@@ -341,4 +356,5 @@ export type CreatedApiToken = z.infer<typeof createdApiTokenSchema>;
 export type ConnectedEditor = z.infer<typeof connectedEditorSchema>;
 export type EditStatus = (typeof EDIT_STATUSES)[number];
 export type CreateEditRequestInput = z.infer<typeof createEditRequestSchema>;
+export type UpdateEditRequestInput = z.infer<typeof updateEditRequestSchema>;
 export type EditRequest = z.infer<typeof editRequestSchema>;

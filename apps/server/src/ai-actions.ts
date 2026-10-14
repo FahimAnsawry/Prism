@@ -2,9 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { type BoardElement, type EditRequest, SVG_TYPE, UPLOAD_MAX_BYTES } from "@prism/shared";
 import type { EditStatus } from "./db/generated/client.js";
 import { prisma } from "./db/client.js";
-import { badRequest, notFound } from "./errors.js";
+import { badRequest, HttpError, notFound } from "./errors.js";
 import { downloadImage } from "./image-import.js";
-import { broadcastEdit, broadcastOps, latestSelection } from "./realtime.js";
+import { broadcastEdit, broadcastEditDeleted, broadcastOps, latestSelection } from "./realtime.js";
 import { accessibleBoardWhere, boardFor } from "./routes/board-access.js";
 import { applyOps, toElement } from "./routes/elements.js";
 import { putObject } from "./storage.js";
@@ -308,6 +308,103 @@ export async function waitForEdits(
   }
 }
 
+/**
+ * Edits a request's prompt and/or pauses or resumes it. Only the user's own request that no AI
+ * editor has picked up yet can change; the update is atomic, so a request an editor claims in the
+ * meantime stays untouched and the caller is told.
+ */
+export async function updateEdit(
+  userId: string,
+  boardId: string,
+  editId: string,
+  input: { prompt?: string | undefined; paused?: boolean | undefined },
+) {
+  const where = { id: editId, boardId, userId };
+  const { count } = await prisma.editRequest.updateMany({
+    where: { ...where, status: { in: ["pending", "paused"] } },
+    data: {
+      ...(input.prompt !== undefined && { prompt: input.prompt }),
+      ...(input.paused !== undefined && { status: input.paused ? "paused" : "pending" }),
+    },
+  });
+  if (count === 0) {
+    const exists = await prisma.editRequest.findFirst({ where, select: { id: true } });
+    if (!exists) throw notFound(EDIT_NOT_FOUND);
+    throw new HttpError(409, "An AI editor already picked this up, so it can't be changed now.");
+  }
+  const row = await prisma.editRequest.findUniqueOrThrow({
+    where: { id: editId },
+    select: editSelect,
+  });
+  const request = toEditRequest(row);
+  broadcastEdit(request);
+  if (request.status === "pending") wakeEditWaiters(userId);
+  return request;
+}
+
+/** The note a request the user stopped ends with. */
+const STOPPED_NOTE = "Stopped by you. The AI editor halts at its next Prism action.";
+
+/**
+ * Requests the user stopped while an AI editor was working on them, per user. The editor can't be
+ * interrupted, so its next tool call is refused with this news instead (`takeStops`).
+ */
+const stops = new Map<string, { prompt: string; until: number }[]>();
+
+function noteStop(userId: string, prompt: string) {
+  const list = stops.get(userId) ?? [];
+  list.push({ prompt, until: Date.now() + RECLAIM_AFTER_MS });
+  stops.set(userId, list);
+}
+
+/**
+ * Takes the user's pending stop news, once: the text to answer an AI editor's tool call with
+ * (instead of running it), or undefined when the user stopped nothing.
+ */
+export function takeStops(userId: string) {
+  const list = stops.get(userId)?.filter((stop) => stop.until > Date.now());
+  stops.delete(userId);
+  if (!list?.length) return undefined;
+  const what = list.map((stop) => `"${stop.prompt.slice(0, 80)}"`).join(", ");
+  return `The user stopped the Ask AI request ${what} in Prism. Stop working on it now: make no further changes for it, don't call complete_edit for it, and tell the user you stopped. Then call wait_for_edits again only if you were watching for requests.`;
+}
+
+/**
+ * Stops a request an AI editor is working on: it ends as failed with a note, and the editor's
+ * next tool call is refused with the news. Changes it already made stay on the board.
+ */
+export async function stopEdit(userId: string, boardId: string, editId: string) {
+  const where = { id: editId, boardId, userId };
+  const { count } = await prisma.editRequest.updateMany({
+    where: { ...where, status: "working" },
+    data: { status: "failed", note: STOPPED_NOTE },
+  });
+  const row = await prisma.editRequest.findFirst({ where, select: editSelect });
+  if (!row) throw notFound(EDIT_NOT_FOUND);
+  if (count === 0)
+    throw new HttpError(409, "That request isn't being worked on, so there's nothing to stop.");
+  noteStop(userId, row.prompt);
+  const request = toEditRequest(row);
+  broadcastEdit(request);
+  return request;
+}
+
+/**
+ * Deletes the user's request, whatever its status. One an AI editor is already working on is
+ * stopped like `stopEdit`; its complete_edit will say the request no longer exists.
+ */
+export async function deleteEdit(userId: string, boardId: string, editId: string) {
+  const where = { id: editId, boardId, userId };
+  const before = await prisma.editRequest.findFirst({
+    where,
+    select: { status: true, prompt: true },
+  });
+  const { count } = await prisma.editRequest.deleteMany({ where });
+  if (count === 0) throw notFound(EDIT_NOT_FOUND);
+  if (before?.status === "working") noteStop(userId, before.prompt);
+  broadcastEditDeleted(boardId, editId);
+}
+
 /** Finishes a request with the AI editor's note, which the browser shows. */
 export async function completeEdit(
   userId: string,
@@ -317,9 +414,12 @@ export async function completeEdit(
 ) {
   const existing = await prisma.editRequest.findFirst({
     where: { id: editId, userId },
-    select: { id: true },
+    select: { ...editSelect },
   });
   if (!existing) throw notFound(EDIT_NOT_FOUND);
+  // The user stopped it: an editor that finishes anyway doesn't turn that into "done".
+  if (existing.status === "failed" && existing.note === STOPPED_NOTE)
+    return toEditRequest(existing);
   const row = await prisma.editRequest.update({
     where: { id: existing.id },
     data: { status, note: note || null },

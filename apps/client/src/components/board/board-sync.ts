@@ -319,6 +319,8 @@ export interface RealtimeHandlers {
   onJoined: () => void;
   /** An "Ask AI" request on this board was created or changed status. */
   onEdit?: (request: EditRequest) => void;
+  /** An "Ask AI" request was deleted. */
+  onEditDeleted?: (id: string) => void;
   /** This tab lost the board: removed from it, or the public link was turned off or replaced. */
   onRevoked?: () => void;
   /** The user's role on the board changed. */
@@ -363,6 +365,9 @@ export function useBoardRealtime(
     const onEdit = (request: EditRequest) => {
       if (request.boardId === boardId) latest.current.onEdit?.(request);
     };
+    const onEditDeleted = (payload: { boardId: string; id: string }) => {
+      if (payload.boardId === boardId) latest.current.onEditDeleted?.(payload.id);
+    };
     // An AI editor's export_image: this tab draws the board and replies with the picture.
     const onExportImage = (request: ExportImageRequest, ack: (reply: ExportImageReply) => void) => {
       if (request.boardId === boardId) void exportBoardImage(request).then(ack);
@@ -370,6 +375,7 @@ export function useBoardRealtime(
     socket.on("connect", join);
     socket.on("element:ops", onOps);
     socket.on("edit:update", onEdit);
+    socket.on("edit:delete", onEditDeleted);
     socket.on("export:image", onExportImage);
     // An AI editor's compare_reference: this tab measures a screen against a reference image.
     const onCompareReference = (
@@ -416,6 +422,7 @@ export function useBoardRealtime(
       socket.off("board:access", onAccess);
       socket.off("element:ops", onOps);
       socket.off("edit:update", onEdit);
+      socket.off("edit:delete", onEditDeleted);
       socket.off("export:image", onExportImage);
       socket.off("compare:reference", onCompareReference);
       socket.off("layout:screen", onLayoutScreen);

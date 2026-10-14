@@ -70,7 +70,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { ErrorScreen } from "@/components/feedback/error-page";
 import { NotFoundPage } from "@/components/feedback/not-found-page";
 import { PrismLoader } from "@/components/feedback/prism-loader";
-import { boardEditsQuery, useMergeEdit } from "@/lib/ai";
+import { boardEditsQuery, useMergeEdit, useRemoveEdit } from "@/lib/ai";
 import { ApiError, apiErrorMessage } from "@/lib/api";
 import { requireSession } from "@/lib/auth-client";
 import { isTyping } from "@/lib/keyboard";
@@ -270,12 +270,17 @@ function BoardEditor({
 
   const edits = useQuery(boardEditsQuery(boardId));
   const mergeEdit = useMergeEdit(boardId);
+  const removeEdit = useRemoveEdit(boardId);
   // Statuses show for unfinished requests, and for ones made or changed while the board is open.
   const [seenEdits, setSeenEdits] = useState<ReadonlySet<string>>(() => new Set());
   const recentEdits = useMemo(
     () =>
       (edits.data ?? []).filter(
-        (r) => r.status === "pending" || r.status === "working" || seenEdits.has(r.id),
+        (r) =>
+          r.status === "pending" ||
+          r.status === "paused" ||
+          r.status === "working" ||
+          seenEdits.has(r.id),
       ),
     [edits.data, seenEdits],
   );
@@ -299,6 +304,7 @@ function BoardEditor({
       mergeEdit(request);
       setSeenEdits((ids) => (ids.has(request.id) ? ids : new Set(ids).add(request.id)));
     },
+    onEditDeleted: removeEdit,
     onRevoked: onAccessChanged,
     onAccessChanged,
   });
@@ -523,7 +529,8 @@ function BoardEditor({
       isTyping(target) || Boolean(document.querySelector('[role="dialog"], [role="alertdialog"]'));
 
     const onCopy = (event: ClipboardEvent, cut = false) => {
-      if (blocked(event.target)) return;
+      // Text the user selected on the page (an error message, a status line) copies as itself.
+      if (blocked(event.target) || window.getSelection()?.toString()) return;
       const { state: current, viewing: readOnly } = latest.current;
       // View mode can copy but not cut.
       if (cut && readOnly) return;

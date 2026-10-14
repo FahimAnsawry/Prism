@@ -9,6 +9,7 @@ import {
   type CreateApiTokenInput,
   type CreateEditRequestInput,
   type EditRequest,
+  type UpdateEditRequestInput,
 } from "@prism/shared";
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./api";
@@ -61,6 +62,62 @@ export function useMergeEdit(boardId: string) {
       const rest = list.filter((r) => r.id !== request.id);
       return [request, ...rest].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     });
+}
+
+/** Pauses, resumes or rewords a request no AI editor has picked up yet. */
+export function useUpdateEdit(boardId: string) {
+  const merge = useMergeEdit(boardId);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: UpdateEditRequestInput & { id: string }) =>
+      apiFetch(`${editsPath(boardId)}/${encodeURIComponent(id)}`, editRequestSchema, {
+        method: "PATCH",
+        body: input,
+      }),
+    onSuccess: merge,
+    // An editor picked it up first (409) or it's gone: show what the server has now.
+    onError: () =>
+      void queryClient.invalidateQueries({ queryKey: boardEditsQuery(boardId).queryKey }),
+  });
+}
+
+/** Stops a request an AI editor is working on; it stops at its next Prism action. */
+export function useStopEdit(boardId: string) {
+  const merge = useMergeEdit(boardId);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`${editsPath(boardId)}/${encodeURIComponent(id)}/stop`, editRequestSchema, {
+        method: "POST",
+      }),
+    onSuccess: merge,
+    // It finished first (409) or is gone: show what the server has now.
+    onError: () =>
+      void queryClient.invalidateQueries({ queryKey: boardEditsQuery(boardId).queryKey }),
+  });
+}
+
+/** Takes a deleted request out of the cached list. */
+export function useRemoveEdit(boardId: string) {
+  const queryClient = useQueryClient();
+  return (id: string) =>
+    queryClient.setQueryData<EditRequest[]>(boardEditsQuery(boardId).queryKey, (list = []) =>
+      list.filter((r) => r.id !== id),
+    );
+}
+
+export function useDeleteEdit(boardId: string) {
+  const remove = useRemoveEdit(boardId);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`${editsPath(boardId)}/${encodeURIComponent(id)}`, deletedSchema, {
+        method: "DELETE",
+      }),
+    onSuccess: ({ id }) => remove(id),
+    onError: () =>
+      void queryClient.invalidateQueries({ queryKey: boardEditsQuery(boardId).queryKey }),
+  });
 }
 
 export function useCreateEdit(boardId: string) {
