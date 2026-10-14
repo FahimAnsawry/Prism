@@ -47,7 +47,7 @@ export function AiAccessDialog({
               render={<motion.div {...backdropMotion} />}
             />
             <Dialog.Popup
-              className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[55rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col border border-input bg-popover outline-none"
+              className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[55rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col border border-input bg-popover shadow-lg outline-none"
               render={dialogPopup(onExitComplete)}
             >
               <AiAccess />
@@ -171,7 +171,7 @@ function ToolGrid({
   const [open, setOpen] = useState(true);
   return (
     <div className="flex flex-col gap-8">
-      <section className="flex items-start gap-4 border border-divider bg-card p-6">
+      <section className="flex items-start gap-4 border border-divider bg-card p-6 shadow-sm">
         <PlugZap aria-hidden="true" className="mt-0.5 size-[22px] shrink-0 text-foreground" />
         <div>
           <h2 className="text-base font-bold text-foreground">Connect Prism with your AI tools</h2>
@@ -202,7 +202,7 @@ function ToolGrid({
                 <button
                   type="button"
                   onClick={() => onPick(tool.id)}
-                  className="flex w-full flex-col gap-4 border border-divider bg-card p-6 text-left transition-colors duration-150 ease-standard hover:border-input"
+                  className="flex w-full flex-col gap-4 border border-divider bg-card p-6 text-left shadow-sm transition-colors duration-150 ease-standard hover:border-input"
                 >
                   <span className="flex items-center gap-4">
                     <ToolLogo tool={tool} size="sm" />

@@ -104,7 +104,7 @@ export const ConnectAiContext = createContext<() => void>(() => {});
 
 /** The outlined secondary button pages use beside the green one. */
 export const outlineButton =
-  "inline-flex h-[38px] shrink-0 items-center justify-center gap-2 border border-input bg-card px-4 text-[13px] font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-background [&_svg]:size-4 [&_svg]:shrink-0";
+  "inline-flex h-[38px] shrink-0 items-center justify-center gap-2 border border-input bg-card px-4 text-[13px] font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-hover [&_svg]:size-4 [&_svg]:shrink-0";
 
 /** The green button for a page's main action. */
 export const primaryButton =

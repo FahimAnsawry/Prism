@@ -55,7 +55,7 @@ export function EmptyWorkspace({
     <div className="mt-8">
       <section
         aria-labelledby="empty-workspace-title"
-        className="border border-divider bg-card text-center"
+        className="border border-divider bg-card text-center shadow-sm"
       >
         <FirstBoardSketch />
         <div className="px-6 pt-8 pb-10">
@@ -91,7 +91,7 @@ export function EmptyWorkspace({
       </section>
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">
-        <section className="flex flex-col border border-divider bg-card p-5">
+        <section className="flex flex-col border border-divider bg-card p-5 shadow-sm">
           <h2 className="flex items-center gap-3 text-[15px] font-bold text-foreground">
             <span className="flex size-8 items-center justify-center bg-seafoam text-slate">
               <Sparkles aria-hidden="true" className="size-4" />
@@ -115,7 +115,7 @@ export function EmptyWorkspace({
             More ways to connect →
           </button>
         </section>
-        <section className="border border-divider bg-card p-5">
+        <section className="border border-divider bg-card p-5 shadow-sm">
           <h2 className="flex items-center gap-3 text-[15px] font-bold text-foreground">
             <span className="flex size-8 items-center justify-center bg-lime text-slate">
               <Link2 aria-hidden="true" className="size-4" />

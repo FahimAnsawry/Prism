@@ -155,7 +155,7 @@ export function AllWorkView({
                 <button
                   type="button"
                   onClick={() => onCreate("project")}
-                  className="mt-4 flex w-full items-center gap-3 border border-dashed border-input bg-card px-5 py-4 text-left transition-colors hover:bg-background"
+                  className="mt-4 flex w-full items-center gap-3 border border-dashed border-input bg-card px-5 py-4 text-left transition-colors hover:bg-hover"
                 >
                   <FolderPlus aria-hidden="true" className="size-4 shrink-0 text-foreground" />
                   <span className="text-[13px] font-bold text-foreground">New project</span>
@@ -255,7 +255,7 @@ function SectionTabs({ counts }: { counts: { all: number; projects: number; boar
             "flex h-9 flex-1 items-center justify-center gap-2 text-[13px]",
             tab.id === "all"
               ? "bg-secondary font-bold text-secondary-foreground"
-              : "text-foreground hover:bg-background",
+              : "text-foreground hover:bg-hover",
           )}
         >
           {tab.label}
@@ -269,7 +269,7 @@ function SectionTabs({ counts }: { counts: { all: number; projects: number; boar
 /** The board edited last, large, with a way straight back into it. */
 function ResumeCard({ board }: { board: BoardItem }) {
   return (
-    <article className="group relative flex min-w-0 flex-col border border-divider bg-card transition-colors duration-150 ease-standard hover:border-input">
+    <article className="group relative flex min-w-0 flex-col border border-divider bg-card shadow-sm transition-colors duration-150 ease-standard hover:border-input">
       <BoardPreview
         boardId={board.id}
         projectId={board.projectId}
@@ -317,7 +317,7 @@ function RecentPanel({ boards }: { boards: BoardItem[] }) {
   return (
     <aside
       aria-labelledby="recent-heading"
-      className="flex min-w-0 flex-col border border-divider bg-card p-4 sm:p-5"
+      className="flex min-w-0 flex-col border border-divider bg-card p-4 shadow-sm sm:p-5"
     >
       <h3 id="recent-heading" className="font-display text-base font-bold text-ink">
         Also recent
@@ -329,7 +329,7 @@ function RecentPanel({ boards }: { boards: BoardItem[] }) {
               <Link
                 to="/board/$boardId"
                 params={{ boardId: board.id }}
-                className="-mx-2 flex items-center gap-3 px-2 py-2.5 transition-colors duration-150 ease-standard hover:bg-background"
+                className="-mx-2 flex items-center gap-3 px-2 py-2.5 transition-colors duration-150 ease-standard hover:bg-hover"
               >
                 <BoardPreview
                   boardId={board.id}

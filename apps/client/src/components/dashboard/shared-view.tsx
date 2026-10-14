@@ -67,7 +67,7 @@ export function SharedView({ workspace, query, prefs, onAction, onCreate }: View
       />
 
       {(pasting || all.length === 0) && (
-        <section className="mt-8 border border-divider bg-card p-5">
+        <section className="mt-8 border border-divider bg-card p-5 shadow-sm">
           <h2 className="text-[15px] font-bold text-foreground">Have an invite link?</h2>
           <p className="mt-1.5 text-[13px] text-muted-foreground">
             Paste it to join a board or project. It shows up here once you accept.
@@ -112,32 +112,6 @@ export function SharedView({ workspace, query, prefs, onAction, onCreate }: View
           )}
         </section>
       ))}
-
-      <aside className="mt-12 border border-divider bg-card p-5 sm:p-6">
-        <h2 className="text-[15px] font-bold text-foreground">What your role allows</h2>
-        <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-3 text-[13px]">
-          <dt>
-            <span className="inline-flex h-5 items-center bg-seafoam px-2 font-mono text-3xs font-bold text-slate">
-              EDITOR
-            </span>
-          </dt>
-          <dd className="text-foreground">
-            Change content and add boards. A board you add to a shared project belongs to its owner.
-          </dd>
-          <dt>
-            <span className="inline-flex h-5 items-center bg-ice px-2 font-mono text-3xs font-bold text-slate">
-              VIEWER
-            </span>
-          </dt>
-          <dd className="text-foreground">
-            Read only. Open the board, export an image or copy its code.
-          </dd>
-        </dl>
-        <p className="mt-4 border-t border-divider pt-4 text-[13px] text-muted-foreground">
-          Only the owner shares, moves or deletes. Leaving removes it from your workspace, and the
-          owner can invite you again.
-        </p>
-      </aside>
     </>
   );
 }

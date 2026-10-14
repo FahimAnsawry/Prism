@@ -41,7 +41,7 @@ export const AUTO_KEYS_BELOW = 0.5;
 const CLICK_SLOP = 4;
 
 const closeButton =
-  "flex h-8 items-center gap-2 border border-chrome bg-card pr-1.5 pl-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-standard hover:bg-background";
+  "flex h-8 items-center gap-2 border border-chrome bg-card pr-1.5 pl-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-standard hover:bg-hover";
 const escKey =
   "flex h-5 items-center border border-divider bg-background px-1 font-mono text-3xs text-muted-foreground";
 
@@ -81,7 +81,7 @@ export function ErFocusDialog({
             <Dialog.Popup
               ref={popup}
               initialFocus={popup}
-              className="fixed inset-2 z-50 flex flex-col border border-input bg-popover outline-none sm:inset-4"
+              className="fixed inset-2 z-50 flex flex-col border border-input bg-popover shadow-lg outline-none sm:inset-4"
               render={dialogPopup(onExitComplete)}
             >
               {shownId && (
@@ -281,7 +281,7 @@ function FocusContent({
               title="Back · Alt+Left"
               disabled={!canBack}
               onClick={() => goTo(history.index - 1)}
-              className="flex w-8 items-center justify-center transition-colors duration-150 ease-standard enabled:hover:bg-background disabled:text-muted-foreground/40"
+              className="flex w-8 items-center justify-center transition-colors duration-150 ease-standard enabled:hover:bg-hover disabled:text-muted-foreground/40"
             >
               <ArrowLeft aria-hidden="true" className="size-4" />
             </button>
@@ -291,7 +291,7 @@ function FocusContent({
               title="Forward · Alt+Right"
               disabled={!canForward}
               onClick={() => goTo(history.index + 1)}
-              className="flex w-8 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard enabled:hover:bg-background disabled:text-muted-foreground/40"
+              className="flex w-8 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard enabled:hover:bg-hover disabled:text-muted-foreground/40"
             >
               <ArrowRight aria-hidden="true" className="size-4" />
             </button>
@@ -619,7 +619,7 @@ export function FocusView({
           type="button"
           aria-label="Zoom out"
           onClick={() => zoomTo(scale / ZOOM_STEP)}
-          className="flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background"
+          className="flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-hover"
         >
           <Minus aria-hidden="true" className="size-4" />
         </button>
@@ -628,7 +628,7 @@ export function FocusView({
           aria-label="Zoom to 100%"
           title="Full size"
           onClick={() => zoomTo(1)}
-          className="w-14 font-mono text-xs tabular-nums transition-colors duration-150 ease-standard hover:bg-background"
+          className="w-14 font-mono text-xs tabular-nums transition-colors duration-150 ease-standard hover:bg-hover"
         >
           {Math.round(scale * 100)}%
         </button>
@@ -636,7 +636,7 @@ export function FocusView({
           type="button"
           aria-label="Zoom in"
           onClick={() => zoomTo(scale * ZOOM_STEP)}
-          className="flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background"
+          className="flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-hover"
         >
           <Plus aria-hidden="true" className="size-4" />
         </button>
@@ -645,7 +645,7 @@ export function FocusView({
           aria-label="Fit the view"
           title="Fit"
           onClick={() => setMoved(null)}
-          className="flex w-9 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard hover:bg-background"
+          className="flex w-9 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard hover:bg-hover"
         >
           <Maximize aria-hidden="true" className="size-4" />
         </button>

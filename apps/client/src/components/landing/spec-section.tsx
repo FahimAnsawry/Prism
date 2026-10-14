@@ -147,7 +147,7 @@ export function SpecSection() {
             {FORMATS.map((format, i) => (
               <li key={format}>
                 <Reveal step={i + 1}>
-                  <span className="block rounded-hairline bg-card px-2.5 py-1.5 font-mono text-xs text-foreground">
+                  <span className="block rounded-hairline border border-divider bg-card px-2.5 py-1.5 font-mono text-xs text-foreground">
                     {format}
                   </span>
                 </Reveal>

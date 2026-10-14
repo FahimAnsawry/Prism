@@ -543,7 +543,7 @@ function ViewsBoard({
         {VIEWS.map(({ name, tool, art: Art }, i) => (
           <motion.li
             key={name}
-            className="absolute left-[48.43%] flex h-[22.32%] w-[51.57%] items-center gap-[13%] bg-card pl-[3.3%]"
+            className="absolute left-[48.43%] flex h-[22.32%] w-[51.57%] items-center gap-[13%] border border-divider bg-card pl-[3.3%] shadow-sm"
             style={{ top: `${(i * 139.25 * 100) / 537.75}%` }}
             {...enter("slide", {
               on: rays,
@@ -663,7 +663,7 @@ export function Hero() {
             <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {VIEWS.map(({ name, tool, art: Art }) => (
                 <li key={name}>
-                  <Reveal whole className="h-full bg-card p-5">
+                  <Reveal whole className="h-full border border-divider bg-card p-5 shadow-sm">
                     <Art className="h-[150px] w-full" />
                     <div className="mt-4">
                       <ViewLabel name={name} tool={tool} />

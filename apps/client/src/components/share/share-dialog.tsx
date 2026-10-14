@@ -53,7 +53,7 @@ export function ShareDialog({
               render={<motion.div {...backdropMotion} />}
             />
             <Dialog.Popup
-              className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[36rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none sm:p-8"
+              className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[36rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover shadow-lg p-6 outline-none sm:p-8"
               render={dialogPopup(onExitComplete)}
             >
               <div className="flex items-start justify-between gap-4">
@@ -492,7 +492,7 @@ function CopyField({
         type="button"
         onClick={copy}
         aria-label={copied ? "Copied" : `Copy ${label.toLowerCase()}`}
-        className="flex h-full shrink-0 items-center gap-1.5 border-l border-divider px-3 font-mono text-3xs font-bold text-foreground uppercase transition-colors duration-150 ease-standard hover:bg-background"
+        className="flex h-full shrink-0 items-center gap-1.5 border-l border-divider px-3 font-mono text-3xs font-bold text-foreground uppercase transition-colors duration-150 ease-standard hover:bg-hover"
       >
         {copied ? (
           <Check aria-hidden="true" className="size-3.5" />

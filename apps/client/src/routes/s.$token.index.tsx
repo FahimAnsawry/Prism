@@ -91,7 +91,7 @@ function SharedProject({
                 <Link
                   to="/s/$token/$boardId"
                   params={{ token, boardId: board.id }}
-                  className="flex h-[260px] flex-col border border-divider bg-card transition-colors duration-150 ease-standard hover:border-input"
+                  className="flex h-[260px] flex-col border border-divider bg-card shadow-sm transition-colors duration-150 ease-standard hover:border-input"
                 >
                   <BoardPreview
                     boardId={board.id}

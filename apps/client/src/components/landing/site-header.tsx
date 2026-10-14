@@ -135,7 +135,7 @@ export function SiteHeader() {
           <div className="flex items-center gap-3 sm:gap-5">
             <ThemeToggle
               className="size-[38px] border border-input"
-              hoverBackground="var(--card)"
+              hoverBackground="var(--muted)"
             />
             <Link to="/login" className={cn(loginLink, "max-sm:hidden")}>
               Log in
@@ -161,7 +161,7 @@ export function SiteHeader() {
               aria-label={open ? "Close menu" : "Open menu"}
               aria-expanded={open}
               aria-controls="site-menu"
-              className="inline-flex size-[38px] shrink-0 cursor-pointer items-center justify-center border border-input text-foreground transition-colors duration-150 ease-standard hover:bg-card sm:hidden"
+              className="inline-flex size-[38px] shrink-0 cursor-pointer items-center justify-center border border-input text-foreground transition-colors duration-150 ease-standard hover:bg-muted sm:hidden"
             >
               {open ? (
                 <X aria-hidden="true" className="size-5" />

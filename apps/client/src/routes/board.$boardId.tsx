@@ -169,7 +169,7 @@ function BoardPage() {
           <Link
             to="/dashboard"
             aria-label="Back to dashboard"
-            className="flex size-8 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-background"
+            className="flex size-8 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-hover"
           >
             <ArrowLeft aria-hidden="true" className="size-[18px]" />
           </Link>
@@ -766,7 +766,7 @@ function BoardEditor({
                 <Link
                   to="/dashboard"
                   aria-label="Back to dashboard"
-                  className="flex size-8 shrink-0 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-background"
+                  className="flex size-8 shrink-0 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-hover"
                 >
                   <ArrowLeft aria-hidden="true" className="size-[18px]" />
                 </Link>

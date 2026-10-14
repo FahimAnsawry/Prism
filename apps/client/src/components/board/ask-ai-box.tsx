@@ -76,7 +76,7 @@ function AskAiBoxView({
       )}
 
       {selectedIds.length > 0 && (
-        <form onSubmit={submit} className="flex flex-col border border-chrome bg-card">
+        <form onSubmit={submit} className="flex flex-col border border-chrome bg-card shadow-sm">
           <div className="flex items-center gap-2 pr-1.5 pl-3">
             <Sparkles aria-hidden="true" className="size-4 shrink-0 text-violet" />
             <label className="min-w-0 flex-1">

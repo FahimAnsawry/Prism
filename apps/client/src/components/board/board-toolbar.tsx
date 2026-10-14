@@ -126,7 +126,7 @@ function BoardToolbarView({
       role="toolbar"
       aria-label="Tools"
       aria-orientation="vertical"
-      className="absolute top-6 left-4 z-10 flex max-h-[calc(100%-2.5rem)] w-12 flex-col border border-chrome bg-card p-[3px]"
+      className="absolute top-6 left-4 z-10 flex max-h-[calc(100%-2.5rem)] w-12 flex-col border border-chrome bg-card p-[3px] shadow-sm"
     >
       {/* Collapsed: just the active tool, which opens the rail again. */}
       <motion.div
@@ -210,7 +210,7 @@ function BoardToolbarView({
                       onClick={() => onSelect(tool.id)}
                       className={cn(
                         "relative flex size-10 items-center justify-center transition-colors duration-200 ease-standard motion-reduce:transition-none",
-                        isActive ? "text-onyx" : "text-foreground hover:bg-background",
+                        isActive ? "text-onyx" : "text-foreground hover:bg-hover",
                       )}
                       whileHover="hover"
                       whileTap="tap"
@@ -231,7 +231,7 @@ function BoardToolbarView({
         aria-label={`${toggleLabel} (Ctrl+B)`}
         title={`${toggleLabel} · Ctrl+B`}
         onClick={toggle}
-        className="mt-1 flex h-6 w-10 shrink-0 items-center justify-center border-t border-divider text-muted-foreground transition-colors duration-150 ease-standard hover:bg-background hover:text-ink"
+        className="mt-1 flex h-6 w-10 shrink-0 items-center justify-center border-t border-divider text-muted-foreground transition-colors duration-150 ease-standard hover:bg-hover hover:text-ink"
       >
         <TurningChevron
           up

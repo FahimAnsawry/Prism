@@ -37,7 +37,7 @@ export function ProjectCard({ project, onAction }: { project: ProjectItem; onAct
         aria-hidden="true"
         className="absolute inset-x-2.5 -top-[7px] h-3.5 border border-divider bg-card"
       />
-      <div className="relative flex h-full flex-col border border-divider bg-card transition-colors duration-150 ease-standard group-has-[>button:hover]:border-input">
+      <div className="relative flex h-full flex-col border border-divider bg-card shadow-sm transition-colors duration-150 ease-standard group-has-[>button:hover]:border-input">
         <div className="grid h-[150px] shrink-0 grid-cols-2 grid-rows-2 gap-1.5 p-1.5">
           {shown.map((board) => (
             <div key={board.id} className="relative min-h-0 border border-divider">
@@ -132,7 +132,7 @@ export function ProjectRow({
   const fillers = 4 - shown.length - (more > 0 || canAdd ? 1 : 0);
 
   return (
-    <article className="grid gap-5 border border-divider bg-card p-4 sm:p-5 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] lg:gap-6">
+    <article className="grid gap-5 border border-divider bg-card p-4 shadow-sm sm:p-5 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] lg:gap-6">
       <div className="flex min-w-0 flex-col">
         <div className="flex items-start gap-2">
           <h3 className="min-w-0 flex-1">
@@ -219,7 +219,7 @@ export function ProjectRow({
                 type="button"
                 onClick={() => onNewBoard(project)}
                 aria-label={`New whiteboard in ${project.name}`}
-                className="flex aspect-[16/10] w-full items-center justify-center border border-input text-muted-foreground transition-colors duration-150 ease-standard hover:bg-background hover:text-ink"
+                className="flex aspect-[16/10] w-full items-center justify-center border border-input text-muted-foreground transition-colors duration-150 ease-standard hover:bg-hover hover:text-ink"
               >
                 <Plus aria-hidden="true" className="size-5" />
               </button>

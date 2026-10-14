@@ -76,7 +76,7 @@ export function IconGrid({
               aria-pressed={name === value}
               onClick={() => onPick(name)}
               className={cn(
-                "flex aspect-square items-center justify-center text-foreground transition-colors duration-100 ease-standard hover:bg-background",
+                "flex aspect-square items-center justify-center text-foreground transition-colors duration-100 ease-standard hover:bg-hover",
                 name === value && "bg-brand/40",
               )}
             >
@@ -112,7 +112,7 @@ export function IconPicker({
       // Not a dialog: the board's keys keep working, and the board stays clickable.
       role="group"
       aria-label="Icon picker"
-      className="absolute top-6 left-20 z-10 flex w-[316px] flex-col border border-chrome bg-card"
+      className="absolute top-6 left-20 z-10 flex w-[316px] flex-col border border-chrome bg-card shadow-sm"
     >
       <IconGrid value={value} onPick={onPick} />
       <p className="border-t border-divider px-3 py-2 text-xs text-muted-foreground">

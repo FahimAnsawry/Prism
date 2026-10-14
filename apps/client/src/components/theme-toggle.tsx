@@ -103,7 +103,7 @@ const star = (i: number): Variants => {
  */
 export function ThemeToggle({
   className,
-  hoverBackground = "var(--background)",
+  hoverBackground = "var(--hover)",
 }: {
   className?: string;
   /** The color the button takes under the pointer. */

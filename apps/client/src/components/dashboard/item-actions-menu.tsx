@@ -63,7 +63,7 @@ export function ItemActionsMenu({
               className="z-[60] outline-none"
             >
               <Menu.Popup
-                className="w-48 origin-(--transform-origin) border border-input bg-popover p-1 outline-none"
+                className="w-48 origin-(--transform-origin) border border-input bg-popover shadow-lg p-1 outline-none"
                 render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
               >
                 {actions.includes("edit") && (

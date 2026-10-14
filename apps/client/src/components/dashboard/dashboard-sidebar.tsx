@@ -97,7 +97,7 @@ const fadeIn = {
 } as const;
 
 const projectRow =
-  "flex h-9 w-full items-center gap-3 overflow-hidden px-3.5 text-left text-sm text-foreground transition-colors duration-150 ease-standard hover:bg-background";
+  "flex h-9 w-full items-center gap-3 overflow-hidden px-3.5 text-left text-sm text-foreground transition-colors duration-150 ease-standard hover:bg-hover";
 
 function ProjectRowContent({
   project,
@@ -160,7 +160,7 @@ export function SidebarNav({
                     "relative flex h-10 items-center gap-3 overflow-hidden px-3.5 text-sm transition-colors duration-200 ease-standard",
                     active
                       ? "font-bold text-slate dark:text-ink"
-                      : "text-foreground hover:bg-background",
+                      : "text-foreground hover:bg-hover",
                   )}
                 >
                   <motion.span

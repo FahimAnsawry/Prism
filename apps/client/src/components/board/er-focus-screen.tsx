@@ -140,7 +140,7 @@ export function ErFocusScreen({
                 title="Back · Alt+Left"
                 disabled={!canBack}
                 onClick={() => goTo(historyIndex - 1)}
-                className="flex w-8 items-center justify-center transition-colors duration-150 ease-standard enabled:hover:bg-background disabled:text-muted-foreground/40"
+                className="flex w-8 items-center justify-center transition-colors duration-150 ease-standard enabled:hover:bg-hover disabled:text-muted-foreground/40"
               >
                 <ArrowLeft aria-hidden="true" className="size-4" />
               </button>
@@ -150,7 +150,7 @@ export function ErFocusScreen({
                 title="Forward · Alt+Right"
                 disabled={!canForward}
                 onClick={() => goTo(historyIndex + 1)}
-                className="flex w-8 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard enabled:hover:bg-background disabled:text-muted-foreground/40"
+                className="flex w-8 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard enabled:hover:bg-hover disabled:text-muted-foreground/40"
               >
                 <ArrowRight aria-hidden="true" className="size-4" />
               </button>
@@ -239,7 +239,7 @@ export function ErFocusScreen({
               aria-label="Canvas view"
               title="Canvas view"
               className={cn(
-                "hidden size-8 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background sm:flex",
+                "hidden size-8 items-center justify-center transition-colors duration-150 ease-standard hover:bg-hover sm:flex",
                 chrome,
               )}
             >

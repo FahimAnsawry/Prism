@@ -24,7 +24,7 @@ export function Panel({
       id={id}
       aria-labelledby={`${id}-title`}
       className={cn(
-        "scroll-mt-24 border bg-card p-5 sm:p-6",
+        "scroll-mt-24 border bg-card p-5 shadow-sm sm:p-6",
         tone === "danger" ? "border-destructive" : "border-divider",
       )}
     >

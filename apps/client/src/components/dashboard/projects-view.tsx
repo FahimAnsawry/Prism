@@ -86,7 +86,7 @@ export function ProjectsView({
           type="button"
           onClick={newProject}
           className={cn(
-            "mt-4 flex w-full items-center gap-3 border border-dashed border-input bg-card px-5 py-4 text-left transition-colors duration-150 ease-standard hover:bg-background",
+            "mt-4 flex w-full items-center gap-3 border border-dashed border-input bg-card px-5 py-4 text-left transition-colors duration-150 ease-standard hover:bg-hover",
           )}
         >
           <FolderPlus aria-hidden="true" className="size-4 shrink-0 text-foreground" />

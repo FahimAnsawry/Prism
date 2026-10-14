@@ -147,7 +147,7 @@ export function DashboardHeader({
 }
 
 const drawerItem =
-  "flex h-11 w-full items-center gap-3 px-3 text-left text-sm text-foreground transition-colors duration-150 ease-standard hover:bg-background [&_svg]:size-4 [&_svg]:shrink-0";
+  "flex h-11 w-full items-center gap-3 px-3 text-left text-sm text-foreground transition-colors duration-150 ease-standard hover:bg-hover [&_svg]:size-4 [&_svg]:shrink-0";
 
 /** Below `lg` the sidebar and the header's actions fold into a drawer from the left. */
 function MobileDrawer({

@@ -44,7 +44,7 @@
   --color-graphite: #5f5f5f; /* tertiary text; darkened from #6a6a6a to clear 4.5:1 on canvas (5.3:1) */
   --color-silver: #d6d6d6; /* solid dividers */
   --color-canvas: #fcfcfd; /* page background (Greptile `background`, renamed) */
-  --color-fog: #eeeeee; /* raised surfaces, light text on dark */
+  --color-fog: #eeeeee; /* light text on dark, hover tints (--muted); no longer a card fill */
   --color-rule: rgb(85 83 104 / 0.3); /* dashed hairlines (Greptile `border`, renamed) */
   --color-edge: #808080; /* control boundaries: inputs, outline buttons, checkboxes (3.3:1 on fog, 3.2:1 on canvas) */
   --color-ash: #bdbcc2; /* board editor chrome: floating toolbar, properties panel, top-bar button outlines */
@@ -390,9 +390,10 @@
 
   --background: var(--color-canvas);
   --foreground: var(--color-slate);
-  --card: var(--color-fog);
+  /* Cards, popups and the sidebar share the page color: a border sets them apart, not a fill. */
+  --card: var(--color-canvas);
   --card-foreground: var(--color-slate);
-  --popover: var(--color-fog);
+  --popover: var(--color-canvas);
   --popover-foreground: var(--color-slate);
   --primary: var(--color-brand);
   --primary-foreground: #000; /* CTA text is black on brand green */
@@ -408,6 +409,9 @@
   --ring: var(--color-slate); /* inferred: the site's ring color is undefined */
 
   /* Prism roles shadcn has no name for */
+  --hover: var(
+    --color-fog
+  ); /* hover and pressed tint on cards and controls (cards share the page color) */
   --divider: var(--color-silver); /* solid dividers, empty bars, placeholder blocks in drawings */
   --ink: var(--color-onyx); /* strongest text, outlines of drawn shapes */
   --chrome: var(--color-ash); /* board editor chrome outlines */
@@ -424,7 +428,7 @@
   --chart-4: var(--color-coral);
   --chart-5: var(--color-pink);
 
-  --sidebar: var(--color-fog);
+  --sidebar: var(--color-canvas);
   --sidebar-foreground: var(--color-slate);
   --sidebar-primary: var(--color-brand);
   --sidebar-primary-foreground: #000;
@@ -461,6 +465,7 @@
   --input: #7c7a89;
   --ring: #ecebf0;
 
+  --hover: var(--background);
   --divider: #3d3b48;
   --ink: #f6f5f9;
   --chrome: #4a4856;
@@ -498,6 +503,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-hover: var(--hover);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
@@ -642,4 +648,3 @@
   animation: none;
   mix-blend-mode: normal;
 }
-

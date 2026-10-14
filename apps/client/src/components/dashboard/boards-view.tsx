@@ -145,7 +145,7 @@ function ProjectMenu({
     <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
       <Menu.Trigger
         aria-label={`Project: ${label}`}
-        className="inline-flex h-[38px] max-w-56 items-center gap-2 border border-divider bg-card px-3 text-[13px] text-foreground transition-colors select-none hover:bg-background data-popup-open:border-input"
+        className="inline-flex h-[38px] max-w-56 items-center gap-2 border border-divider bg-card px-3 text-[13px] text-foreground transition-colors select-none hover:bg-hover data-popup-open:border-input"
       >
         <Folder aria-hidden="true" className="size-4 shrink-0" />
         <span className="truncate">{label}</span>
@@ -161,7 +161,7 @@ function ProjectMenu({
               className="z-50 outline-none"
             >
               <Menu.Popup
-                className="max-h-80 w-60 origin-(--transform-origin) overflow-y-auto border border-input bg-popover p-1 outline-none"
+                className="max-h-80 w-60 origin-(--transform-origin) overflow-y-auto border border-input bg-popover shadow-lg p-1 outline-none"
                 render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
               >
                 <Menu.RadioGroup value={value} onValueChange={(next: string) => onChange(next)}>

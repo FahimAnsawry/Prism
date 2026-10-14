@@ -86,7 +86,7 @@ export function EmojiPicker({
       // Not a dialog: the board's keys keep working, and the board stays clickable.
       role="group"
       aria-label="Emoji picker"
-      className="absolute top-6 left-20 z-10 flex w-[316px] flex-col border border-chrome bg-card"
+      className="absolute top-6 left-20 z-10 flex w-[316px] flex-col border border-chrome bg-card shadow-sm"
     >
       <div role="tablist" aria-label="Emoji categories" className="flex border-b border-divider">
         {CATEGORIES.map((category, i) => (
@@ -101,7 +101,7 @@ export function EmojiPicker({
               "flex h-9 flex-1 items-center justify-center text-base transition-colors duration-150 ease-standard",
               i === tab
                 ? "bg-background shadow-[inset_0_-2px_0_var(--color-brand)]"
-                : "hover:bg-background",
+                : "hover:bg-hover",
             )}
           >
             <span aria-hidden="true">{category.icon}</span>
@@ -122,7 +122,7 @@ export function EmojiPicker({
             aria-pressed={emoji === value}
             onClick={() => onPick(emoji)}
             className={cn(
-              "flex size-[34px] items-center justify-center text-xl hover:bg-background",
+              "flex size-[34px] items-center justify-center text-xl hover:bg-hover",
               emoji === value && "bg-brand/40",
             )}
             whileHover={reducedMotion ? undefined : { scale: 1.1 }}

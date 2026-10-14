@@ -91,7 +91,7 @@ function BoardName({ board }: { board: BoardSummary | undefined }) {
       }}
       className={cn(
         titleText,
-        "block h-8 max-w-full truncate border border-transparent px-1.5 text-left font-bold text-ink transition-colors duration-150 ease-standard hover:bg-background",
+        "block h-8 max-w-full truncate border border-transparent px-1.5 text-left font-bold text-ink transition-colors duration-150 ease-standard hover:bg-hover",
       )}
     >
       {name}
@@ -140,7 +140,7 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
           aria-label={`Project ${project.name}: switch board`}
           className={cn(
             titleText,
-            "flex h-8 max-w-24 min-w-0 shrink items-center gap-1 px-1.5 text-muted-foreground transition-colors duration-150 ease-standard hover:bg-background hover:text-ink data-popup-open:bg-background data-popup-open:text-ink sm:max-w-48",
+            "flex h-8 max-w-24 min-w-0 shrink items-center gap-1 px-1.5 text-muted-foreground transition-colors duration-150 ease-standard hover:bg-hover hover:text-ink data-popup-open:bg-hover data-popup-open:text-ink sm:max-w-48",
           )}
         >
           <span className="truncate">{project.name}</span>
@@ -156,7 +156,7 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
                 className="z-50 outline-none"
               >
                 <Menu.Popup
-                  className="max-h-[min(24rem,var(--available-height))] w-72 origin-(--transform-origin) overflow-y-auto border border-input bg-popover p-1 outline-none"
+                  className="max-h-[min(24rem,var(--available-height))] w-72 origin-(--transform-origin) overflow-y-auto border border-input bg-popover shadow-lg p-1 outline-none"
                   render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
                 >
                   <Menu.Group>

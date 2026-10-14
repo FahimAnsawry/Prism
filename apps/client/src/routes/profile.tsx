@@ -104,7 +104,7 @@ function SectionNav() {
                 "flex h-9 items-center px-3 text-[13px] transition-colors duration-150 ease-standard",
                 current === id
                   ? "bg-seafoam font-bold text-slate dark:bg-seafoam/14 dark:text-ink"
-                  : "text-foreground hover:bg-card",
+                  : "text-foreground hover:bg-muted",
                 id === "danger" && current !== id && "text-destructive",
               )}
             >

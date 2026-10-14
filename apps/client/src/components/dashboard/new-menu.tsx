@@ -90,7 +90,7 @@ export function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => void }) 
             >
               <Menu.Popup
                 onKeyDown={onKeyDown}
-                className="w-80 max-w-[calc(100vw-2rem)] origin-(--transform-origin) border border-input bg-popover p-1.5 outline-none"
+                className="w-80 max-w-[calc(100vw-2rem)] origin-(--transform-origin) border border-input bg-popover shadow-lg p-1.5 outline-none"
                 render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
               >
                 <Menu.Group>

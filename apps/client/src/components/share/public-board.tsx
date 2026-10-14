@@ -81,7 +81,7 @@ export function PublicBoard({
       to="/s/$token"
       params={{ token }}
       aria-label={`Back to ${projectName ?? "the project"}`}
-      className="flex size-8 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-background"
+      className="flex size-8 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-hover"
     >
       <ArrowLeft aria-hidden="true" className="size-[18px]" />
     </Link>

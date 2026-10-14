@@ -208,7 +208,7 @@ export function BoardViewer({
                 title="Select · V"
                 onClick={() => setTool("select")}
                 className={cn(
-                  "flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background",
+                  "flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-hover",
                   tool === "select" && "bg-background text-ink",
                 )}
               >
@@ -220,7 +220,7 @@ export function BoardViewer({
                 title="Pan · H"
                 onClick={() => setTool("hand")}
                 className={cn(
-                  "flex w-9 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard hover:bg-background",
+                  "flex w-9 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard hover:bg-hover",
                   tool === "hand" && "bg-background text-ink",
                 )}
               >
@@ -235,7 +235,7 @@ export function BoardViewer({
               aria-label="Focus view"
               title="Focus view"
               className={cn(
-                "hidden h-9 items-center gap-1.5 border border-chrome bg-card px-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-standard hover:bg-background md:flex",
+                "hidden h-9 items-center gap-1.5 border border-chrome bg-card px-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-standard hover:bg-hover md:flex",
               )}
             >
               Focus view
@@ -248,7 +248,7 @@ export function BoardViewer({
             title="Dot grid"
             onClick={() => setGrid((on) => !on)}
             className={cn(
-              "hidden size-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background md:flex",
+              "hidden size-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-hover md:flex",
               chrome,
               !grid && "bg-background text-muted-foreground",
             )}
@@ -260,7 +260,7 @@ export function BoardViewer({
               type="button"
               aria-label="Zoom out"
               onClick={() => setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER))}
-              className="flex w-9 items-center justify-center hover:bg-background"
+              className="flex w-9 items-center justify-center hover:bg-hover"
             >
               <Minus aria-hidden="true" className="size-[18px]" />
             </button>
@@ -269,7 +269,7 @@ export function BoardViewer({
               aria-label="Reset zoom to 100%"
               title="Reset to 100%"
               onClick={() => setCamera((c) => zoomAt(c, 1, CENTER))}
-              className="hidden w-16 font-mono text-xs tabular-nums hover:bg-background sm:block"
+              className="hidden w-16 font-mono text-xs tabular-nums hover:bg-hover sm:block"
             >
               {Math.round(camera.zoom * 100)}%
             </button>
@@ -277,7 +277,7 @@ export function BoardViewer({
               type="button"
               aria-label="Zoom in"
               onClick={() => setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER))}
-              className="flex w-9 items-center justify-center hover:bg-background"
+              className="flex w-9 items-center justify-center hover:bg-hover"
             >
               <Plus aria-hidden="true" className="size-[18px]" />
             </button>
@@ -288,7 +288,7 @@ export function BoardViewer({
             title="Fit · Shift+1"
             onClick={fit}
             className={cn(
-              "flex size-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background",
+              "flex size-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-hover",
               chrome,
             )}
           >

@@ -21,7 +21,7 @@ export function SortMenu({
     <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
       <Menu.Trigger
         aria-label={`Sort by: ${current?.label}`}
-        className="inline-flex h-[38px] items-center gap-2 border border-divider bg-card px-3 text-[13px] text-foreground transition-colors select-none hover:bg-background data-popup-open:border-input"
+        className="inline-flex h-[38px] items-center gap-2 border border-divider bg-card px-3 text-[13px] text-foreground transition-colors select-none hover:bg-hover data-popup-open:border-input"
       >
         <ArrowUpDown aria-hidden="true" className="size-4" />
         <span className="max-sm:sr-only">{current?.label}</span>
@@ -32,7 +32,7 @@ export function SortMenu({
           <Menu.Portal keepMounted>
             <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
               <Menu.Popup
-                className="w-48 origin-(--transform-origin) border border-input bg-popover p-1 outline-none"
+                className="w-48 origin-(--transform-origin) border border-input bg-popover shadow-lg p-1 outline-none"
                 render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
               >
                 <Menu.RadioGroup value={value} onValueChange={(sort: SortKey) => onChange(sort)}>

@@ -276,7 +276,7 @@ function PropertiesPanelView({
   return (
     <aside
       aria-label={`${title} properties`}
-      className="absolute top-6 right-4 z-10 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card md:right-6"
+      className="absolute top-6 right-4 z-10 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-sm md:right-6"
     >
       <h2 className="flex h-12 items-center border-b border-divider px-4 text-sm font-bold text-ink">
         {title}
@@ -358,7 +358,7 @@ function PropertiesPanelView({
                           "h-5 w-[45px] border font-mono text-3xs text-foreground",
                           fill.fill === null
                             ? "border-foreground bg-card"
-                            : "border-divider bg-card hover:bg-background",
+                            : "border-divider bg-card hover:bg-hover",
                         )}
                       >
                         None
@@ -1027,7 +1027,7 @@ function ColorChoices({
           aria-expanded={picking}
           onClick={() => setPicking((open) => !open)}
           className={cn(
-            "flex size-5 shrink-0 items-center justify-center border border-input bg-card text-foreground hover:bg-background",
+            "flex size-5 shrink-0 items-center justify-center border border-input bg-card text-foreground hover:bg-hover",
             (isCustom || picking) && "ring-1 ring-foreground ring-offset-1 ring-offset-card",
           )}
         >
@@ -1114,7 +1114,7 @@ function ChartEditor({
                     onClick={() =>
                       onChange({ ...chart, rows: chart.rows.filter((_, j) => j !== i) })
                     }
-                    className="flex size-7 items-center justify-center text-muted-foreground hover:bg-background hover:text-ink disabled:opacity-40"
+                    className="flex size-7 items-center justify-center text-muted-foreground hover:bg-hover hover:text-ink disabled:opacity-40"
                   >
                     <X aria-hidden="true" className="size-3.5" />
                   </button>
@@ -1270,7 +1270,7 @@ function TableEditor({
   const cell =
     "h-7 w-full min-w-0 border border-divider bg-background px-1.5 text-xs text-foreground outline-none focus:border-foreground";
   const iconButton =
-    "flex size-7 shrink-0 items-center justify-center text-muted-foreground hover:bg-background hover:text-ink disabled:opacity-40";
+    "flex size-7 shrink-0 items-center justify-center text-muted-foreground hover:bg-hover hover:text-ink disabled:opacity-40";
 
   return (
     <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-4.5 pb-6">

@@ -77,7 +77,7 @@ export function ShortcutsDialog({
               render={<motion.div {...backdropMotion} />}
             />
             <Dialog.Popup
-              className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[44rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover p-6 outline-none sm:p-8"
+              className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[44rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-input bg-popover shadow-lg p-6 outline-none sm:p-8"
               render={dialogPopup(onExitComplete)}
             >
               <div className="flex items-start justify-between gap-4">

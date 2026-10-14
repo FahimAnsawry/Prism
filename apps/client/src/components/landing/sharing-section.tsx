@@ -15,7 +15,7 @@ function ShareDialogMock() {
     <div
       role="img"
       aria-label="The Share dialog for a board named Harbor Gym: Fahim is the owner, Maya is an editor, Jun is a viewer, and anyone with the link can view."
-      className="w-full max-w-140 shrink-0 bg-card p-5 text-foreground sm:p-7 shadow-[0_16px_40px_-12px_rgb(61_59_80/0.25)] dark:shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]"
+      className="w-full max-w-140 shrink-0 border border-divider bg-card p-5 text-foreground sm:p-7 shadow-[0_16px_40px_-12px_rgb(61_59_80/0.25)] dark:shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]"
     >
       <div className="flex items-start justify-between gap-4">
         <p className="text-xl font-semibold">Share “Harbor Gym”</p>

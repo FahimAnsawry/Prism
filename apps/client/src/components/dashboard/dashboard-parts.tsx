@@ -195,7 +195,7 @@ export function Segmented<T extends string>({
             "relative flex h-8 min-w-0 flex-1 items-center justify-center gap-2 px-3 text-[13px] whitespace-nowrap transition-colors duration-250 ease-standard sm:flex-none sm:px-3.5",
             value === option.id
               ? "font-bold text-secondary-foreground"
-              : "text-foreground hover:bg-background",
+              : "text-foreground hover:bg-hover",
           )}
         >
           {option.label}
@@ -240,7 +240,7 @@ export function ViewToggle({
             "flex size-[38px] items-center justify-center border transition-colors duration-150 ease-standard",
             value === id
               ? "border-secondary bg-secondary text-secondary-foreground"
-              : "border-divider bg-card text-foreground hover:bg-background",
+              : "border-divider bg-card text-foreground hover:bg-hover",
           )}
         >
           <Icon aria-hidden="true" className="size-4" />
@@ -273,7 +273,7 @@ export function ShowMore({
       <button
         type="button"
         onClick={onMore}
-        className="h-[38px] border border-input bg-card px-4 text-[13px] font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-background max-sm:w-full"
+        className="h-[38px] border border-input bg-card px-4 text-[13px] font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-hover max-sm:w-full"
       >
         Show {Math.min(step, total - shown)} more
       </button>

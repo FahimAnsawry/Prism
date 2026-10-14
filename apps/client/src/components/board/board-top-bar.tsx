@@ -59,7 +59,7 @@ export function ModeMenu({
     <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
       <Menu.Trigger
         aria-label={`Mode: ${current.label}`}
-        className="flex h-9 items-center gap-2 border border-chrome bg-card px-3 text-xs font-medium text-foreground select-none transition-colors duration-150 ease-standard hover:bg-background data-popup-open:bg-background"
+        className="flex h-9 items-center gap-2 border border-chrome bg-card px-3 text-xs font-medium text-foreground select-none transition-colors duration-150 ease-standard hover:bg-hover data-popup-open:bg-hover"
       >
         <current.Icon aria-hidden="true" className="size-3.5" />
         {current.label}
@@ -70,7 +70,7 @@ export function ModeMenu({
           <Menu.Portal keepMounted>
             <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
               <Menu.Popup
-                className="w-56 origin-(--transform-origin) border border-input bg-popover p-1 outline-none"
+                className="w-56 origin-(--transform-origin) border border-input bg-popover shadow-lg p-1 outline-none"
                 render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
               >
                 <Menu.RadioGroup value={mode} onValueChange={(next: BoardMode) => onChange(next)}>
@@ -104,7 +104,7 @@ export function ModeMenu({
 }
 
 const iconButton =
-  "flex size-8 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background disabled:pointer-events-none";
+  "flex size-8 items-center justify-center transition-colors duration-150 ease-standard hover:bg-hover disabled:pointer-events-none";
 
 export function BoardTopBar({
   board,
@@ -209,7 +209,7 @@ export function BoardTopBar({
               title="Select · V"
               onClick={() => onViewTool("select")}
               className={cn(
-                "flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-background",
+                "flex w-9 items-center justify-center transition-colors duration-150 ease-standard hover:bg-hover",
                 viewTool === "select" && "bg-background text-ink",
               )}
             >
@@ -221,7 +221,7 @@ export function BoardTopBar({
               title="Pan · H"
               onClick={() => onViewTool("hand")}
               className={cn(
-                "flex w-9 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard hover:bg-background",
+                "flex w-9 items-center justify-center border-l border-chrome transition-colors duration-150 ease-standard hover:bg-hover",
                 viewTool === "hand" && "bg-background text-ink",
               )}
             >
@@ -242,7 +242,7 @@ export function BoardTopBar({
               className={cn(
                 "hidden size-9 items-center justify-center border border-chrome text-foreground transition-colors duration-150 ease-standard md:flex",
                 grid
-                  ? "bg-card hover:bg-background"
+                  ? "bg-card hover:bg-hover"
                   : "bg-background text-muted-foreground hover:bg-divider",
               )}
             >
@@ -254,7 +254,7 @@ export function BoardTopBar({
                 type="button"
                 aria-label="Zoom out"
                 onClick={onZoomOut}
-                className="flex w-9 items-center justify-center hover:bg-background"
+                className="flex w-9 items-center justify-center hover:bg-hover"
               >
                 <Minus aria-hidden="true" className="size-[18px]" />
               </button>
@@ -263,7 +263,7 @@ export function BoardTopBar({
                 aria-label="Reset zoom to 100%"
                 title="Reset to 100%"
                 onClick={onZoomReset}
-                className="w-20 font-mono text-xs tabular-nums hover:bg-background"
+                className="w-20 font-mono text-xs tabular-nums hover:bg-hover"
               >
                 {Math.round(zoom * 100)}%
               </button>
@@ -271,7 +271,7 @@ export function BoardTopBar({
                 type="button"
                 aria-label="Zoom in"
                 onClick={onZoomIn}
-                className="flex w-9 items-center justify-center hover:bg-background"
+                className="flex w-9 items-center justify-center hover:bg-hover"
               >
                 <Plus aria-hidden="true" className="size-[18px]" />
               </button>
@@ -286,7 +286,7 @@ export function BoardTopBar({
           aria-haspopup="dialog"
           title="Keyboard shortcuts · ?"
           onClick={onShowShortcuts}
-          className="hidden size-9 items-center justify-center border border-chrome bg-card font-mono text-sm font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-background sm:flex"
+          className="hidden size-9 items-center justify-center border border-chrome bg-card font-mono text-sm font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-hover sm:flex"
         >
           ?
         </button>
@@ -307,7 +307,7 @@ export function BoardTopBar({
 
         <button
           type="button"
-          className="hidden h-9 w-24 items-center justify-center gap-1 border border-chrome bg-card font-mono text-xs text-foreground transition-colors duration-150 ease-standard hover:bg-background sm:flex"
+          className="hidden h-9 w-24 items-center justify-center gap-1 border border-chrome bg-card font-mono text-xs text-foreground transition-colors duration-150 ease-standard hover:bg-hover sm:flex"
         >
           <Download aria-hidden="true" className="size-4" />
           Export

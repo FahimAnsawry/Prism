@@ -51,7 +51,7 @@ export function ConfirmDialog({
             />
             <AlertDialog.Popup
               className={cn(
-                "fixed top-1/2 left-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 border border-input bg-popover p-6 outline-none sm:p-7",
+                "fixed top-1/2 left-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 border border-input bg-popover shadow-lg p-6 outline-none sm:p-7",
               )}
               render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
             >

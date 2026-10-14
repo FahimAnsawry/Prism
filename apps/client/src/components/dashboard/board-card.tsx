@@ -52,7 +52,7 @@ export function BoardCard({
       <Link
         to="/board/$boardId"
         params={{ boardId: board.id }}
-        className="flex h-full flex-col border border-divider bg-card transition-colors duration-150 ease-standard hover:border-input"
+        className="flex h-full flex-col border border-divider bg-card shadow-sm transition-colors duration-150 ease-standard hover:border-input"
       >
         <BoardPreview
           boardId={board.id}
@@ -133,7 +133,7 @@ export function BoardTable({
 }) {
   const dateLabel = sort === "created" ? "Created" : "Edited";
   return (
-    <div className={cn("border border-divider bg-card", className)}>
+    <div className={cn("border border-divider bg-card shadow-sm", className)}>
       <div
         aria-hidden="true"
         className="flex h-9 items-center border-b border-divider font-mono text-3xs font-bold tracking-[0.06em] text-muted-foreground uppercase max-md:hidden"
@@ -167,7 +167,7 @@ export function BoardTable({
                   params={{ boardId: board.id }}
                   className={cn(
                     columns,
-                    "min-w-0 flex-1 py-2 pl-4 transition-colors duration-150 ease-standard hover:bg-background focus-visible:-outline-offset-2",
+                    "min-w-0 flex-1 py-2 pl-4 transition-colors duration-150 ease-standard hover:bg-hover focus-visible:-outline-offset-2",
                   )}
                 >
                   <BoardPreview

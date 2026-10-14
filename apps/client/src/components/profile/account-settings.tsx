@@ -39,7 +39,7 @@ export function Appearance() {
                 "flex h-8 flex-1 items-center justify-center gap-2 px-3.5 text-[13px] transition-colors duration-150 ease-standard",
                 choice === id
                   ? "bg-secondary font-bold text-secondary-foreground"
-                  : "text-foreground hover:bg-card",
+                  : "text-foreground hover:bg-muted",
               )}
             >
               <Icon aria-hidden="true" className="size-3.5" />

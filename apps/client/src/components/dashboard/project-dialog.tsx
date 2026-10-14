@@ -93,7 +93,7 @@ export function ProjectDialog({
               render={<motion.div {...backdropMotion} />}
             />
             <Dialog.Popup
-              className="fixed top-1/2 left-1/2 z-50 flex max-h-[min(28.8rem,calc(100dvh-2rem))] w-[40rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col border border-input bg-popover outline-none"
+              className="fixed top-1/2 left-1/2 z-50 flex max-h-[min(28.8rem,calc(100dvh-2rem))] w-[40rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col border border-input bg-popover shadow-lg outline-none"
               render={dialogPopup(onExitComplete)}
             >
               {project && (
@@ -149,7 +149,7 @@ export function ProjectDialog({
                           <Link
                             to="/board/$boardId"
                             params={{ boardId: board.id }}
-                            className="-ml-2 flex min-w-0 flex-1 items-center gap-4 py-3 pr-2 pl-2 transition-colors duration-150 ease-standard hover:bg-background focus-visible:-outline-offset-2"
+                            className="-ml-2 flex min-w-0 flex-1 items-center gap-4 py-3 pr-2 pl-2 transition-colors duration-150 ease-standard hover:bg-hover focus-visible:-outline-offset-2"
                           >
                             {board.kind === "board" ? (
                               <BoardPreview
