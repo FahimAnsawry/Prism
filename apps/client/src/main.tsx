@@ -48,10 +48,10 @@ declare module "@tanstack/react-router" {
 }
 
 /**
- * The startup loader belongs to the landing page, whose hero waits for it. App pages (the
- * dashboard, boards, sign-in) open straight away.
+ * The startup loader belongs to the marketing pages (landing and About), whose entrances wait
+ * for it. App pages (the dashboard, boards, sign-in) and the docs open straight away.
  */
-const SPLASH_PATH = /^\/?$/;
+const SPLASH_PATH = /^\/(about\/?)?$/;
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing #root element in index.html");

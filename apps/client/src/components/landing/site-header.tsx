@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { EASE_CSS, EASE_DECELERATE } from "@/lib/motion";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { MenuLinks, NavLinks } from "./nav-links";
 import { pageContainer } from "./page-container";
 
 /** Past this many pixels, scrolling down tucks the nav away; any upward scroll brings it back. */
@@ -55,8 +56,8 @@ const SHADOW = {
   dark: "0px 10px 24px -14px rgba(0, 0, 0, 0.8)",
 };
 
-/** Below this (Tailwind's sm) the links fold into the burger menu. */
-const INLINE_NAV_QUERY = "(min-width: 40rem)";
+/** Below this (Tailwind's lg) the page links fold into the burger menu. */
+const INLINE_NAV_QUERY = "(min-width: 64rem)";
 
 /**
  * The burger menu's open state. It closes on Escape (focus returns to the burger), on a press
@@ -94,10 +95,15 @@ function useMenu() {
   return { open, setOpen, headerRef, buttonRef };
 }
 
+/** Log in: a quiet ghost button whose fill comes up on hover, like the page links beside it. */
 const loginLink =
-  "text-sm font-medium text-foreground underline-offset-4 transition-colors hover:text-ink hover:underline";
+  "inline-flex h-[38px] items-center px-3.5 text-sm font-medium text-muted-foreground transition-colors duration-150 ease-standard hover:bg-muted hover:text-foreground";
 
-export function SiteHeader() {
+/**
+ * The landing nav. `flight` is for the landing page only, where the hero's prism flight starts
+ * from the logo; other pages leave it off so the logo plays its own hover animation.
+ */
+export function SiteHeader({ flight = false }: { flight?: boolean }) {
   const { hidden, scrolled } = useNavScroll();
   const { open, setOpen, headerRef, buttonRef } = useMenu();
   const close = () => setOpen(false);
@@ -128,11 +134,19 @@ export function SiteHeader() {
       }}
     >
       <nav aria-label="Main">
-        <div className={cn(pageContainer, "flex items-center justify-between gap-6 py-2.5")}>
+        {/* Three columns from lg (narrower, the actions crowd the center): the logo, the page links centered on the bar, the actions. */}
+        <div
+          className={cn(
+            pageContainer,
+            "flex items-center justify-between gap-6 py-2.5 lg:grid lg:grid-cols-[1fr_auto_1fr]",
+          )}
+        >
           {/* The hero's prism flight starts from this logo's i and builds its mark. */}
-          <PrismLogo compact flight />
+          <PrismLogo compact flight={flight} className="justify-self-start" />
 
-          <div className="flex items-center gap-3 sm:gap-5">
+          <NavLinks className="max-lg:hidden" />
+
+          <div className="flex items-center justify-self-end gap-3 sm:gap-2">
             <ThemeToggle
               className="size-[38px] border border-input"
               hoverBackground="var(--muted)"
@@ -147,13 +161,17 @@ export function SiteHeader() {
                 size: "lg",
                 // The bar is 15% shorter than the default button, so its button is too (! beats
                 // the size variant's height). Below sm it lives in the burger menu instead.
-                className: "ml-3.5 h-[38px]! px-[19px]! max-sm:hidden",
+                className: "group ml-1.5 h-[38px]! px-[19px]! max-sm:hidden",
               })}
             >
               Start a board
-              <ArrowRight aria-hidden="true" />
+              <ArrowRight
+                aria-hidden="true"
+                className="transition-transform duration-200 ease-standard group-hover:translate-x-0.5"
+              />
             </Link>
-            {/* Below sm the links fold into this menu; the theme toggle stays out in the bar. */}
+            {/* Below lg the page links fold into this menu (and below sm, Log in and Start a
+                board too); the theme toggle stays out in the bar. */}
             <button
               ref={buttonRef}
               type="button"
@@ -161,7 +179,7 @@ export function SiteHeader() {
               aria-label={open ? "Close menu" : "Open menu"}
               aria-expanded={open}
               aria-controls="site-menu"
-              className="inline-flex size-[38px] shrink-0 cursor-pointer items-center justify-center border border-input text-foreground transition-colors duration-150 ease-standard hover:bg-muted sm:hidden"
+              className="inline-flex size-[38px] shrink-0 cursor-pointer items-center justify-center border border-input text-foreground transition-colors duration-150 ease-standard hover:bg-muted lg:hidden"
             >
               {open ? (
                 <X aria-hidden="true" className="size-5" />
@@ -175,19 +193,28 @@ export function SiteHeader() {
         {open && (
           <motion.div
             id="site-menu"
-            className="absolute inset-x-0 top-full border-b border-border bg-background shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] sm:hidden dark:shadow-[0_10px_24px_-14px_rgb(0_0_0/0.8)]"
+            className="absolute inset-x-0 top-full border-b border-border bg-background shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] lg:hidden dark:shadow-[0_10px_24px_-14px_rgb(0_0_0/0.8)]"
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: EASE_CSS }}
           >
-            <div className={cn(pageContainer, "flex flex-col items-stretch gap-5 py-5")}>
-              <Link to="/login" onClick={close} className={cn(loginLink, "py-1 text-base")}>
+            <div className={cn(pageContainer, "flex flex-col items-stretch py-4")}>
+              <MenuLinks onNavigate={close} />
+              <Link
+                to="/login"
+                onClick={close}
+                className="-mx-3 mt-2 border-t border-border px-3.5 pt-4 pb-3 text-base font-medium sm:hidden text-muted-foreground transition-colors duration-150 ease-standard hover:text-foreground"
+              >
                 Log in
               </Link>
               <Link
                 to="/signup"
                 onClick={close}
-                className={ctaVariants({ variant: "primary", size: "block" })}
+                className={ctaVariants({
+                  variant: "primary",
+                  size: "block",
+                  className: "mt-2 sm:hidden",
+                })}
               >
                 Start a board
                 <ArrowRight aria-hidden="true" />

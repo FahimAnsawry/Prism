@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useSplashDone } from "@/components/feedback/splash-state";
 import { EASE_DECELERATE } from "@/lib/motion";
 
 /** Gap between siblings that reveal together, and the most steps a group can stack up. */
@@ -30,6 +31,8 @@ export function Reveal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
+  // Entrances wait for the startup loader instead of playing underneath it.
+  const splashDone = useSplashDone();
   // Without IntersectionObserver there is nothing to wait for, so content shows straight away.
   const [shown, setShown] = useState(() => typeof IntersectionObserver === "undefined");
 
@@ -55,7 +58,7 @@ export function Reveal({
 
   const content = {
     initial: false,
-    animate: shown || reducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 },
+    animate: (shown && splashDone) || reducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 },
     transition: {
       duration: 0.7,
       ease: EASE_DECELERATE,

@@ -1,10 +1,20 @@
+import { Link, type LinkProps } from "@tanstack/react-router";
 import { PrismLogo } from "@/components/prism-logo";
 import { cn } from "@/lib/utils";
 import { pageContainer } from "./page-container";
 import { Reveal } from "./reveal";
 
-// Links without an href are plain text until those pages ship.
-const COLUMNS: { title: string; links: { label: string; href?: string }[] }[] = [
+type FooterLink = {
+  label: string;
+  href?: string;
+  to?: LinkProps["to"];
+  params?: Record<string, string>;
+  /** Opens in a new tab (the docs). */
+  newTab?: boolean;
+};
+
+// Links with neither an href nor a route are plain text until those pages ship.
+const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Product",
     links: [
@@ -17,14 +27,19 @@ const COLUMNS: { title: string; links: { label: string; href?: string }[] }[] = 
   {
     title: "Developers",
     links: [
-      { label: "MCP setup", href: "#how-it-works" },
-      { label: "Docs" },
+      {
+        label: "MCP setup",
+        to: "/docs/$",
+        params: { _splat: "connect-claude-code" },
+        newTab: true,
+      },
+      { label: "Docs", to: "/docs", newTab: true },
       { label: "GitHub", href: "https://github.com/FahimAnsawry/Prism" },
     ],
   },
   {
     title: "Company",
-    links: [{ label: "About" }, { label: "Privacy" }, { label: "Terms" }],
+    links: [{ label: "About", to: "/about" }, { label: "Privacy" }, { label: "Terms" }],
   },
 ];
 
@@ -45,9 +60,24 @@ export function SiteFooter() {
                 {column.title}
               </h2>
               <ul className="mt-3 space-y-3 text-sm text-foreground">
-                {column.links.map(({ label, href }) => (
+                {column.links.map(({ label, href, to, params, newTab }) => (
                   <li key={label}>
-                    {href ? (
+                    {to ? (
+                      <Link
+                        to={to}
+                        params={params}
+                        target={newTab ? "_blank" : undefined}
+                        rel={newTab ? "noopener" : undefined}
+                        activeProps={{
+                          className: "font-semibold text-ink",
+                          "aria-current": "page",
+                        }}
+                        activeOptions={{ exact: true }}
+                        className="underline-offset-4 transition-colors hover:text-ink hover:underline"
+                      >
+                        {label}
+                      </Link>
+                    ) : href ? (
                       <a
                         href={href}
                         className="underline-offset-4 transition-colors hover:text-ink hover:underline"

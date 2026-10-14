@@ -15,7 +15,7 @@ export const Route = createFileRoute("/")({
 function LandingPage() {
   return (
     <>
-      <SiteHeader />
+      <SiteHeader flight />
       <main>
         <Hero />
         <EditorsSection />
