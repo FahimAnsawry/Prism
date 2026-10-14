@@ -95,7 +95,7 @@ export function PageHeader({
   action,
 }: {
   title: string;
-  summary: ReactNode;
+  summary?: ReactNode;
   action?: ReactNode;
 }) {
   return (
@@ -104,7 +104,9 @@ export function PageHeader({
         <h1 className="font-display text-[32px] leading-10 font-bold tracking-[-0.03em] text-ink sm:text-[40px] sm:leading-12">
           {title}
         </h1>
-        <p className="mt-1 min-h-4 font-mono text-2xs text-muted-foreground">{summary}</p>
+        {summary ? (
+          <p className="mt-1 min-h-4 font-mono text-2xs text-muted-foreground">{summary}</p>
+        ) : null}
       </div>
       {action && <div className="sm:mt-1.5 max-sm:w-full">{action}</div>}
     </div>

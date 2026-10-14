@@ -23,7 +23,6 @@ import {
   boardItems,
   exactTime,
   matchesQuery,
-  plural,
   projectItems,
   sectionSearch,
   sortItems,
@@ -87,11 +86,7 @@ export function AllWorkView({
     <>
       <PageHeader
         title="Your workspace"
-        summary={
-          isEmpty
-            ? "Nothing here yet"
-            : `${plural(workspace.projects.length, "project")} · ${plural(allBoards.length, "board")} · ${sharedCount} shared with you`
-        }
+        summary={isEmpty ? "Nothing here yet" : undefined}
         action={<NewMenu onCreate={(kind) => onCreate(kind)} />}
       />
 
@@ -293,7 +288,6 @@ function ResumeCard({ board }: { board: BoardItem }) {
               <RoleBadge item={board} />
             )}
             <BoardProject board={board} className="font-sans text-[13px]" />
-            <span>· {plural(board.itemCount, "element")}</span>
             <time dateTime={board.editedAt} title={`Edited ${exactTime(board.editedAt)}`}>
               · edited {timeAgo(board.editedAt)}
             </time>

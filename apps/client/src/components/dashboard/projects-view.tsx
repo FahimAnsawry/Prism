@@ -5,7 +5,7 @@ import { NoMatches, PageHeader, Segmented, type ViewProps } from "./dashboard-pa
 import { primaryButton } from "./dashboard-styles";
 import { ProjectRow } from "./project-card";
 import { SortMenu } from "./sort-menu";
-import { matchesQuery, plural, projectItems, sortItems, type Owner } from "./workspace-data";
+import { matchesQuery, projectItems, sortItems, type Owner } from "./workspace-data";
 
 /** Every project, one row each: what it is, who it's from, and its latest boards. */
 export function ProjectsView({
@@ -26,14 +26,12 @@ export function ProjectsView({
       ),
     [workspace, owner, query, prefs.sort],
   );
-  const boardCount = all.reduce((sum, p) => sum + p.boardCount, 0);
   const newProject = () => onCreate("project");
 
   return (
     <>
       <PageHeader
         title="Projects"
-        summary={`${plural(all.length, "project")} · ${plural(boardCount, "board")} · one design language per project`}
         action={
           <button type="button" onClick={newProject} className={primaryButton}>
             <FolderPlus aria-hidden="true" />

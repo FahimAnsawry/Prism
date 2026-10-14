@@ -16,7 +16,7 @@ import {
 } from "./dashboard-parts";
 import { primaryButton } from "./dashboard-styles";
 import { SortMenu } from "./sort-menu";
-import { boardItems, matchesQuery, plural, sortItems, type Owner } from "./workspace-data";
+import { boardItems, matchesQuery, sortItems, type Owner } from "./workspace-data";
 
 /** Rows (or cards) before "Show more", and how many more each click adds. */
 const PAGE = 12;
@@ -68,7 +68,6 @@ export function BoardsView({
     <>
       <PageHeader
         title="Whiteboards"
-        summary={`${plural(all.length, "board")} · ${plural(projects.length, "project")} · ${shown.length} shown`}
         action={
           <button type="button" onClick={() => onCreate("whiteboard")} className={primaryButton}>
             <Plus aria-hidden="true" strokeWidth={2.5} />

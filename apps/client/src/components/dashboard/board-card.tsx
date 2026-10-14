@@ -7,7 +7,6 @@ import { ItemActionsMenu, type ItemAction } from "./item-actions-menu";
 import {
   editedGroup,
   exactTime,
-  plural,
   shownDate,
   timeAgo,
   type BoardItem,
@@ -71,7 +70,7 @@ export function BoardCard({
           <p className="mt-2 flex items-center gap-2 font-mono text-2xs text-muted-foreground">
             <RoleBadge item={board} />
             <span className="truncate">
-              {plural(board.itemCount, "element")} · <BoardDate board={board} sort={sort} />
+              <BoardDate board={board} sort={sort} />
             </span>
           </p>
         </div>
