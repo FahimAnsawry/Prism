@@ -665,3 +665,14 @@
   animation: none;
   mix-blend-mode: normal;
 }
+
+/* An AI editor's screen being built (remote-reveal.ts): each new element fades in. */
+.prism-reveal {
+  animation: prism-reveal 320ms ease-out backwards;
+}
+
+@keyframes prism-reveal {
+  from {
+    opacity: 0;
+  }
+}

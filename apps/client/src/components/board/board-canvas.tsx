@@ -1,4 +1,4 @@
-import { type BoardElement, hiddenMindNodes } from "@prism/shared";
+import { type BoardElement, hiddenMindNodes, isNameable, suggestName } from "@prism/shared";
 import {
   type Dispatch,
   type DragEvent,
@@ -14,7 +14,10 @@ import { isTyping } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { type BoardAction, type BoardState, byZ, displayColor } from "./board-model";
 import { type Camera, screenToWorld, zoomAt } from "./camera";
+import { type ElementLabel, ElementLabels } from "./element-labels";
 import { ElementShape } from "./element-shape";
+import { PresenceLayer } from "./presence-layer";
+import { SnapGuidesView } from "./snap-guides";
 import { MindBranches, mindToggles, MindToggles, TOGGLE_RADIUS } from "./mind-branches";
 import {
   backdropOf,
@@ -110,6 +113,8 @@ export function BoardCanvas({
   onToolDone,
   onPointerWorld,
   onDropFiles,
+  renamable = false,
+  presenceBoardId,
   viewport,
 }: {
   state: BoardState;
@@ -132,6 +137,10 @@ export function BoardCanvas({
   /** The pointer's last world position, for pasting where the user is looking. */
   onPointerWorld: (p: Point) => void;
   onDropFiles: (files: File[], p: Point) => void;
+  /** Whether the names above frames, sections and cards can be edited (a board this tab edits). */
+  renamable?: boolean;
+  /** The board whose other visitors (cursors, selections, AI editors at work) are drawn. */
+  presenceBoardId?: string;
   /** The canvas's size on screen. Without it every element is drawn, wherever it is. */
   viewport?: { width: number; height: number };
 }) {
@@ -149,6 +158,10 @@ export function BoardCanvas({
   const [hoverCursor, setHoverCursor] = useState<string | undefined>();
   /** The mind map node under the pointer: its fold toggle shows, as on a selected node. */
   const [hoverMindId, setHoverMindId] = useState<string | null>(null);
+  /** The frame, section or card under the pointer: its name shows above it. */
+  const [hoverLabelId, setHoverLabelId] = useState<string | null>(null);
+  /** The element whose name is being edited in place. */
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const spaceHeld = useHeldSpace();
   const { elements, selectedIds } = state;
   // Derived from the elements only, so panning and zooming (a render per frame) reuse them.
@@ -168,6 +181,29 @@ export function BoardCanvas({
         : mindToggles(elements, ordered, hoverMindId ? [...selectedIds, hoverMindId] : selectedIds),
     [editingId, elements, ordered, hoverMindId, selectedIds],
   );
+  const containers = useMemo(
+    () => ordered.filter((el) => el.type === "frame" || el.type === "rect"),
+    [ordered],
+  );
+  const labels = useMemo<ElementLabel[]>(() => {
+    if (editingId || tool !== "select") return [];
+    const out: ElementLabel[] = [];
+    const add = (el: BoardElement | undefined, isSelected: boolean) => {
+      if (!el || (el.type !== "frame" && el.type !== "rect")) return;
+      const name = el.name?.trim() || suggestName(el, elements);
+      if (!name) return;
+      const box = elementBounds(el);
+      out.push({ id: el.id, name, x: box.x, y: box.y, selected: isSelected });
+    };
+    for (const el of selected.slice(0, 4)) add(el, true);
+    if (hoverLabelId && !selectedIds.includes(hoverLabelId)) {
+      add(
+        elements.find((el) => el.id === hoverLabelId),
+        false,
+      );
+    }
+    return out;
+  }, [editingId, tool, selected, selectedIds, hoverLabelId, elements]);
   const frame = editingId ? null : selectionFrame(selected, camera.zoom);
   // A selected table or relation shows what it connects and dims the rest (only here on screen:
   // exports and previews draw everything as it is).
@@ -274,6 +310,7 @@ export function BoardCanvas({
       return;
     }
     keepEditorFocus.current = false;
+    setHoverLabelId(null);
     const next = startGesture(tool, context, toWorld(event), event.nativeEvent);
     if (next) {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -299,6 +336,19 @@ export function BoardCanvas({
     }
     if (tool === "select") setHoverCursor(cursorAt(p));
     setHoverMindId(tool === "select" ? mindHoverAt(p) : null);
+    setHoverLabelId(tool === "select" ? labelHoverAt(p) : null);
+  };
+
+  /** The smallest frame, section or card under `p` that has a name (or deserves one). */
+  const labelHoverAt = (p: Point) => {
+    let best: BoardElement | null = null;
+    for (const el of containers) {
+      if (p.x < el.x || p.x > el.x + el.width || p.y < el.y || p.y > el.y + el.height) continue;
+      if (best && el.width * el.height >= best.width * best.height) continue;
+      if (!el.name?.trim() && !isNameable(el, elements)) continue;
+      best = el;
+    }
+    return best?.id ?? null;
   };
 
   /** A toggle under `p`; the toggles past a node's edge belong to that node. */
@@ -369,7 +419,10 @@ export function BoardCanvas({
       onPointerMove={onPointerMove}
       onPointerUp={endPointer}
       onPointerCancel={endPointer}
-      onPointerLeave={() => setHoverMindId(null)}
+      onPointerLeave={() => {
+        setHoverMindId(null);
+        setHoverLabelId(null);
+      }}
       onDoubleClick={onDoubleClick}
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes("Files")) event.preventDefault();
@@ -447,6 +500,27 @@ export function BoardCanvas({
             zoom={camera.zoom}
             linear={selected.length === 1 && selected[0] !== undefined && isLinear(selected[0])}
           />
+        )}
+
+        {labels.length > 0 && (
+          <ElementLabels
+            labels={labels}
+            zoom={camera.zoom}
+            renamingId={labels.some((l) => l.id === renamingId) ? renamingId : null}
+            onSelect={(id) => dispatch({ type: "select", ids: [id] })}
+            onStopRename={() => setRenamingId(null)}
+            {...(renamable && {
+              onStartRename: (id: string) => setRenamingId(id),
+              onRename: (id: string, name: string) =>
+                dispatch({ type: "patch", patches: { [id]: { name: name.trim() || null } } }),
+            })}
+          />
+        )}
+
+        {overlay?.guides && <SnapGuidesView guides={overlay.guides} zoom={camera.zoom} />}
+
+        {presenceBoardId && (
+          <PresenceLayer boardId={presenceBoardId} elements={elements} zoom={camera.zoom} />
         )}
 
         {overlay?.marquee && (

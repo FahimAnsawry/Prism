@@ -4,7 +4,13 @@ import type { EditStatus } from "./db/generated/client.js";
 import { prisma } from "./db/client.js";
 import { badRequest, HttpError, notFound } from "./errors.js";
 import { downloadImage } from "./image-import.js";
-import { broadcastEdit, broadcastEditDeleted, broadcastOps, latestSelection } from "./realtime.js";
+import {
+  announceAiEdit,
+  broadcastEdit,
+  broadcastEditDeleted,
+  broadcastOps,
+  latestSelection,
+} from "./realtime.js";
 import { accessibleBoardWhere, boardFor } from "./routes/board-access.js";
 import { applyOps, toElement } from "./routes/elements.js";
 import { putObject } from "./storage.js";
@@ -120,6 +126,7 @@ interface Placement {
  * everything else, and tells open tabs.
  */
 async function placeAsset(
+  userId: string,
   boardId: string,
   type: "image" | "svg",
   assetKey: string,
@@ -160,6 +167,7 @@ async function placeAsset(
   const board = await prisma.board.findUniqueOrThrow({ where: { id: boardId } });
   const { applied } = await applyOps(board, [{ op: "create", element }]);
   broadcastOps(boardId, applied);
+  announceAiEdit(boardId, userId, applied);
   return element;
 }
 
@@ -177,7 +185,7 @@ export async function importImage(
   const assetKey = await storeImage(board.id, input.url, image);
   const width = input.width ?? displayWidth(image);
   const height = Math.round((width * image.height) / image.width);
-  return placeAsset(board.id, "image", assetKey, input, width, height);
+  return placeAsset(userId, board.id, "image", assetKey, input, width, height);
 }
 
 /**
@@ -210,7 +218,7 @@ export async function importSvg(
   const svg = await storeSvg(board.id, input.svg);
   const width = input.width ?? svg.width;
   const height = Math.round(((width * svg.height) / svg.width) * 10) / 10;
-  return placeAsset(board.id, "svg", svg.assetKey, input, width, height);
+  return placeAsset(userId, board.id, "svg", svg.assetKey, input, width, height);
 }
 
 // ── Edit requests ("Ask AI") ───────────────────────────────────────────────

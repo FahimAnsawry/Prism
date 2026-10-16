@@ -10,7 +10,7 @@ Shortcuts are suggestions based on common whiteboard conventions.
 
 | # | Tool | Shortcut | What it does | Creates element | How to build it (no library) | Difficulty |
 |---|------|----------|--------------|-----------------|------------------------------|------------|
-| 1 | Select | `V` | Click to select, drag to move, Shift+click to add, drag on empty canvas for marquee select | none | Pointer events (`pointerdown/move/up`) + hit-testing on each element's bounds; marquee = rectangle intersection test; selection box with 8 resize handles + 1 rotate handle | Medium |
+| 1 | Select | `V` | Click to select, drag to move, Shift+click to add, drag on empty canvas for marquee select. Dragging or resizing snaps to nearby elements with pink guide lines (hold `Alt` or `Ctrl` to turn it off); a selected or hovered frame, section or card shows its name above it (double-click to rename) | none | Pointer events (`pointerdown/move/up`) + hit-testing on each element's bounds; marquee = rectangle intersection test; selection box with 8 resize handles + 1 rotate handle. Snapping (`snapping.ts`): the dragged box's left / center / right edges on X and top / middle / bottom on Y snap to those of elements within 600 screen px, within 6 screen px (the same at every zoom), and equal gaps between three or more elements in a row or column snap too (a dragged edge snaps on resize); the guides are SVG in the world `<g>` (`snap-guides.tsx`), never exported | Medium |
 | 2 | Hand (pan) | `H` / hold `Space` / right- or middle-drag | Drag to pan the canvas; right- and middle-drag and `Space`+drag pan with any tool | none | Camera `{x, y, zoom}` applied as one SVG `transform` on a root `<g>`; wheel (and Ctrl+wheel, a trackpad pinch) = zoom toward the cursor | Easy |
 | 3 | Text | `T` | Click to place a text box and type | `text` | While editing: an HTML `<textarea>` positioned over the canvas. After: SVG `<text>` with one `<tspan>` per line. Measure width with a hidden `<canvas>` `measureText()` for wrapping | Hard |
 | 4 | Handwriting | `W` | Text in a handwriting font (Caveat by default) | `text` (font: `caveat`) | Same as Text with `font: "caveat"`; the panel's "Handwriting style" switches between Caveat, Nanum Pen, Kalam, Patrick Hand and Indie Flower (all self-hosted with `@fontsource`) | Easy (after Text) |
@@ -46,6 +46,7 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | Clipboard | Copy, paste, duplicate | `navigator.clipboard.writeText(JSON)` and `readText()`; paste images through the `paste` event |
 | Sketch renderer | Hand-drawn look | For each edge, split it into a few segments and offset the points by a small random amount; draw the outline twice; use a seeded random generator (seed = element id) so the wobble doesn't change on every render |
 | Export | PNG, SVG, JSON | SVG = `XMLSerializer` on the `<svg>` (with fonts embedded); PNG = draw that SVG on a `<canvas>` via `Image`, then `canvas.toBlob()`; JSON = the element store |
+| Presence | Who else is on the board | Socket.IO events `cursor:move` (a tab's pointer, board px, at most every 40 ms), `selection:set`, and from the server `presence:cursor` / `presence:selection` / `presence:leave`; never stored, never sent back to the tab they came from (`presence-layer.tsx`). Each person has a color from their account, each AI editor from its name; a cursor fades after 5 s idle. When an AI editor writes elements, the server sends `presence:edit` (the editor's name from its OAuth client or access token, "AI" if none, and the changed elements' boxes): its cursor glides to each (a screen of hundreds: the whole, then its largest parts) and they light up briefly. Public link viewers receive presence but show none |
 | Sync | Real-time updates | Socket.IO events `element:create/update/delete` carrying `{id, version, changes}`; the higher `version` wins |
 
 ---
@@ -70,6 +71,8 @@ Shortcuts are suggestions based on common whiteboard conventions.
 | Opacity | all | 0–100% |
 
 **Custom colors.** "+" opens a hand-built picker (saturation/brightness square, hue strip, editable hex accepting `#RGB`/`#RRGGBB`). "Add" applies the color and saves it to the board (`board.customColors`, newest first, max 16, removable), so everyone editing the board sees the same swatches. Added Google fonts are saved the same way (`board.customFonts`, max 20) via `PATCH /api/boards/:id/style`. Fonts load (`document.fonts.load`) before text using them is measured.
+| Name | one selected element | What a frame, section or card is called (`name`). Left empty it reads as the name worked out from its structure (`packages/shared/src/names.ts`), shown as the field's placeholder. Kept on blur or Enter |
+| Align / Distribute | two or more selected (distribute: three or more) | Align left / horizontal centers / right / top / vertical middles / bottom to the box around the selection; distribute horizontally or vertically with equal gaps, the outermost two staying put (`align.ts`). Locked elements and arrows attached to shapes stay out. One undo step |
 | Layer order | all | Bring forward / send backward / to front / to back (change `z`) |
 | Lock | all | Locked elements can't be moved or edited |
 
@@ -156,6 +159,7 @@ interface BaseElement {
   opacity: number;
   groupId?: string; locked?: boolean;
   role?: string;       // wireframe meaning: "button", "input", "card", ...
+  name?: string;       // what a frame, section or card is called: "Pricing — Pro plan card" (names.ts fills it in; get_board, get_selection and get_screen_code show it)
   tokens?: { stroke?, fill?, textColor?, radius?, font?, textStyle? }; // theme tokens behind those values (packages/shared/src/theme.ts)
   component?: string;  // the project component instance that drew it (packages/shared/src/components.ts)
   updatedBy: "user" | "ai_agent";

@@ -66,6 +66,30 @@ export function fitCamera(all: BoardElement[], width: number, height: number): C
   return { x: zoom * (width / 2 - centerX), y: zoom * (height / 2 - centerY), zoom };
 }
 
+/** Whether the elements' box mostly lies in the view (a quarter of it or more shows). */
+export function inView(
+  elements: BoardElement[],
+  camera: Camera,
+  viewport: { width: number; height: number },
+) {
+  if (elements.length === 0 || viewport.width <= 0) return true;
+  const left = Math.min(...elements.map((el) => el.x));
+  const top = Math.min(...elements.map((el) => el.y));
+  const right = Math.max(...elements.map((el) => el.x + el.width));
+  const bottom = Math.max(...elements.map((el) => el.y + el.height));
+  const a = screenToWorld(camera, { x: 0, y: 0 }, viewport.width, viewport.height);
+  const b = screenToWorld(
+    camera,
+    { x: viewport.width, y: viewport.height },
+    viewport.width,
+    viewport.height,
+  );
+  const w = Math.min(right, b.x) - Math.max(left, a.x);
+  const h = Math.min(bottom, b.y) - Math.max(top, a.y);
+  if (w <= 0 || h <= 0) return false;
+  return (w * h) / Math.max(1, (right - left) * (bottom - top)) >= 0.25;
+}
+
 const cameraKey = (boardId: string) => `prism:camera:${boardId}`;
 
 /** Where the board was last left in this browser, if anywhere. */

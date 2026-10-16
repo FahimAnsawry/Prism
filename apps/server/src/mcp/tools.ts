@@ -54,6 +54,9 @@ import {
   storeLayoutImages,
   strictMessage,
   strictViolations,
+  STAGE_MIN_CREATES,
+  suggestNames,
+  withNames,
   TEXT_STYLES,
   THEME_COLORS,
   THEME_MODES,
@@ -87,7 +90,10 @@ import {
 import { HttpError } from "../errors.js";
 import { colorPhotos, searchImages } from "../image-search.js";
 import {
+  announceAiEdit,
   broadcastOps,
+  currentAiPeer,
+  editorContext,
   requestBoardImage,
   requestHtmlScreen,
   requestImageColors,
@@ -335,8 +341,30 @@ function describeTheme(theme: Theme) {
 async function save(userId: string, id: string, ops: ElementOp[]) {
   const board = await boardFor(id, userId, "edit");
   const result = await applyOps(board, ops);
-  broadcastOps(board.id, result.applied);
+  // A big batch of new elements is revealed in steps by the tabs; the rest just applies and
+  // the editor's cursor goes to what changed.
+  const creates = result.applied.filter((op) => op.op === "create").length;
+  const staged = creates >= STAGE_MIN_CREATES ? await currentAiPeer(userId) : null;
+  broadcastOps(board.id, result.applied, undefined, staged ?? undefined);
+  if (!staged) announceAiEdit(board.id, userId, result.applied);
   return result;
+}
+
+/** The AI editor behind a connection, as its cursor is named on the board. */
+interface Editor {
+  name: () => Promise<string>;
+}
+
+/**
+ * `created` with the names its frames, sections and cards don't have yet, worked out from the
+ * structure and content ("Pricing — Pro plan card"), so they can be found and edited by name.
+ */
+function named(created: BoardElement[], existing: BoardElement[]) {
+  const names = suggestNames([...existing, ...created]);
+  return created.map((el) => {
+    const name = names.get(el.id);
+    return name ? { ...el, name } : el;
+  });
 }
 
 /**
@@ -421,7 +449,10 @@ async function createHtmlScreen(
           tokens: { fill: "background" },
         }),
   };
-  const elements = buildElements(frameElement ? [frameElement, ...parts] : parts, existing);
+  const elements = named(
+    buildElements(frameElement ? [frameElement, ...parts] : parts, existing),
+    existing,
+  );
   await save(
     userId,
     board.id,
@@ -449,6 +480,7 @@ async function createHtmlScreen(
     elements: elements.map((el) => ({
       id: el.id,
       type: el.type,
+      ...(el.name && { name: el.name }),
       ...(el.role && { role: el.role }),
       ...(el.groupId && { groupId: el.groupId }),
       ...(el.text && { text: el.text.slice(0, 60) }),
@@ -468,7 +500,7 @@ const sharedBy = (item: { access: string; ownerName: string }) =>
  * Makes every tool answer, once, with the news that the user stopped an Ask AI request instead
  * of running: an AI editor can't be interrupted, but it reads its next tool result.
  */
-function refuseAfterStop(server: McpServer, userId: string) {
+function refuseAfterStop(server: McpServer, userId: string, editor: Editor) {
   type Handler = (...args: unknown[]) => unknown;
   type Register = (name: string, config: unknown, handler: Handler) => unknown;
   const register = server.registerTool.bind(server) as unknown as Register;
@@ -476,12 +508,13 @@ function refuseAfterStop(server: McpServer, userId: string) {
     register(name, config, (...args) => {
       const stopped = takeStops(userId);
       if (stopped) return { content: [{ type: "text", text: stopped }], isError: true };
-      return handler(...args);
+      // Writes inside the tool know which editor made them (its cursor shows on the board).
+      return editorContext.run(editor, () => handler(...args));
     })) as unknown as typeof server.registerTool;
 }
 
-export function registerTools(server: McpServer, userId: string) {
-  refuseAfterStop(server, userId);
+export function registerTools(server: McpServer, userId: string, editor: Editor) {
+  refuseAfterStop(server, userId, editor);
 
   // ── Boards ───────────────────────────────────────────────────────────────
 
@@ -879,7 +912,8 @@ export function registerTools(server: McpServer, userId: string) {
       run(async () => {
         const board = await boardFor(id, userId, "view");
         const theme = await boardTheme(board);
-        let elements = await loadElements(board.id);
+        // Frames, sections and cards without a stored name read with the one they would get.
+        let elements = withNames(await loadElements(board.id));
         if (frameId) {
           const frame = elements.find((el) => el.id === frameId);
           if (!frame) throw new HttpError(404, "No element with that frameId on this board.");
@@ -893,7 +927,14 @@ export function registerTools(server: McpServer, userId: string) {
           bounds: boundsOf(elements),
           frames: elements
             .filter((el) => el.type === "frame")
-            .map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height })),
+            .map((el) => ({
+              id: el.id,
+              ...(el.name && { name: el.name }),
+              x: el.x,
+              y: el.y,
+              width: el.width,
+              height: el.height,
+            })),
           elements: elements.map((el) => {
             const relation = relations.get(el.id);
             return relation ? { ...view(el, theme), relation } : view(el, theme);
@@ -927,7 +968,7 @@ export function registerTools(server: McpServer, userId: string) {
       run(async () => {
         const board = await boardFor(id, userId, "view");
         const theme = await boardTheme(board);
-        const elements = await loadElements(board.id);
+        const elements = withNames(await loadElements(board.id));
         const frames = elements.filter(
           (el) => el.type === "frame" && (frameId === undefined || el.id === frameId),
         );
@@ -951,6 +992,7 @@ export function registerTools(server: McpServer, userId: string) {
           spacing: theme.spacing,
           screens: screens.map((frame) => ({
             frameId: frame.id,
+            ...(frame.name && { name: frame.name }),
             label: frameLabel(frame, elements),
             width: frame.width,
             height: frame.height,
@@ -1156,7 +1198,8 @@ export function registerTools(server: McpServer, userId: string) {
         const resolved = stored.map((input) =>
           themed({ ...themedDefaults(input), ...input }, theme, mode ?? "light"),
         );
-        const elements = buildElements(resolved, await loadElements(board.id));
+        const existing = await loadElements(board.id);
+        const elements = named(buildElements(resolved, existing), existing);
         await save(
           userId,
           board.id,
@@ -1167,6 +1210,7 @@ export function registerTools(server: McpServer, userId: string) {
             id: el.id,
             ...(inputs[i]?.key && { key: inputs[i]?.key }),
             type: el.type,
+            ...(el.name && { name: el.name }),
           })),
           ...(images.warnings.length > 0 && { warnings: images.warnings }),
         });
@@ -1329,7 +1373,10 @@ export function registerTools(server: McpServer, userId: string) {
           fill: themeColorHex(theme, mode, "background"),
           tokens: { fill: "background" },
         };
-        const elements = buildElements(frame ? [frame, ...parts] : parts, existing);
+        const elements = named(
+          buildElements(frame ? [frame, ...parts] : parts, existing),
+          existing,
+        );
         await save(
           userId,
           board.id,
@@ -1357,6 +1404,7 @@ export function registerTools(server: McpServer, userId: string) {
           elements: elements.map((el) => ({
             id: el.id,
             type: el.type,
+            ...(el.name && { name: el.name }),
             ...(el.role && { role: el.role }),
             ...(el.groupId && { groupId: el.groupId }),
             ...(el.text && { text: el.text.slice(0, 60) }),
@@ -1636,6 +1684,11 @@ export function registerTools(server: McpServer, userId: string) {
           updates.map((u) => ({ fields: u.changes, type: current.get(u.id)?.type ?? "rect" })),
         );
         const images = imageStore(board.id);
+        // An element edited without a name gets the one it would be read with.
+        const unnamed = updates.some(
+          (u) => !current.get(u.id)?.name && u.changes.name === undefined,
+        );
+        const names = unnamed ? suggestNames([...current.values()]) : new Map<string, string>();
         const stored = await Promise.all(
           updates.map(async ({ id: elementId, changes }) => {
             if (changes.fillImage === undefined) return { elementId, changes };
@@ -1654,6 +1707,8 @@ export function registerTools(server: McpServer, userId: string) {
           version: (current.get(elementId)?.version ?? 0) + 1,
           changes: elementChangesSchema.parse({
             ...themed(changes, theme, mode ?? "light", current.get(elementId)?.tokens),
+            ...(changes.name === undefined &&
+              names.has(elementId) && { name: names.get(elementId) }),
             // A table's height follows its columns (an open tab fits its width too).
             ...((changes.table || changes.keysOnly !== undefined) &&
               current.get(elementId)?.type === "table" && {
@@ -1869,9 +1924,16 @@ export function registerTools(server: McpServer, userId: string) {
           selection.elements.length > 0 && selection.boardId
             ? await boardTheme(await boardFor(selection.boardId, userId, "view"))
             : undefined;
+        // Names come from the whole board: a card is named after what is around it.
+        const byId = new Map(
+          (selection.elements.length > 0 && selection.boardId
+            ? withNames(await loadElements(selection.boardId))
+            : []
+          ).map((el) => [el.id, el]),
+        );
         return json({
           boardId: selection.boardId,
-          elements: selection.elements.map((el) => view(el, theme)),
+          elements: selection.elements.map((el) => view(byId.get(el.id) ?? el, theme)),
           ...(hasTokens(selection.elements) && { tokens: TOKENS_NOTE }),
         });
       }),

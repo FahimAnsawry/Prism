@@ -14,6 +14,7 @@ import {
   LETTER_SPACING_MIN,
   LINE_HEIGHT_MAX,
   LINE_HEIGHT_MIN,
+  NAME_MAX,
   type Radius,
   shadowSchema,
   type TextAlign,
@@ -814,6 +815,9 @@ export function layoutScreen(
   const meta = (node: LayoutNode, groupId: string | undefined) => ({
     ...(layer && { layer }),
     ...("role" in node && node.role && { role: node.role }),
+    // What the node draws is called what the design calls it (a named stack with a background
+    // is the "Hero" section); unnamed ones are named from their structure (names.ts).
+    ...("name" in node && node.name && { name: node.name.slice(0, NAME_MAX) }),
     ...(groupId && { groupId }),
     ...("tokens" in node && node.tokens && { tokens: node.tokens }),
     ...("component" in node && node.component && { component: node.component }),

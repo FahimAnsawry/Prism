@@ -19,6 +19,7 @@ import {
   type LayoutMindmapRequest,
   type LayoutScreenReply,
   type LayoutScreenRequest,
+  type Peer,
   saveElementsResultSchema,
   SOCKET_ID_HEADER,
 } from "@prism/shared";
@@ -334,8 +335,11 @@ export function useBoardSaver(
 }
 
 export interface RealtimeHandlers {
-  /** Ops another tab or an AI editor saved on this board. */
-  onOps: (ops: ElementOp[]) => void;
+  /**
+   * Ops another tab or an AI editor saved on this board. `staged` is the AI editor building a
+   * big batch: show it being built (remote-reveal.ts).
+   */
+  onOps: (ops: ElementOp[], staged?: Peer) => void;
   /** Joined (or rejoined after a disconnect): time to catch up on missed changes. */
   onJoined: () => void;
   /** An "Ask AI" request on this board was created or changed status. */
@@ -380,8 +384,8 @@ export function useBoardRealtime(
     };
     socket.on("board:revoked", onRevoked);
     socket.on("board:access", onAccess);
-    const onOps = (payload: { boardId: string; ops: ElementOp[] }) => {
-      if (payload.boardId === boardId) latest.current.onOps(payload.ops);
+    const onOps = (payload: { boardId: string; ops: ElementOp[]; staged?: Peer }) => {
+      if (payload.boardId === boardId) latest.current.onOps(payload.ops, payload.staged);
     };
     const onEdit = (request: EditRequest) => {
       if (request.boardId === boardId) latest.current.onEdit?.(request);
@@ -460,6 +464,34 @@ export function useBoardRealtime(
 export function reportSelection(boardId: string, elementIds: string[]) {
   const socket = getSocket();
   if (socket.connected) socket.emit("selection:set", { boardId, elementIds });
+}
+
+/** The most often a pointer position goes out, in ms. */
+const CURSOR_INTERVAL = 40;
+let cursorSentAt = 0;
+let cursorTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Tells the other tabs on the board where this tab's pointer is (board px), so they can draw
+ * its cursor. At most every CURSOR_INTERVAL ms; the newest position always goes out last.
+ */
+export function reportCursor(boardId: string, point: { x: number; y: number }) {
+  const socket = getSocket();
+  if (!socket.connected) return;
+  const send = () => {
+    cursorTimer = undefined;
+    cursorSentAt = Date.now();
+    socket.volatile.emit("cursor:move", { boardId, x: point.x, y: point.y });
+  };
+  const wait = CURSOR_INTERVAL - (Date.now() - cursorSentAt);
+  if (wait <= 0) {
+    clearTimeout(cursorTimer);
+    send();
+  } else {
+    // The pending send reads the latest point.
+    clearTimeout(cursorTimer);
+    cursorTimer = setTimeout(send, wait);
+  }
 }
 
 /** The board's elements as the server has them now (for a resync). */

@@ -7,6 +7,8 @@ export * from "./er.js";
 export * from "./er-layout.js";
 export * from "./layout.js";
 export * from "./mindmap.js";
+export * from "./names.js";
+export * from "./presence.js";
 export * from "./schema-code.js";
 export * from "./sharing.js";
 export * from "./svg.js";

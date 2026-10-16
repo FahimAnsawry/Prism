@@ -18,6 +18,7 @@ import {
   LETTER_SPACING_MIN,
   LINE_HEIGHT_MAX,
   LINE_HEIGHT_MIN,
+  NAME_MAX,
   type Radius,
   type Shadow,
   SHADOW_TYPES,
@@ -29,7 +30,20 @@ import {
   type UpdateBoardStyleInput,
 } from "@prism/shared";
 import { motion } from "motion/react";
-import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
+import {
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalSpaceBetween,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  AlignVerticalSpaceBetween,
+  ArrowDown,
+  ArrowUp,
+  Plus,
+  X,
+} from "lucide-react";
 import { memo, type ReactNode, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { EASE_STANDARD } from "@/lib/motion";
@@ -48,6 +62,7 @@ import {
   type StrokeStyle,
   type TextAlign,
 } from "./board-model";
+import { type AlignMode, DISTRIBUTE_MIN, type DistributeAxis } from "./align";
 import { ColorPicker } from "./color-picker";
 import { FontPicker } from "./font-picker";
 import { IconGrid } from "./icon-picker";
@@ -159,9 +174,18 @@ function PropertiesPanelView({
   onTidy,
   onStyleChange,
   onUploadImage,
+  onAlign,
+  onDistribute,
+  suggestedName,
 }: {
   /** The selection; changes go to each element they apply to. */
   elements: BoardElement[];
+  /** Lines the selection up on an edge or center (one undo step). */
+  onAlign: (mode: AlignMode) => void;
+  /** Spreads the selection with equal gaps (one undo step). */
+  onDistribute: (axis: DistributeAxis) => void;
+  /** The name one selected frame, section or card gets when it has none of its own. */
+  suggestedName?: string | undefined;
   /** The board's saved swatches (#rrggbb) and added Google fonts, newest first. */
   customColors: string[];
   customFonts: string[];
@@ -283,6 +307,47 @@ function PropertiesPanelView({
       </h2>
 
       <fieldset disabled={locked} className="contents">
+        {elements.length > 1 && (
+          <section className="flex flex-col gap-3 border-b border-divider px-4 pt-2.5 pb-5">
+            <Row label="Align">
+              <div className="grid grid-cols-6 gap-1">
+                {ALIGNMENTS.map(({ mode, label, Icon }) => (
+                  <IconAction key={mode} label={label} onClick={() => onAlign(mode)}>
+                    <Icon aria-hidden="true" className="size-4" />
+                  </IconAction>
+                ))}
+              </div>
+            </Row>
+            <Row label="Distribute">
+              <div className="grid grid-cols-6 gap-1">
+                {DISTRIBUTIONS.map(({ axis, label, Icon }) => (
+                  <IconAction
+                    key={axis}
+                    label={label}
+                    disabled={elements.length < DISTRIBUTE_MIN}
+                    onClick={() => onDistribute(axis)}
+                  >
+                    <Icon aria-hidden="true" className="size-4" />
+                  </IconAction>
+                ))}
+              </div>
+            </Row>
+          </section>
+        )}
+
+        {elements.length === 1 && (
+          <section className="border-b border-divider px-4 pt-2.5 pb-5">
+            <Row label="Name">
+              <NameField
+                key={first.id}
+                name={first.name ?? ""}
+                placeholder={suggestedName ?? "Unnamed"}
+                onCommit={(name) => onChange({ name })}
+              />
+            </Row>
+          </section>
+        )}
+
         {stroke || fill || radiusEl || shadowEl ? (
           <section className="flex flex-col gap-3.5 border-b border-divider px-4 pt-2.5 pb-6">
             {stroke && (
@@ -1193,6 +1258,56 @@ const COLUMN_FLAGS = [
 ] as const;
 
 /**
+ * The name of the selected frame, section or card. It is kept when the field loses focus or on
+ * Enter (one undo step, not one per letter); emptied, the automatic name comes back.
+ */
+function NameField({
+  name,
+  placeholder,
+  onCommit,
+}: {
+  name: string;
+  placeholder: string;
+  onCommit: (name: string | null) => void;
+}) {
+  const [draft, setDraft] = useState(name);
+  // A name changed elsewhere (undo, another tab or an AI editor) replaces the draft.
+  const [shown, setShown] = useState(name);
+  if (name !== shown) {
+    setShown(name);
+    setDraft(name);
+  }
+  const cancelled = useRef(false);
+  const commit = () => {
+    const next = draft.trim();
+    if (cancelled.current || next === name.trim()) {
+      cancelled.current = false;
+      return;
+    }
+    onCommit(next || null);
+  };
+  return (
+    <input
+      aria-label="Name"
+      value={draft}
+      maxLength={NAME_MAX}
+      placeholder={placeholder}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        else if (event.key === "Escape") {
+          cancelled.current = true;
+          setDraft(name);
+          event.currentTarget.blur();
+        }
+      }}
+      className="h-8 w-full border border-input bg-background px-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground"
+    />
+  );
+}
+
+/**
  * A name that can't be empty: while the field is cleared to type a new one, the old name stays;
  * leaving it empty puts the old name back.
  */
@@ -1380,6 +1495,46 @@ function TableEditor({
         </button>
       </Row>
     </section>
+  );
+}
+
+const ALIGNMENTS = [
+  { mode: "left", label: "Align left", Icon: AlignStartVertical },
+  { mode: "center", label: "Align horizontal centers", Icon: AlignCenterVertical },
+  { mode: "right", label: "Align right", Icon: AlignEndVertical },
+  { mode: "top", label: "Align top", Icon: AlignStartHorizontal },
+  { mode: "middle", label: "Align vertical middles", Icon: AlignCenterHorizontal },
+  { mode: "bottom", label: "Align bottom", Icon: AlignEndHorizontal },
+] as const;
+
+const DISTRIBUTIONS = [
+  { axis: "horizontal", label: "Distribute horizontally", Icon: AlignHorizontalSpaceBetween },
+  { axis: "vertical", label: "Distribute vertically", Icon: AlignVerticalSpaceBetween },
+] as const;
+
+/** A square icon button that does something once (align, distribute). */
+function IconAction({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={disabled ? `${label} (needs ${DISTRIBUTE_MIN} or more)` : label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-8 items-center justify-center bg-background text-foreground transition-colors duration-150 ease-standard hover:bg-divider disabled:pointer-events-none disabled:opacity-40"
+    >
+      {children}
+    </button>
   );
 }
 

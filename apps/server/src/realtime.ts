@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Server as HttpServer } from "node:http";
 import {
   type ClientToServerEvents,
@@ -15,6 +16,12 @@ import {
   type LayoutMindmapRequest,
   type LayoutScreenRequest,
   layoutScreenReplySchema,
+  cursorPayloadSchema,
+  peerName,
+  type Peer,
+  pickPresenceTargets,
+  type PresenceBox,
+  presenceColor,
   type ServerToClientEvents,
   showBoardReplySchema,
 } from "@prism/shared";
@@ -35,11 +42,17 @@ import { accessibleBoardWhere, boardForShareToken } from "./routes/board-access.
 interface SocketData {
   /** Null for a public link's viewer (no session). */
   userId: string | null;
+  /** The account's name, shown on this tab's cursor. */
+  userName: string;
   /** Boards this tab joined through a public link, and the link's token. */
   shareRooms: Map<string, string>;
 }
 
 type PrismServer = Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>;
+type SelectionEmit = (
+  event: "presence:selection",
+  update: Parameters<ServerToClientEvents["presence:selection"]>[0],
+) => unknown;
 
 let io: PrismServer | null = null;
 
@@ -60,6 +73,18 @@ const activeAt = new Map<string, number>();
 /** open_board calls waiting for a tab to finish opening their board. */
 const joinWaiters = new Set<{ userId: string; boardId: string; resolve: () => void }>();
 
+/** How a tab shows to the others on a board: its account's name and color, one per tab. */
+const peerOf = (socket: { id: string; data: SocketData }): Peer => ({
+  id: socket.id,
+  name: socket.data.userName,
+  kind: "user",
+  color: presenceColor(socket.data.userId ?? socket.id),
+});
+
+/** The shortest time between two cursor positions relayed for one tab. */
+const CURSOR_MIN_GAP_MS = 25;
+const lastCursor = new Map<string, number>();
+
 const selectionPayload = z.object({
   boardId: z.uuid(),
   elementIds: z.array(z.uuid()).max(5_000),
@@ -79,6 +104,7 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
       .getSession({ headers: fromNodeHeaders(socket.handshake.headers) })
       .then((session) => {
         socket.data.userId = session?.user.id ?? null;
+        socket.data.userName = peerName(session?.user.name, "Someone");
         socket.data.shareRooms = new Map();
         next();
       })
@@ -115,6 +141,7 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
           // In as the user now, not through a link.
           socket.data.shareRooms.delete(boardId);
           reply(true);
+          sendSelections(socket, boardId);
           for (const waiter of joinWaiters) {
             if (waiter.userId === userId && waiter.boardId === boardId) waiter.resolve();
           }
@@ -150,19 +177,65 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
       void socket.leave(room(boardId));
       socket.data.shareRooms.delete(boardId);
       if (selections.get(socket.id)?.boardId === boardId) selections.delete(socket.id);
+      if (userId) socket.to(room(boardId)).emit("presence:leave", { boardId, peerId: socket.id });
     });
 
     socket.on("selection:set", (payload) => {
       const parsed = selectionPayload.safeParse(payload);
       if (!userId || !parsed.success || !socket.rooms.has(room(parsed.data.boardId))) return;
       selections.set(socket.id, { userId, ...parsed.data, at: Date.now() });
+      socket.to(room(parsed.data.boardId)).emit("presence:selection", {
+        boardId: parsed.data.boardId,
+        peer: peerOf(socket),
+        elementIds: parsed.data.elementIds,
+      });
+    });
+
+    // Pointer positions go to the others and are never stored. A public link's viewer has no
+    // account and shows no cursor. Dropped when too frequent: the next one follows in a moment.
+    socket.on("cursor:move", (payload) => {
+      const parsed = cursorPayloadSchema.safeParse(payload);
+      if (!userId || !parsed.success || !socket.rooms.has(room(parsed.data.boardId))) return;
+      const now = Date.now();
+      if (now - (lastCursor.get(socket.id) ?? 0) < CURSOR_MIN_GAP_MS) return;
+      lastCursor.set(socket.id, now);
+      socket.volatile.to(room(parsed.data.boardId)).emit("presence:cursor", {
+        ...parsed.data,
+        peer: peerOf(socket),
+      });
+    });
+
+    socket.on("disconnecting", () => {
+      if (!userId) return;
+      for (const name of socket.rooms) {
+        if (!name.startsWith("board:")) continue;
+        socket
+          .to(name)
+          .emit("presence:leave", { boardId: name.slice("board:".length), peerId: socket.id });
+      }
     });
 
     socket.on("disconnect", () => {
       selections.delete(socket.id);
       activeAt.delete(socket.id);
+      lastCursor.delete(socket.id);
     });
   });
+}
+
+/** Tells a tab that just joined what the others on the board have selected. */
+function sendSelections(socket: { id: string; emit: SelectionEmit }, boardId: string) {
+  if (!io) return;
+  for (const other of io.sockets.sockets.values()) {
+    if (other.id === socket.id || !other.rooms.has(room(boardId))) continue;
+    const selection = selections.get(other.id);
+    if (selection?.boardId !== boardId || selection.elementIds.length === 0) continue;
+    socket.emit("presence:selection", {
+      boardId,
+      peer: peerOf(other),
+      elementIds: selection.elementIds,
+    });
+  }
 }
 
 /**
@@ -201,11 +274,23 @@ export function notifyAccessChanged(boardIds: string[], userId: string) {
   }
 }
 
-/** Sends applied ops to every tab on the board except the one that saved them. */
-export function broadcastOps(boardId: string, ops: ElementOp[], exceptSocket?: string) {
+/**
+ * Sends applied ops to every tab on the board except the one that saved them. `staged` is the AI
+ * editor building a big batch: tabs reveal it step by step instead of all at once.
+ */
+export function broadcastOps(
+  boardId: string,
+  ops: ElementOp[],
+  exceptSocket?: string,
+  staged?: Peer,
+) {
   if (!io || ops.length === 0) return;
   const target = io.to(room(boardId));
-  (exceptSocket ? target.except(exceptSocket) : target).emit("element:ops", { boardId, ops });
+  (exceptSocket ? target.except(exceptSocket) : target).emit("element:ops", {
+    boardId,
+    ops,
+    ...(staged && { staged }),
+  });
 }
 
 export function broadcastEdit(request: EditRequest) {
@@ -465,4 +550,71 @@ export async function showBoardInBrowser(
     }
   }
   return "no-tab";
+}
+
+// ── AI editors' presence ──────────────────────────────────────────────────
+
+/**
+ * The AI editor behind the MCP request being handled: the tool wrapper in mcp/tools.ts runs
+ * every tool inside this, so a write deep in the stack knows who made it. `name` resolves the
+ * OAuth client's or the access token's name the first time it's needed.
+ */
+export const editorContext = new AsyncLocalStorage<{ name: () => Promise<string> }>();
+
+/** The AI editor behind the request being handled, as the board's tabs know it. */
+export async function currentAiPeer(userId: string): Promise<Peer | null> {
+  const editor = editorContext.getStore();
+  if (!editor) return null;
+  const name = await editor.name();
+  return {
+    id: `ai:${userId}:${name.toLowerCase()}`,
+    name,
+    kind: "ai",
+    color: presenceColor(name, "ai"),
+  };
+}
+
+/** The most elements one announcement looks up. */
+const ANNOUNCE_MAX = 400;
+
+/**
+ * Tells the tabs on a board which elements the AI editor behind this request just changed, so
+ * their cursor can go there and light them up. Fire and forget: it never holds up the tool.
+ */
+export function announceAiEdit(boardId: string, userId: string, ops: ElementOp[]) {
+  const editor = editorContext.getStore();
+  if (!io || !editor) return;
+  const ids = [
+    ...new Set(
+      ops
+        .filter((op) => op.op !== "delete")
+        .map((op) => (op.op === "create" ? op.element.id : op.id)),
+    ),
+  ].slice(0, ANNOUNCE_MAX);
+  if (ids.length === 0) return;
+  void (async () => {
+    const [name, rows] = await Promise.all([
+      editor.name(),
+      prisma.element.findMany({
+        where: { boardId, id: { in: ids }, deletedAt: null },
+        select: { id: true, x: true, y: true, width: true, height: true },
+      }),
+    ]);
+    // Lines and arrows keep their end as a vector, which may point left or up.
+    const boxes: PresenceBox[] = rows.map((row) => ({
+      id: row.id,
+      x: Math.min(row.x, row.x + row.width),
+      y: Math.min(row.y, row.y + row.height),
+      width: Math.abs(row.width),
+      height: Math.abs(row.height),
+    }));
+    if (boxes.length === 0) return;
+    const peer: Peer = {
+      id: `ai:${userId}:${name.toLowerCase()}`,
+      name,
+      kind: "ai",
+      color: presenceColor(name, "ai"),
+    };
+    io?.to(room(boardId)).emit("presence:edit", { boardId, peer, ...pickPresenceTargets(boxes) });
+  })().catch((error: unknown) => console.warn("[Prism] Couldn't announce an AI edit:", error));
 }

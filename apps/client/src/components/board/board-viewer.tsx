@@ -1,4 +1,4 @@
-import type { BoardElement, ElementOp } from "@prism/shared";
+import type { BoardElement, ElementOp, Peer } from "@prism/shared";
 import { Eye, Grid2x2, Hand, Maximize, Minus, MousePointer2, Plus } from "lucide-react";
 import {
   type ReactNode,
@@ -14,12 +14,13 @@ import { isTyping } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { BoardCanvas } from "./board-canvas";
 import { type BoardAction, boardReducer, initialBoardState } from "./board-model";
-import { useBoardRealtime, useBoardSaver } from "./board-sync";
-import { type Camera, fitCamera, stepZoom, zoomAt } from "./camera";
+import { reportCursor, useBoardRealtime, useBoardSaver } from "./board-sync";
+import { type Camera, fitCamera, inView, stepZoom, zoomAt } from "./camera";
 import { ErFocusDialog } from "./er-focus-dialog";
 import { ExportMenu } from "./export-menu";
 import { TableSwitcher } from "./er-table-switcher";
 import { loadFont } from "./fonts";
+import { revealOps } from "./remote-reveal";
 import { TableDetails } from "./table-details";
 import type { ToolId } from "./tools";
 import { useElementSize } from "./use-element-size";
@@ -82,11 +83,39 @@ export function BoardViewer({
     ? state.elements.find((el) => el.id === chosenTableId)
     : undefined;
 
+  // Reveals of an AI editor's big batches in progress, stopped when the board closes.
+  const reveals = useRef(new Set<() => void>());
+  useEffect(() => {
+    const running = reveals.current;
+    return () => {
+      for (const stop of running) stop();
+      running.clear();
+    };
+  }, []);
+  const view = useRef({ camera, size });
+  useEffect(() => {
+    view.current = { camera, size };
+  });
+
   const applyRemote = useCallback(
-    (ops: ElementOp[]) => {
+    (ops: ElementOp[], staged?: Peer) => {
       const fresh = receive(ops);
       if (fresh.length === 0) return;
-      rawDispatch({ type: "remote", ops: fresh });
+      if (staged) {
+        reveals.current.add(
+          revealOps({
+            ops: fresh,
+            peer: staged,
+            dispatch: rawDispatch,
+            onStart: (created) => {
+              const { camera: cam, size: box } = view.current;
+              if (!inView(created, cam, box)) setCamera(fitCamera(created, box.width, box.height));
+            },
+          }),
+        );
+      } else {
+        rawDispatch({ type: "remote", ops: fresh });
+      }
       for (const op of fresh) {
         const el = op.op === "create" ? op.element : op.op === "update" ? op.changes : null;
         if (el?.font)
@@ -320,8 +349,12 @@ export function BoardViewer({
           onStartEditing={noop}
           onFinishEditing={noop}
           onToolDone={noop}
-          onPointerWorld={noop}
+          onPointerWorld={(p) => {
+            // A public link's viewer has no account, so no cursor to show.
+            if (!shareToken) reportCursor(boardId, p);
+          }}
           onDropFiles={noop}
+          presenceBoardId={boardId}
           viewport={size}
         />
         {selectedTable?.type === "table" && !focusTable && (

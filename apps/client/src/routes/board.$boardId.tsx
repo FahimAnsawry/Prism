@@ -1,4 +1,11 @@
-import { type BoardElement, type BoardSummary, type ElementOp, SVG_TYPE } from "@prism/shared";
+import {
+  type BoardElement,
+  type BoardSummary,
+  type ElementOp,
+  type Peer,
+  suggestName,
+  SVG_TYPE,
+} from "@prism/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
@@ -32,6 +39,7 @@ import {
   boardElementsQuery,
   fetchBoardElements,
   fetchBoardElementsAhead,
+  reportCursor,
   reportSelection,
   useBoardRealtime,
   useBoardSaver,
@@ -60,9 +68,17 @@ import {
   parseElements,
   serializeElements,
 } from "@/components/board/clipboard";
+import {
+  type AlignMode,
+  alignPatches,
+  type DistributeAxis,
+  distributePatches,
+} from "@/components/board/align";
 import { EmojiPicker } from "@/components/board/emoji-picker";
 import { ErFocusDialog, ErFocusPanel } from "@/components/board/er-focus-dialog";
 import { ExportMenu } from "@/components/board/export-menu";
+import { inView } from "@/components/board/camera";
+import { revealOps } from "@/components/board/remote-reveal";
 import { IconPicker } from "@/components/board/icon-picker";
 import { googleFontId, loadFont, loadFonts } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
@@ -254,6 +270,11 @@ function BoardEditor({
     [state.elements, state.selectedIds],
   );
   const editingEl = editing && state.elements.find((el) => el.id === editing.id);
+  /** The name the one selected frame or card gets while it has none of its own. */
+  const suggestedName = useMemo(() => {
+    const only = selected.length === 1 ? selected[0] : undefined;
+    return only && !only.name ? (suggestName(only, state.elements) ?? undefined) : undefined;
+  }, [selected, state.elements]);
   const viewing = mode === "view";
   /** Opens the Share dialog; only the owner gets it. */
   const onShare = board?.access === "owner" ? () => setSharing(true) : undefined;
@@ -268,12 +289,34 @@ function BoardEditor({
 
   // ── Live sync and AI editors ─────────────────────────────────────────────
 
+  // Event handlers attached once read the latest values from here.
+  const latest = useRef({ state, camera, size, editing, viewing });
+  useEffect(() => {
+    latest.current = { state, camera, size, editing, viewing };
+  });
+
   /** Applies ops saved elsewhere (another tab, an AI editor) as one undo step. */
   const applyRemote = useCallback(
-    (ops: ElementOp[]) => {
+    (ops: ElementOp[], staged?: Peer) => {
       const fresh = receive(ops);
       if (fresh.length === 0) return;
-      dispatch({ type: "remote", ops: fresh });
+      if (staged) {
+        // A whole screen an AI editor drew: shown being built, its cursor at work.
+        reveals.current.add(
+          revealOps({
+            ops: fresh,
+            peer: staged,
+            dispatch,
+            onStart: (created) => {
+              const { camera: cam, size: box } = latest.current;
+              const view = fitCamera(created, box.width, box.height);
+              if (!inView(created, cam, box)) setCamera(view);
+            },
+          }),
+        );
+      } else {
+        dispatch({ type: "remote", ops: fresh });
+      }
       // Text an AI editor wrote may use fonts this tab hasn't loaded yet.
       for (const op of fresh) {
         const el = op.op === "create" ? op.element : op.op === "update" ? op.changes : null;
@@ -352,11 +395,15 @@ function BoardEditor({
   const zoomOut = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
   const zoomReset = () => setCamera((c) => zoomAt(c, 1, CENTER));
 
-  // Event handlers attached once read the latest values from here.
-  const latest = useRef({ state, camera, size, editing, viewing });
+  // Reveals of an AI editor's big batches in progress, stopped when the board closes.
+  const reveals = useRef(new Set<() => void>());
   useEffect(() => {
-    latest.current = { state, camera, size, editing, viewing };
-  });
+    const running = reveals.current;
+    return () => {
+      for (const stop of running) stop();
+      running.clear();
+    };
+  }, []);
 
   /** The world point in the middle of the view. */
   const viewCenter = useCallback((): Point => {
@@ -494,6 +541,19 @@ function BoardEditor({
       dispatch({ type: "patch", patches });
     },
     [selected],
+  );
+
+  /** Lines the selection up or spreads it out: one patch, so one undo step. */
+  const arrangeSelected = useCallback((patches: Record<string, Partial<BoardElement>>) => {
+    if (Object.keys(patches).length > 0) dispatch({ type: "patch", patches });
+  }, []);
+  const alignSelected = useCallback(
+    (mode: AlignMode) => arrangeSelected(alignPatches(selected, mode)),
+    [selected, arrangeSelected],
+  );
+  const distributeSelected = useCallback(
+    (axis: DistributeAxis) => arrangeSelected(distributePatches(selected, axis)),
+    [selected, arrangeSelected],
   );
 
   const layerSelected = useCallback(
@@ -775,10 +835,13 @@ function BoardEditor({
           onToolDone={toolDone}
           onPointerWorld={(p) => {
             pointer.current = p;
+            reportCursor(boardId, p);
           }}
           onDropFiles={(files, p) => {
             if (!viewing) void addFiles(files, p);
           }}
+          renamable={!viewing}
+          presenceBoardId={boardId}
           viewport={size}
         />
 
@@ -869,6 +932,9 @@ function BoardEditor({
             onChange={changeSelected}
             onLayer={layerSelected}
             onUploadImage={uploadImage}
+            onAlign={alignSelected}
+            onDistribute={distributeSelected}
+            suggestedName={suggestedName}
           />
         )}
 

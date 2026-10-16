@@ -41,6 +41,8 @@ export interface CodeNode {
   id?: string;
   /** The design's name for it (its groupId without the suffix): "Hero", "Navbar". */
   name?: string;
+  /** The element's own name ("Pricing � Pro plan card"), to point at it in a message. */
+  label?: string;
   role?: string;
   /** Component instance: "Button:primary", "Sidebar > NavItem". */
   component?: string;
@@ -77,6 +79,7 @@ const NOT_STYLE = new Set([
   "updatedBy",
   "groupId",
   "role",
+  "name",
   "component",
   "autoWidth",
   "rotation",
@@ -549,6 +552,7 @@ export function screenTree(
     const name = groupId ? groupName(groupId) : undefined;
     if (name && name !== inherited) base.name = name;
     if (el?.role) base.role = el.role;
+    if (el?.name) base.label = el.name;
     if (el) base.id = el.id;
 
     // A component instance: its own parts collapse to the component, its slot content stays.

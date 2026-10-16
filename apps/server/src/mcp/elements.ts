@@ -24,6 +24,7 @@ import {
   LINE_HEIGHT_MAX,
   LINE_HEIGHT_MIN,
   listItemSchema,
+  NAME_MAX,
   shadowSchema,
   strokeStyleSchema,
   TABLE_STYLE,
@@ -129,6 +130,14 @@ export const fieldShape = {
     .nullable()
     .describe(
       'What the element is in the UI: "button", "input", "card", "nav", "heading", "image", …',
+    ),
+  name: z
+    .string()
+    .trim()
+    .max(NAME_MAX)
+    .nullable()
+    .describe(
+      'What a frame, section or card is called, e.g. "Pricing — Pro plan card". Worked out from the structure when left out; give one (or null to clear it) to rename. get_board, get_selection and get_screen_code show it, so you can find an element by name.',
     ),
   groupId: z
     .string()

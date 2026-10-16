@@ -68,6 +68,8 @@ export const fontWeightSchema = z.union([
   z.enum(["normal", "bold"]),
   z.number().int().min(100).max(900).multipleOf(100),
 ]);
+/** The longest name a frame, section or card can have. */
+export const NAME_MAX = 120;
 /** Bounds of a free text size in px. */
 export const FONT_PX_MIN = 6;
 export const FONT_PX_MAX = 400;
@@ -330,6 +332,9 @@ const propFields = {
   tokens: elementTokensSchema.nullable().optional(),
   // any: the project component instance that drew it ("Button:primary", "Sidebar > NavItem")
   component: z.string().max(120).nullable().optional(),
+  // frames, sections, cards (any element): what it is called, e.g. "Pricing — Pro plan card"
+  // (names.ts fills it in from the structure; the user and AI editors can rename it)
+  name: z.string().trim().max(NAME_MAX).nullable().optional(),
 };
 
 export const ELEMENT_COLUMNS = Object.keys(columnFields) as (keyof typeof columnFields)[];

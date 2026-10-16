@@ -56,6 +56,8 @@ export function cloneElements(elements: BoardElement[], dx: number, dy: number) 
       if (!copy.endBinding) delete copy.endBinding;
     }
     if (!copy.locked) delete copy.locked;
+    // A copy would share its original's name; it gets one of its own from where it lands.
+    delete copy.name;
     return copy;
   });
 }

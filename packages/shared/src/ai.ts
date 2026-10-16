@@ -4,6 +4,7 @@ import type { Components } from "./components.js";
 import type { ErDiagramOptions, ErRelationInput, ErTableInput } from "./er.js";
 import type { LayoutNode, LayoutOptions } from "./layout.js";
 import type { MindmapInput, MindmapOptions } from "./mindmap.js";
+import type { CursorUpdate, EditUpdate, LeaveUpdate, Peer, SelectionUpdate } from "./presence.js";
 import type { Theme, ThemeMode } from "./theme.js";
 
 // AI editors (Claude Code, Codex, … through the MCP endpoint in apps/server/src/mcp): personal
@@ -290,7 +291,7 @@ export interface LayoutMindmapRequest {
 
 export interface ServerToClientEvents {
   /** Element ops another tab or an AI editor saved, in one batch (= one undo step). */
-  "element:ops": (payload: { boardId: string; ops: ElementOp[] }) => void;
+  "element:ops": (payload: { boardId: string; ops: ElementOp[]; staged?: Peer }) => void;
   /** An edit request was created or changed status. */
   "edit:update": (request: EditRequest) => void;
   /** An edit request was deleted. */
@@ -324,6 +325,14 @@ export interface ServerToClientEvents {
   "board:revoked": (payload: { boardId: string }) => void;
   /** What this user may do on the board changed (a new role): reload the board's access. */
   "board:access": (payload: { boardId: string }) => void;
+  /** Another tab's pointer moved (board px). Never sent back to the tab it came from. */
+  "presence:cursor": (update: CursorUpdate) => void;
+  /** Another tab's selection changed. */
+  "presence:selection": (update: SelectionUpdate) => void;
+  /** An AI editor changed these elements: show its cursor going to them. */
+  "presence:edit": (update: EditUpdate) => void;
+  /** Another tab left the board. */
+  "presence:leave": (update: LeaveUpdate) => void;
 }
 
 export interface ShowBoardRequest {
@@ -343,8 +352,10 @@ export interface ClientToServerEvents {
   /** A public link's viewer (no account) joins a board the link shows, read-only. */
   "share:join": (token: string, boardId: string, ack: (ok: boolean) => void) => void;
   "board:leave": (boardId: string) => void;
-  /** The tab's current selection, so AI editors can read it. */
+  /** The tab's current selection, so AI editors can read it (and other tabs can outline it). */
   "selection:set": (payload: { boardId: string; elementIds: string[] }) => void;
+  /** The tab's pointer position on the board, throttled, for the other tabs' cursors. */
+  "cursor:move": (payload: { boardId: string; x: number; y: number }) => void;
 }
 
 /** The header a tab sends with its own saves, so the server doesn't echo them back to it. */

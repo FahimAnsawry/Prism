@@ -28,11 +28,11 @@ export function newToken() {
 /** How often lastUsedAt is refreshed, so a busy bridge doesn't write on every request. */
 const LAST_USED_STEP = 60_000;
 
-/** The user a personal access token belongs to, or null if no such token exists. */
+/** The user a personal access token belongs to (and its name), or null if no such token exists. */
 export async function userForToken(token: string) {
   const row = await prisma.apiToken.findUnique({
     where: { tokenHash: hashToken(token) },
-    select: { id: true, userId: true, lastUsedAt: true },
+    select: { id: true, userId: true, name: true, lastUsedAt: true },
   });
   if (!row) return null;
   const now = Date.now();
@@ -41,7 +41,7 @@ export async function userForToken(token: string) {
       .update({ where: { id: row.id }, data: { lastUsedAt: new Date(now) } })
       .catch((error: unknown) => console.error("[Prism] Couldn't mark a token as used:", error));
   }
-  return row.userId;
+  return { userId: row.userId, name: row.name };
 }
 
 /** Rejects requests without a Better Auth session; otherwise puts the user's id on res.locals. */

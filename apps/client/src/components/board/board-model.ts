@@ -10,6 +10,7 @@ import {
   mindDescendants,
   mindRoot,
   mindStyle,
+  suggestName,
   TABLE_STYLE,
   tidyMindMap,
 } from "@prism/shared";
@@ -168,8 +169,11 @@ export type BoardAction =
   | { type: "finishEdit"; id: string; before: BoardElement[] }
   | { type: "delete"; ids: string[] }
   | { type: "layer"; ids: string[]; move: LayerMove }
-  /** Ops saved by another tab or an AI editor: one history step per batch. */
-  | { type: "remote"; ops: ElementOp[] }
+  /**
+   * Ops saved by another tab or an AI editor: one history step per batch. `join` adds them to the
+   * step the batch's first part started (a batch revealed piece by piece stays one undo step).
+   */
+  | { type: "remote"; ops: ElementOp[]; join?: boolean }
   /** Adds a mind map node under `from` (or beside it) and asks for it to be typed into. */
   | { type: "mindAdd"; from: string; sibling: boolean }
   /** Folds a mind map branch away, or opens it again. */
@@ -412,13 +416,18 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
 
     case "patch": {
       let changed = false;
+      // A few frames or cards edited without a name get the one they would be shown with.
+      const naming = Object.keys(action.patches).length <= 20;
       const next = state.elements.map((el) => {
         const changes = action.patches[el.id];
         if (!changes) return el;
         // Locked elements only accept the unlock itself.
         if (el.locked && !("locked" in changes)) return el;
         changed = true;
-        return fitTextBox({ ...el, ...changes });
+        const edited = fitTextBox({ ...el, ...changes });
+        if (!naming || edited.name || "name" in changes) return edited;
+        const name = suggestName(edited, state.elements);
+        return name ? { ...edited, name } : edited;
       });
       if (!changed) return state;
       // A mind map node whose text size changed makes room for itself; relations follow a
@@ -526,6 +535,7 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
       const next = applyOps(state.elements, action.ops).map((el) =>
         touched.has(el.id) ? fitTextBox(el) : el,
       );
+      if (action.join) return keepSelection({ ...state, elements: updateBindings(next) });
       return keepSelection(commit(state, state.elements, updateBindings(next)));
     }
 

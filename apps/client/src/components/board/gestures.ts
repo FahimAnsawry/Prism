@@ -21,12 +21,14 @@ import {
   hitTest,
   intersects,
   isLinear,
+  keepsRatio,
   moveElement,
   type Point,
   resizeBox,
   resizeElement,
   rotateAround,
   routeArrow,
+  scalesText,
   selectionFrame,
   snapAngle,
   startPoint,
@@ -36,6 +38,7 @@ import {
   updateBindings,
 } from "./geometry";
 import { type MindToggle, TOGGLE_RADIUS } from "./mind-branches";
+import { hasGuides, type SnapGuides, snapMove, snapResize, snapTargets } from "./snapping";
 import { fitTextBox, fontPx, lineHeightOf } from "./text-layout";
 import type { ToolId } from "./tools";
 
@@ -46,6 +49,8 @@ export interface Overlay {
   erasing?: Set<string>;
   /** The shape an arrow end will attach to. */
   snapTarget?: string;
+  /** The alignment guides a drag or resize snapped to. */
+  guides?: SnapGuides;
 }
 
 export interface GestureContext {
@@ -128,6 +133,13 @@ export function startGesture(
 }
 
 const tolerance = (ctx: GestureContext) => HIT_TOLERANCE / ctx.zoom;
+/** An unrotated element's box. */
+const boxOf = (el: BoardElement): Box => ({
+  x: el.x,
+  y: el.y,
+  width: el.width,
+  height: el.height,
+});
 const shown = (ctx: GestureContext) => (el: BoardElement) => !ctx.hidden.has(el.id);
 
 /** Adds a `width` × `height` element centered on `p`, selects it and returns to Select. */
@@ -197,13 +209,29 @@ function moveGesture(ctx: GestureContext, start: Point, ids: string[]): Gesture 
     if (!before.find((el) => el.id === id)?.locked) moving.add(id);
   }
   let dragging = false;
+  // What the dragged box snaps to: everything that stays put.
+  const startBox = boundsOf(before.filter((el) => moving.has(el.id)));
+  const targets = startBox ? snapTargets(before, moving, ctx.hidden) : [];
   return {
-    move(p) {
+    move(p, event) {
       if (moving.size === 0) return;
       if (!dragging && distance(p, start) * ctx.zoom < CLICK_SLOP) return;
       dragging = true;
-      const dx = p.x - start.x;
-      const dy = p.y - start.y;
+      let dx = p.x - start.x;
+      let dy = p.y - start.y;
+      // Alt or Ctrl lets go of the guides while held.
+      if (startBox && !event.altKey && !event.ctrlKey) {
+        const snap = snapMove(
+          { ...startBox, x: startBox.x + dx, y: startBox.y + dy },
+          targets,
+          ctx.zoom,
+        );
+        dx += snap.dx;
+        dy += snap.dy;
+        ctx.setOverlay(hasGuides(snap.guides) ? { guides: snap.guides } : null);
+      } else {
+        ctx.setOverlay(null);
+      }
       const next = before.map((el) => {
         if (!moving.has(el.id)) return el;
         const moved = moveElement(el, dx, dy);
@@ -219,6 +247,7 @@ function moveGesture(ctx: GestureContext, start: Point, ids: string[]): Gesture 
       ctx.dispatch({ type: "preview", elements: updateBindings(next) });
     },
     up() {
+      ctx.setOverlay(null);
       if (dragging) ctx.dispatch({ type: "commit", before });
     },
   };
@@ -254,6 +283,20 @@ function transformGesture(
   const group = boundsOf(targets);
   const only = targets.length === 1 ? targets[0] : undefined;
   const ordered = byZ(before);
+
+  /** What a resize snaps to, found when the first one is needed. */
+  let resizeTargets: Box[] | undefined;
+  /** `box` with the edges `handle` drags snapped to nearby elements (Alt, Ctrl and Shift don't). */
+  const snapBox = (box: Box, event: PointerEvent) => {
+    if (event.altKey || event.ctrlKey || event.shiftKey) {
+      ctx.setOverlay(null);
+      return box;
+    }
+    resizeTargets ??= snapTargets(before, new Set(targets.map((el) => el.id)), ctx.hidden);
+    const snap = snapResize(box, handle, resizeTargets, ctx.zoom);
+    ctx.setOverlay(hasGuides(snap.guides) ? { guides: snap.guides } : null);
+    return snap.box;
+  };
 
   const finish = (changed: Map<string, BoardElement>) => {
     const next = before.map((el) => {
@@ -300,9 +343,19 @@ function transformGesture(
           for (const el of targets) changed.set(el.id, rotateAround(el, origin, delta));
         }
       } else if (only) {
-        changed.set(only.id, resizeElement(only, handle, p, event.shiftKey, start));
+        const resized = resizeElement(only, handle, p, event.shiftKey, start);
+        // Boxes snap; strokes, tables, turned elements and ones that keep their ratio or scale
+        // their text don't.
+        const snaps =
+          only.rotation === 0 &&
+          !isLinear(only) &&
+          !keepsRatio(only) &&
+          !scalesText(only, handle) &&
+          only.type !== "freehand" &&
+          only.type !== "table";
+        changed.set(only.id, snaps ? { ...resized, ...snapBox(boxOf(resized), event) } : resized);
       } else if (group) {
-        const box = resizeBox(group, handle, p, event.shiftKey);
+        const box = snapBox(resizeBox(group, handle, p, event.shiftKey), event);
         // Corners and the top / bottom handles scale text with the group; the sides rewrap it.
         const scaleText = handle !== "e" && handle !== "w";
         for (const el of targets) changed.set(el.id, fitIntoBox(el, group, box, scaleText));
