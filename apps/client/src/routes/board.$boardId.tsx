@@ -83,6 +83,7 @@ import { IconPicker } from "@/components/board/icon-picker";
 import { googleFontId, loadFont, loadFonts } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
 import { isTextual } from "@/components/board/gestures";
+import { selectionParent } from "@/components/board/selection";
 import { applicableChanges, PropertiesPanel } from "@/components/board/properties-panel";
 import { ShortcutsDialog } from "@/components/board/shortcuts-dialog";
 import { TableDetails } from "@/components/board/table-details";
@@ -701,7 +702,7 @@ function BoardEditor({
           event.preventDefault();
           setShortcutsOpen(true);
         } else if (key === "escape") {
-          dispatch({ type: "select", ids: [] });
+          dispatch({ type: "select", ids: selectionParent(state.elements, ids) ?? [] });
         } else if (!hasTables && !mod && !event.altKey && (key === "v" || key === "h")) {
           setViewTool(key === "v" ? "select" : "hand");
         }
@@ -748,8 +749,10 @@ function BoardEditor({
         event.preventDefault();
         dispatch({ type: "delete", ids });
       } else if (key === "escape") {
-        dispatch({ type: "select", ids: [] });
-        setTool("select");
+        // Inside a card or section you drilled into, Esc goes up a level before it deselects.
+        const parent = tool === "select" ? selectionParent(state.elements, ids) : null;
+        dispatch({ type: "select", ids: parent ?? [] });
+        if (!parent) setTool("select");
       } else if ((key === "enter" || key === "tab" || key === "f2") && ids.length === 1 && !mod) {
         const el = state.elements.find((e) => e.id === ids[0]);
         if (!el || el.locked) return;
@@ -782,6 +785,7 @@ function BoardEditor({
   }, [
     state.selectedIds,
     state.elements,
+    tool,
     size,
     chooseTool,
     startEditing,

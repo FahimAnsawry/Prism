@@ -22,6 +22,7 @@ import { MindBranches, mindToggles, MindToggles, TOGGLE_RADIUS } from "./mind-br
 import {
   backdropOf,
   type Box,
+  boundsOf,
   distance,
   elementBounds,
   erFocus,
@@ -35,6 +36,7 @@ import {
   topHit,
 } from "./geometry";
 import { type Gesture, isTextual, type Overlay, placeText, startGesture } from "./gestures";
+import { drillInto, outlineRoots, pickAt, unitIds } from "./selection";
 import { fontPx, lineHeightOf } from "./text-layout";
 import type { ToolId } from "./tools";
 
@@ -158,8 +160,10 @@ export function BoardCanvas({
   const [hoverCursor, setHoverCursor] = useState<string | undefined>();
   /** The mind map node under the pointer: its fold toggle shows, as on a selected node. */
   const [hoverMindId, setHoverMindId] = useState<string | null>(null);
-  /** The frame, section or card under the pointer: its name shows above it. */
-  const [hoverLabelId, setHoverLabelId] = useState<string | null>(null);
+  /** The element under the pointer; what a click would select from it is `hoverPick`. */
+  const [hoverHitId, setHoverHitId] = useState<string | null>(null);
+  /** Ctrl / Cmd held: a click would take the element itself, skipping the card levels. */
+  const [hoverDeep, setHoverDeep] = useState(false);
   /** The element whose name is being edited in place. */
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const spaceHeld = useHeldSpace();
@@ -181,10 +185,21 @@ export function BoardCanvas({
         : mindToggles(elements, ordered, hoverMindId ? [...selectedIds, hoverMindId] : selectedIds),
     [editingId, elements, ordered, hoverMindId, selectedIds],
   );
-  const containers = useMemo(
-    () => ordered.filter((el) => el.type === "frame" || el.type === "rect"),
-    [ordered],
-  );
+  // What a click on the hovered element would select at the current level (the card or section
+  // with its contents, or the one element), outlined and named before the press.
+  const hoverPick = useMemo(() => {
+    if (editingId || tool !== "select" || !hoverHitId) return null;
+    const hit = elements.find((el) => el.id === hoverHitId);
+    return hit ? pickAt(elements, hit, selectedIds, hoverDeep) : null;
+  }, [editingId, tool, hoverHitId, hoverDeep, elements, selectedIds]);
+  const hoverBox = useMemo(() => {
+    if (!hoverPick || hoverPick.ids.every((id) => selectedIds.includes(id))) return null;
+    const ids = new Set(hoverPick.ids);
+    return boundsOf(elements.filter((el) => ids.has(el.id)));
+  }, [hoverPick, elements, selectedIds]);
+  // A selected card brings all its contents: outline and name the card, not each of them.
+  const roots = useMemo(() => outlineRoots(elements, selected), [elements, selected]);
+  const hoverLabelId = hoverPick?.target.id;
   const labels = useMemo<ElementLabel[]>(() => {
     if (editingId || tool !== "select") return [];
     const out: ElementLabel[] = [];
@@ -195,7 +210,7 @@ export function BoardCanvas({
       const box = elementBounds(el);
       out.push({ id: el.id, name, x: box.x, y: box.y, selected: isSelected });
     };
-    for (const el of selected.slice(0, 4)) add(el, true);
+    for (const el of roots.slice(0, 4)) add(el, true);
     if (hoverLabelId && !selectedIds.includes(hoverLabelId)) {
       add(
         elements.find((el) => el.id === hoverLabelId),
@@ -203,7 +218,7 @@ export function BoardCanvas({
       );
     }
     return out;
-  }, [editingId, tool, selected, selectedIds, hoverLabelId, elements]);
+  }, [editingId, tool, roots, selectedIds, hoverLabelId, elements]);
   const frame = editingId ? null : selectionFrame(selected, camera.zoom);
   // A selected table or relation shows what it connects and dims the rest (only here on screen:
   // exports and previews draw everything as it is).
@@ -310,7 +325,7 @@ export function BoardCanvas({
       return;
     }
     keepEditorFocus.current = false;
-    setHoverLabelId(null);
+    setHoverHitId(null);
     const next = startGesture(tool, context, toWorld(event), event.nativeEvent);
     if (next) {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -334,32 +349,23 @@ export function BoardCanvas({
       gesture.current.move(p, event.nativeEvent);
       return;
     }
-    if (tool === "select") setHoverCursor(cursorAt(p));
-    setHoverMindId(tool === "select" ? mindHoverAt(p) : null);
-    setHoverLabelId(tool === "select" ? labelHoverAt(p) : null);
-  };
-
-  /** The smallest frame, section or card under `p` that has a name (or deserves one). */
-  const labelHoverAt = (p: Point) => {
-    let best: BoardElement | null = null;
-    for (const el of containers) {
-      if (p.x < el.x || p.x > el.x + el.width || p.y < el.y || p.y > el.y + el.height) continue;
-      if (best && el.width * el.height >= best.width * best.height) continue;
-      if (!el.name?.trim() && !isNameable(el, elements)) continue;
-      best = el;
-    }
-    return best?.id ?? null;
+    const hit = tool === "select" ? topHit(ordered, p, 6 / camera.zoom) : undefined;
+    if (tool === "select") setHoverCursor(cursorAt(p, hit));
+    setHoverMindId(tool === "select" ? mindHoverAt(p, hit) : null);
+    // Over a selection handle or a fold toggle the pointer is on that, not on the element.
+    const onControl = tool === "select" && (handleAt(frame, p, camera.zoom) || toggleAt(p));
+    setHoverHitId(hit && !onControl ? hit.id : null);
+    setHoverDeep(event.ctrlKey || event.metaKey);
   };
 
   /** A toggle under `p`; the toggles past a node's edge belong to that node. */
   const toggleAt = (p: Point) => toggles.find((t) => distance(t, p) <= TOGGLE_RADIUS / camera.zoom);
 
   /** The mind map node whose toggle should show for a pointer at `p`. */
-  const mindHoverAt = (p: Point) => {
+  const mindHoverAt = (p: Point, hit: BoardElement | undefined) => {
     // On its toggle the node stays hovered, so the toggle doesn't vanish on the way to it.
     const toggle = toggleAt(p);
     if (toggle) return toggle.id;
-    const hit = topHit(ordered, p, 6 / camera.zoom);
     return hit?.type === "mindnode" ? hit.id : null;
   };
 
@@ -375,11 +381,10 @@ export function BoardCanvas({
   };
 
   /** What the Select tool's cursor shows over `p`. */
-  const cursorAt = (p: Point) => {
+  const cursorAt = (p: Point, hit: BoardElement | undefined) => {
     const handle = handleAt(frame, p, camera.zoom);
     if (handle) return handleCursor(handle, frame?.rotation ?? 0);
     if (toggleAt(p)) return "pointer";
-    const hit = topHit(ordered, p, 6 / camera.zoom);
     if (!hit) return undefined;
     return hit.locked ? "default" : "move";
   };
@@ -388,12 +393,26 @@ export function BoardCanvas({
     if (tool !== "select" || editingId) return;
     const p = toWorld(event);
     const hit = topHit(ordered, p, 6 / camera.zoom);
-    if (hit && isTextual(hit) && !hit.locked) {
-      dispatch({ type: "select", ids: [hit.id] });
-      onStartEditing(hit.id, elements);
-    } else if (!hit) {
+    if (!hit) {
       // Double-clicking empty canvas starts typing there.
       placeText("text", context, p);
+      return;
+    }
+    // Inside a selected card or section: one level deeper, to the nested card or the element.
+    const deeper = drillInto(elements, selectedIds, hit);
+    if (deeper) {
+      dispatch({ type: "select", ids: deeper });
+    } else if (isTextual(hit) && !hit.locked) {
+      dispatch({ type: "select", ids: [hit.id] });
+      onStartEditing(hit.id, elements);
+    } else if (
+      renamable &&
+      selectedIds.includes(hit.id) &&
+      !hit.locked &&
+      (hit.name?.trim() || isNameable(hit, elements))
+    ) {
+      // Already as deep as it goes: a named frame, section or card is renamed in place.
+      setRenamingId(hit.id);
     }
   };
 
@@ -421,7 +440,7 @@ export function BoardCanvas({
       onPointerCancel={endPointer}
       onPointerLeave={() => {
         setHoverMindId(null);
-        setHoverLabelId(null);
+        setHoverHitId(null);
       }}
       onDoubleClick={onDoubleClick}
       onDragOver={(event) => {
@@ -476,8 +495,22 @@ export function BoardCanvas({
           />
         )}
 
-        {selected.length > 1 &&
-          selected.map((el) => {
+        {hoverBox && (
+          <rect
+            x={hoverBox.x}
+            y={hoverBox.y}
+            width={hoverBox.width}
+            height={hoverBox.height}
+            fill="none"
+            stroke={SELECTION}
+            strokeWidth={1.5 / camera.zoom}
+            opacity={0.7}
+            pointerEvents="none"
+          />
+        )}
+
+        {roots.length > 1 &&
+          roots.map((el) => {
             const b = elementBounds(el);
             return (
               <rect
@@ -507,7 +540,7 @@ export function BoardCanvas({
             labels={labels}
             zoom={camera.zoom}
             renamingId={labels.some((l) => l.id === renamingId) ? renamingId : null}
-            onSelect={(id) => dispatch({ type: "select", ids: [id] })}
+            onSelect={(id) => dispatch({ type: "select", ids: unitIds(elements, id) })}
             onStopRename={() => setRenamingId(null)}
             {...(renamable && {
               onStartRename: (id: string) => setRenamingId(id),

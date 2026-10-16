@@ -14,12 +14,10 @@ import {
   boxFromPoints,
   center,
   distance,
-  elementBounds,
   fitIntoBox,
   type Handle,
   handleAt,
   hitTest,
-  intersects,
   isLinear,
   keepsRatio,
   moveElement,
@@ -38,6 +36,7 @@ import {
   updateBindings,
 } from "./geometry";
 import { type MindToggle, TOGGLE_RADIUS } from "./mind-branches";
+import { levelOf, marqueePick, pickAt, scopeAt } from "./selection";
 import { hasGuides, type SnapGuides, snapMove, snapResize, snapTargets } from "./snapping";
 import { fitTextBox, fontPx, lineHeightOf } from "./text-layout";
 import type { ToolId } from "./tools";
@@ -181,19 +180,25 @@ function selectGesture(ctx: GestureContext, p: Point, event: PointerEvent): Gest
 
   const hit = topHit(byZ(elements), p, tolerance(ctx), shown(ctx));
   if (!hit) {
-    // Empty canvas: marquee, adding to the selection with Shift.
+    // Empty canvas: marquee, adding to the selection with Shift. It picks from the level the
+    // selection is at when it starts inside that card, else from the top.
+    const level = levelOf(elements, selectedIds);
     const base = event.shiftKey ? selectedIds : [];
     if (!event.shiftKey) ctx.dispatch({ type: "select", ids: [] });
-    return marqueeGesture(ctx, p, base);
+    return marqueeGesture(ctx, p, base, scopeAt(level, p));
   }
 
+  // A click picks the outermost card or section under the pointer with everything in it; inside
+  // a card you drilled into, the card or element at that level. Ctrl/Cmd takes the element itself.
+  const { ids: picked } = pickAt(elements, hit, selectedIds, event.ctrlKey || event.metaKey);
   let ids = selectedIds;
   if (event.shiftKey) {
-    ids = ids.includes(hit.id) ? ids.filter((id) => id !== hit.id) : [...ids, hit.id];
+    const all = picked.every((id) => ids.includes(id));
+    ids = all ? ids.filter((id) => !picked.includes(id)) : [...new Set([...ids, ...picked])];
     ctx.dispatch({ type: "select", ids });
-    if (!ids.includes(hit.id)) return null;
-  } else if (!ids.includes(hit.id)) {
-    ids = [hit.id];
+    if (all) return null;
+  } else if (event.ctrlKey || event.metaKey || !ids.includes(hit.id)) {
+    ids = picked;
     ctx.dispatch({ type: "select", ids });
   }
   return moveGesture(ctx, p, ids);
@@ -253,16 +258,19 @@ function moveGesture(ctx: GestureContext, start: Point, ids: string[]): Gesture 
   };
 }
 
-function marqueeGesture(ctx: GestureContext, start: Point, base: string[]): Gesture {
-  const ordered = byZ(ctx.state.elements).filter(shown(ctx));
+function marqueeGesture(
+  ctx: GestureContext,
+  start: Point,
+  base: string[],
+  scope: BoardElement | undefined,
+): Gesture {
+  const { elements } = ctx.state;
+  const ordered = byZ(elements).filter(shown(ctx));
   return {
     move(p) {
       const box = boxFromPoints(start, p);
       ctx.setOverlay({ marquee: box });
-      const hits = ordered
-        .filter((el) => intersects(elementBounds(el), box))
-        .map((el) => el.id)
-        .filter((id) => !base.includes(id));
+      const hits = marqueePick(elements, ordered, box, scope).filter((id) => !base.includes(id));
       ctx.dispatch({ type: "select", ids: [...base, ...hits] });
     },
     up() {
