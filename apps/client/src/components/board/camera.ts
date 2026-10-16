@@ -66,6 +66,29 @@ export function fitCamera(all: BoardElement[], width: number, height: number): C
   return { x: zoom * (width / 2 - centerX), y: zoom * (height / 2 - centerY), zoom };
 }
 
+const cameraKey = (boardId: string) => `prism:camera:${boardId}`;
+
+/** Where the board was last left in this browser, if anywhere. */
+export function savedCamera(boardId: string): Camera | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(cameraKey(boardId)) ?? "null") as unknown;
+    if (!saved || typeof saved !== "object") return null;
+    const { x, y, zoom } = saved as Partial<Camera>;
+    if (![x, y, zoom].every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+    return { x: x!, y: y!, zoom: clampZoom(zoom!) };
+  } catch {
+    return null;
+  }
+}
+
+export function saveCamera(boardId: string, camera: Camera) {
+  try {
+    localStorage.setItem(cameraKey(boardId), JSON.stringify(camera));
+  } catch {
+    // Not remembered; the board opens framed on its content next time.
+  }
+}
+
 /** The world point under a screen point (`screen` is relative to the viewport's top-left). */
 export function screenToWorld(
   camera: Camera,

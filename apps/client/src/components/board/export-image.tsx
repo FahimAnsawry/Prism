@@ -11,7 +11,7 @@ import {
   type ExportImageRequest,
   hiddenMindNodes,
 } from "@prism/shared";
-import { flushSync } from "react-dom";
+import { type ReactNode, startTransition, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import type { Theme } from "@/lib/theme";
 import { byZ } from "./board-model";
@@ -82,38 +82,170 @@ function boardBackground(host: HTMLElement) {
   return color && color !== "rgba(0, 0, 0, 0)" ? color : "#ffffff";
 }
 
-/** Copies the computed paint and text styles onto each node, then drops the class names. */
-function inlineStyles(svg: SVGSVGElement) {
-  for (const node of svg.querySelectorAll<SVGElement>("*")) {
-    if (!(node instanceof SVGGraphicsElement)) continue;
+/** How long a stretch of export work runs before the page gets a turn, in ms. */
+const SLICE_MS = 12;
+
+function yieldToPage() {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (scheduler?.yield) return scheduler.yield();
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Awaited between small pieces of a long job: every SLICE_MS it lets the page paint and handle
+ * input (an export's progress screen and its Cancel button), and it throws once `signal` aborts.
+ */
+export function pacer(signal?: AbortSignal) {
+  let until = performance.now() + SLICE_MS;
+  return async () => {
+    signal?.throwIfAborted();
+    if (performance.now() < until) return;
+    await yieldToPage();
+    signal?.throwIfAborted();
+    until = performance.now() + SLICE_MS;
+  };
+}
+
+/**
+ * Copies the computed paint and text styles onto each node, then drops the class names. Every
+ * value is read before any is written: a write between reads would make the browser work out
+ * the styles again for each node.
+ */
+async function inlineStyles(svg: SVGSVGElement, pace: () => Promise<void>) {
+  const nodes = [...svg.querySelectorAll<SVGElement>("*")].filter(
+    (node) => node instanceof SVGGraphicsElement,
+  );
+  const values: string[][] = [];
+  for (const node of nodes) {
+    await pace();
     const computed = getComputedStyle(node);
     const isText = node instanceof SVGTextContentElement;
-    for (const property of isText ? [...PAINT, ...TEXT] : PAINT) {
-      const value = computed.getPropertyValue(property);
+    values.push((isText ? [...PAINT, ...TEXT] : PAINT).map((p) => computed.getPropertyValue(p)));
+  }
+  nodes.forEach((node, i) => {
+    const isText = node instanceof SVGTextContentElement;
+    (isText ? [...PAINT, ...TEXT] : PAINT).forEach((property, j) => {
+      const value = values[i]?.[j];
       if (value) node.style.setProperty(property, value);
-    }
+    });
     node.removeAttribute("class");
+  });
+}
+
+/** Calls `onCommit` once its children are in the page. */
+function Committed({ onCommit, children }: { onCommit: () => void; children: ReactNode }) {
+  useLayoutEffect(() => onCommit(), [onCommit]);
+  return children;
+}
+
+/** Downloaded image files, newest last. Asset keys never change content, so they're kept. */
+const assetFiles = new Map<string, Promise<Blob | null>>();
+const ASSET_CACHE_SIZE = 40;
+
+function assetFile(href: string) {
+  const cached = assetFiles.get(href);
+  if (cached) {
+    assetFiles.delete(href);
+    assetFiles.set(href, cached);
+    return cached;
+  }
+  const file = fetch(href)
+    .then((response) => (response.ok ? response.blob() : null))
+    .catch(() => null);
+  void file.then((blob) => {
+    if (!blob && assetFiles.get(href) === file) assetFiles.delete(href);
+  });
+  assetFiles.set(href, file);
+  const oldest = assetFiles.keys().next().value;
+  if (assetFiles.size > ASSET_CACHE_SIZE && oldest !== undefined) assetFiles.delete(oldest);
+  return file;
+}
+
+/** Below this share of its pixels a raster image isn't worth scaling down. */
+const RESIZE_BELOW = 0.8;
+
+/**
+ * The share of `natural`'s width and height that `image` shows at `scale` image px per board px:
+ * a photo drawn small in the picture needs only that many of its pixels.
+ */
+function shownShare(
+  image: SVGImageElement,
+  natural: { width: number; height: number },
+  scale: number,
+) {
+  const width = Number(image.getAttribute("width")) * scale;
+  const height = Number(image.getAttribute("height")) * scale;
+  if (!(width > 0 && height > 0)) return { x: 1, y: 1 };
+  const aspect = image.getAttribute("preserveAspectRatio") ?? "";
+  if (aspect === "none") return { x: width / natural.width, y: height / natural.height };
+  const pick = aspect.includes("slice") ? Math.max : Math.min;
+  const fit = pick(width / natural.width, height / natural.height);
+  return { x: fit, y: fit };
+}
+
+/**
+ * The image file to embed: `file` scaled down to what its largest use shows, or `file` itself
+ * when that saves little. SVG files stay vector.
+ */
+async function sizedImage(file: Blob, uses: SVGImageElement[], scale: number) {
+  if (!file.type.startsWith("image/") || file.type === "image/svg+xml") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const natural = { width: bitmap.width, height: bitmap.height };
+    let x = 0;
+    let y = 0;
+    for (const use of uses) {
+      const share = shownShare(use, natural, scale);
+      x = Math.max(x, share.x);
+      y = Math.max(y, share.y);
+    }
+    if (x >= RESIZE_BELOW && y >= RESIZE_BELOW) {
+      bitmap.close();
+      return file;
+    }
+    const width = Math.max(1, Math.ceil(natural.width * Math.min(1, x)));
+    const height = Math.max(1, Math.ceil(natural.height * Math.min(1, y)));
+    const resized = await createImageBitmap(bitmap, {
+      resizeWidth: width,
+      resizeHeight: height,
+      resizeQuality: "high",
+    });
+    bitmap.close();
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d")?.drawImage(resized, 0, 0);
+    resized.close();
+    // Photos stay JPEG; anything that may be transparent stays PNG.
+    const smaller =
+      file.type === "image/jpeg"
+        ? await canvasBlob(canvas, "image/jpeg", 0.9)
+        : await canvasBlob(canvas, "image/png");
+    return smaller.size < file.size ? smaller : file;
+  } catch {
+    return file;
   }
 }
 
-/** Replaces each <image>'s URL with the file itself (an SVG image can't load anything). */
-async function inlineImages(svg: SVGSVGElement) {
-  const files = new Map<string, Promise<string | null>>();
+/**
+ * Replaces each <image>'s URL with the file itself (an SVG image can't load anything), scaled
+ * down to the pixels the picture shows at `scale` image px per board px.
+ */
+async function inlineImages(svg: SVGSVGElement, scale: number) {
+  const uses = new Map<string, SVGImageElement[]>();
+  for (const image of svg.querySelectorAll("image")) {
+    const href = image.getAttribute("href");
+    if (!href || href.startsWith("data:")) continue;
+    uses.set(href, [...(uses.get(href) ?? []), image]);
+  }
   await Promise.all(
-    [...svg.querySelectorAll("image")].map(async (image) => {
-      const href = image.getAttribute("href");
-      if (!href || href.startsWith("data:")) return;
-      let file = files.get(href);
-      if (!file) {
-        file = fetch(href)
-          .then((response) => (response.ok ? response.blob() : null))
-          .then((blob) => (blob ? blobToDataUrl(blob) : null))
-          .catch(() => null);
-        files.set(href, file);
+    [...uses].map(async ([href, images]) => {
+      const file = await assetFile(href);
+      const url = file ? await blobToDataUrl(await sizedImage(file, images, scale)) : null;
+      for (const image of images) {
+        if (url) image.setAttribute("href", url);
+        else image.remove();
       }
-      const url = await file;
-      if (url) image.setAttribute("href", url);
-      else image.remove();
     }),
   );
 }
@@ -121,15 +253,23 @@ async function inlineImages(svg: SVGSVGElement) {
 /**
  * The region drawn as standalone SVG markup, `width` × `height` px: on the page background, or
  * transparent (dashboard previews sit on their own dotted canvas). Colors follow the page's
- * theme, or `theme` when given.
+ * theme, or `theme` when given. Images keep only the pixels `width` shows.
+ *
+ * The work is done in slices so the page stays responsive, and stops (throwing the abort
+ * reason) once `signal` aborts.
  */
 export async function renderSvg(
   shown: BoardElement[],
   box: Box,
   width: number,
   height: number,
-  { background = true, theme }: { background?: boolean; theme?: Theme } = {},
+  {
+    background = true,
+    theme,
+    signal,
+  }: { background?: boolean; theme?: Theme; signal?: AbortSignal } = {},
 ) {
+  const pace = pacer(signal);
   // Text is measured with the board's fonts, and icons must draw on the first render.
   await Promise.all([
     loadBoardFonts(shown),
@@ -146,27 +286,42 @@ export async function renderSvg(
   const root = createRoot(host);
   try {
     const fill = background ? boardBackground(host) : null;
-    flushSync(() =>
-      root.render(
-        <svg
-          xmlns={SVG_NS}
-          viewBox={`${box.x} ${box.y} ${box.width} ${box.height}`}
-          width={width}
-          height={height}
-        >
-          {fill && <rect x={box.x} y={box.y} width={box.width} height={box.height} fill={fill} />}
-          <MindBranches elements={shown} />
-          {shown.map((el, i) => (
-            <ElementShape key={el.id} el={el} below={backdropOf(shown, i)} />
-          ))}
-        </svg>,
-      ),
-    );
+    signal?.throwIfAborted();
+    // A transition: React renders in slices between which the page gets its turn.
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => reject(signal?.reason as Error);
+      signal?.addEventListener("abort", abort, { once: true });
+      const committed = () => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      };
+      startTransition(() =>
+        root.render(
+          <Committed onCommit={committed}>
+            <svg
+              xmlns={SVG_NS}
+              viewBox={`${box.x} ${box.y} ${box.width} ${box.height}`}
+              width={width}
+              height={height}
+            >
+              {fill && (
+                <rect x={box.x} y={box.y} width={box.width} height={box.height} fill={fill} />
+              )}
+              <MindBranches elements={shown} />
+              {shown.map((el, i) => (
+                <ElementShape key={el.id} el={el} below={backdropOf(shown, i)} />
+              ))}
+            </svg>
+          </Committed>,
+        ),
+      );
+    });
     const svg = host.querySelector("svg");
     if (!svg) throw new Error("The board image didn't render.");
-    inlineStyles(svg);
-    await inlineImages(svg);
-    const fonts = await embeddedFontCss(svg);
+    await inlineStyles(svg, pace);
+    await inlineImages(svg, Math.max(width / box.width, height / box.height));
+    await pace();
+    const fonts = await embeddedFontCss(svg, pace);
     if (fonts) {
       const style = document.createElementNS(SVG_NS, "style");
       style.textContent = fonts;

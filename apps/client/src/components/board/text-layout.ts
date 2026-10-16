@@ -122,6 +122,41 @@ export function boardFontsReady(elements: BoardElement[]) {
 const hasText = (el: BoardElement) =>
   Boolean(el.text?.trim() || el.items?.length || el.table || el.chart);
 
+const boardFontsKey = (boardId: string) => `prism:board-fonts:${boardId}`;
+
+/**
+ * Starts loading the fonts the board's text used when it was last opened in this browser, so
+ * they download alongside its elements instead of after them.
+ */
+export function preloadBoardFonts(boardId: string) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(boardFontsKey(boardId)) ?? "[]") as unknown;
+    if (!Array.isArray(saved)) return;
+    const fonts = saved.filter(
+      (entry): entry is [FontFamily, number] =>
+        Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "number",
+    );
+    if (fonts.length > 0) void loadFonts(fonts);
+  } catch {
+    // Nothing remembered; the fonts load once the elements are here.
+  }
+}
+
+/** Remembers the fonts the board's text uses, for preloadBoardFonts next time. */
+function rememberBoardFonts(boardId: string, elements: BoardElement[]) {
+  const fonts = new Map<string, [FontFamily, number]>();
+  for (const el of elements) {
+    if (!hasText(el)) continue;
+    const pair: [FontFamily, number] = [el.font ?? "sans", weightOf(el)];
+    fonts.set(pair.join("|"), pair);
+  }
+  try {
+    localStorage.setItem(boardFontsKey(boardId), JSON.stringify([...fonts.values()]));
+  } catch {
+    // Not remembered; next time the fonts load once the elements are here.
+  }
+}
+
 /** The longest a board's opening loader waits for its fonts once its elements are here. */
 export const BOARD_OPEN_FONT_WAIT_MS = 500;
 
@@ -130,7 +165,8 @@ export const BOARD_OPEN_FONT_WAIT_MS = 500;
  * BOARD_OPEN_FONT_WAIT_MS, then the board shows with fallback fonts. The fonts keep loading and
  * swap in (loadBoardFonts resets the measurements when they do).
  */
-export function loadBoardFontsToOpen(elements: BoardElement[]) {
+export function loadBoardFontsToOpen(elements: BoardElement[], boardId?: string) {
+  if (boardId) rememberBoardFonts(boardId, elements);
   return Promise.race([
     loadBoardFonts(elements),
     new Promise<boolean>((resolve) => setTimeout(() => resolve(true), BOARD_OPEN_FONT_WAIT_MS)),

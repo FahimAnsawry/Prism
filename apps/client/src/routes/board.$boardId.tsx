@@ -45,7 +45,15 @@ import {
   ShareControl,
   type ViewTool,
 } from "@/components/board/board-top-bar";
-import { type Camera, fitCamera, screenToWorld, stepZoom, zoomAt } from "@/components/board/camera";
+import {
+  type Camera,
+  fitCamera,
+  saveCamera,
+  savedCamera,
+  screenToWorld,
+  stepZoom,
+  zoomAt,
+} from "@/components/board/camera";
 import {
   cloneAt,
   cloneElements,
@@ -54,6 +62,7 @@ import {
 } from "@/components/board/clipboard";
 import { EmojiPicker } from "@/components/board/emoji-picker";
 import { ErFocusDialog, ErFocusPanel } from "@/components/board/er-focus-dialog";
+import { ExportMenu } from "@/components/board/export-menu";
 import { IconPicker } from "@/components/board/icon-picker";
 import { googleFontId, loadFont, loadFonts } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
@@ -62,7 +71,12 @@ import { applicableChanges, PropertiesPanel } from "@/components/board/propertie
 import { ShortcutsDialog } from "@/components/board/shortcuts-dialog";
 import { TableDetails } from "@/components/board/table-details";
 import { TextEditor } from "@/components/board/text-editor";
-import { boardFontsReady, fitTextBox, loadBoardFontsToOpen } from "@/components/board/text-layout";
+import {
+  boardFontsReady,
+  fitTextBox,
+  loadBoardFontsToOpen,
+  preloadBoardFonts,
+} from "@/components/board/text-layout";
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
 import { useElementSize } from "@/components/board/use-element-size";
 import { ShareDialog } from "@/components/share/share-dialog";
@@ -82,6 +96,8 @@ export const Route = createFileRoute("/board/$boardId")({
   // The board starts loading alongside the page's code instead of after it. A hover over its link
   // already fetches the elements (and the code), so a click usually opens it at once.
   loader: ({ context: { queryClient }, params: { boardId }, preload }) => {
+    // The fonts the board used last time load alongside its elements.
+    preloadBoardFonts(boardId);
     if (preload) {
       fetchBoardElementsAhead(boardId);
       void loadFonts(["sans", "caveat", "mono"]);
@@ -123,7 +139,7 @@ function BoardPage() {
   const elements = useQuery(boardElementsQuery(boardId));
   const fonts = useQuery({
     queryKey: ["board-fonts", boardId],
-    queryFn: () => loadBoardFontsToOpen(elements.data?.elements ?? []),
+    queryFn: () => loadBoardFontsToOpen(elements.data?.elements ?? [], boardId),
     enabled: Boolean(elements.data),
     staleTime: Infinity,
   });
@@ -316,14 +332,21 @@ function BoardEditor({
     return () => clearTimeout(timer);
   }, [boardId, state.selectedIds]);
 
-  // The board opens framed on its content (an empty one with the origin, where new content goes,
-  // in the middle). That needs the viewport's size, known once it's measured before first paint.
+  // The board opens where it was last left in this browser, else framed on its content (an empty
+  // one with the origin, where new content goes, in the middle). That needs the viewport's size,
+  // known once it's measured before first paint.
   const framed = useRef(false);
   useLayoutEffect(() => {
     if (framed.current || size.width <= 0 || size.height <= 0) return;
     framed.current = true;
-    setCamera(fitCamera(state.elements, size.width, size.height));
-  }, [size.width, size.height, state.elements]);
+    setCamera(savedCamera(boardId) ?? fitCamera(state.elements, size.width, size.height));
+  }, [boardId, size.width, size.height, state.elements]);
+
+  useEffect(() => {
+    if (!framed.current) return;
+    const timer = setTimeout(() => saveCamera(boardId, camera), 400);
+    return () => clearTimeout(timer);
+  }, [boardId, camera]);
 
   const zoomIn = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
   const zoomOut = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
@@ -730,6 +753,8 @@ function BoardEditor({
           onModeChange={changeMode}
           viewTool={hasTables ? undefined : viewTool}
           onViewTool={setViewTool}
+          elements={state.elements}
+          selectedIds={state.selectedIds}
         />
       )}
 
@@ -754,6 +779,7 @@ function BoardEditor({
           onDropFiles={(files, p) => {
             if (!viewing) void addFiles(files, p);
           }}
+          viewport={size}
         />
 
         {/* An ER diagram in View mode: every table first, a click narrows to one. */}
@@ -775,6 +801,12 @@ function BoardEditor({
                 <div className="flex items-center gap-3">
                   <ModeMenu mode={mode} onChange={changeMode} />
                   <ThemeToggle className="size-9 border border-chrome bg-card" />
+                  <ExportMenu
+                    elements={state.elements}
+                    selectedIds={state.selectedIds}
+                    boardName={board?.name ?? "Board"}
+                    className="hidden sm:flex"
+                  />
                   <ShareControl board={board} onShare={onShare} />
                 </div>
               }

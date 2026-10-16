@@ -126,6 +126,19 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
 
+  /* The export progress bar's sheen. A CSS transform animation runs on the compositor, so it
+     keeps moving while the page is busy drawing the export. */
+  --animate-sheen: sheen 1.2s linear infinite;
+
+  @keyframes sheen {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(300%);
+    }
+  }
+
   /* ========================================================================
      Breakpoints (mobile-first, min-width)
      sm–2xl match Tailwind's defaults; Greptile adds xs (480px) and 3xl (1920px).
@@ -369,6 +382,10 @@
   *::after {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .animate-sheen {
+    animation: none;
   }
 }
 

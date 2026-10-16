@@ -17,6 +17,7 @@ import { type BoardAction, boardReducer, initialBoardState } from "./board-model
 import { useBoardRealtime, useBoardSaver } from "./board-sync";
 import { type Camera, fitCamera, stepZoom, zoomAt } from "./camera";
 import { ErFocusDialog } from "./er-focus-dialog";
+import { ExportMenu } from "./export-menu";
 import { TableSwitcher } from "./er-table-switcher";
 import { loadFont } from "./fonts";
 import { TableDetails } from "./table-details";
@@ -295,6 +296,12 @@ export function BoardViewer({
             <Maximize aria-hidden="true" className="size-4" />
           </button>
           <ThemeToggle className="size-9 border border-chrome bg-card" />
+          <ExportMenu
+            elements={state.elements}
+            selectedIds={state.selectedIds}
+            boardName={title}
+            className="hidden sm:flex"
+          />
         </div>
       </header>
 
@@ -315,6 +322,7 @@ export function BoardViewer({
           onToolDone={noop}
           onPointerWorld={noop}
           onDropFiles={noop}
+          viewport={size}
         />
         {selectedTable?.type === "table" && !focusTable && (
           <aside

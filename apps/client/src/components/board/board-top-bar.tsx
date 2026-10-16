@@ -3,13 +3,11 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { popupMotion, usePopupExit } from "@/components/popup-motion";
 import { TurningChevron } from "@/components/motion-parts";
-import type { BoardSummary } from "@prism/shared";
+import type { BoardElement, BoardSummary } from "@prism/shared";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Check,
-  ChevronDown,
-  Download,
   Eye,
   Grid2x2,
   Hand,
@@ -26,6 +24,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { BoardTitle } from "./board-title";
 import type { SaveStatus } from "./board-sync";
+import { ExportMenu } from "./export-menu";
 
 /** Edit changes the board; View only looks at it (an ER diagram opens as its focus view). */
 export type BoardMode = "edit" | "view";
@@ -125,6 +124,8 @@ export function BoardTopBar({
   onModeChange,
   viewTool,
   onViewTool,
+  elements,
+  selectedIds,
 }: {
   /** Undefined while it loads. */
   board: BoardSummary | undefined;
@@ -147,6 +148,9 @@ export function BoardTopBar({
   /** The pointer tool View mode shows; undefined when there's none to pick (an ER diagram). */
   viewTool: ViewTool | undefined;
   onViewTool: (tool: ViewTool) => void;
+  /** What Export exports: the selection, or every element. */
+  elements: BoardElement[];
+  selectedIds: string[];
 }) {
   const viewing = mode === "view";
   const canvasControls = !viewing || viewTool !== undefined;
@@ -293,7 +297,7 @@ export function BoardTopBar({
 
         <ThemeToggle className="size-9 border border-chrome bg-card" />
 
-        {/* AI and Export are visual only until "Ask Claude" and exports exist. */}
+        {/* AI is visual only until "Ask Claude" exists. */}
         {!viewing && (
           <button
             type="button"
@@ -305,14 +309,12 @@ export function BoardTopBar({
           </button>
         )}
 
-        <button
-          type="button"
-          className="hidden h-9 w-24 items-center justify-center gap-1 border border-chrome bg-card font-mono text-xs text-foreground transition-colors duration-150 ease-standard hover:bg-hover sm:flex"
-        >
-          <Download aria-hidden="true" className="size-4" />
-          Export
-          <ChevronDown aria-hidden="true" className="size-3.5" />
-        </button>
+        <ExportMenu
+          elements={elements}
+          selectedIds={selectedIds}
+          boardName={board?.name ?? "Board"}
+          className="hidden sm:flex"
+        />
 
         <ShareControl board={board} onShare={onShare} />
       </div>

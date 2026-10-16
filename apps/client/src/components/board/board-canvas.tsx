@@ -12,27 +12,69 @@ import {
 } from "react";
 import { isTyping } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import { type BoardAction, type BoardState, byZ } from "./board-model";
+import { type BoardAction, type BoardState, byZ, displayColor } from "./board-model";
 import { type Camera, screenToWorld, zoomAt } from "./camera";
 import { ElementShape } from "./element-shape";
 import { MindBranches, mindToggles, MindToggles, TOGGLE_RADIUS } from "./mind-branches";
 import {
   backdropOf,
+  type Box,
   distance,
   elementBounds,
   erFocus,
   type Frame,
   handleAt,
   handleCursor,
+  intersects,
   isLinear,
   type Point,
   selectionFrame,
   topHit,
 } from "./geometry";
 import { type Gesture, isTextual, type Overlay, placeText, startGesture } from "./gestures";
+import { fontPx, lineHeightOf } from "./text-layout";
 import type { ToolId } from "./tools";
 
 const SELECTION = "#5882ff"; // --color-blue
+
+/** Text smaller than this on screen draws as bars: unreadable, and costly to wrap and draw. */
+const GREEK_BELOW_PX = 4;
+/** Below this zoom the dot grid is hidden: its dots would blur into a gray wash. */
+const GRID_MIN_ZOOM = 0.3;
+
+/**
+ * The world area elements are drawn for: the view and one view's size of margin on every side,
+ * snapped to a grid of view-sized cells, with the zoom snapped to half-octave steps. Panning or
+ * zooming inside it doesn't redraw any element; only crossing a cell or a step does.
+ */
+function useDrawnArea(camera: Camera, viewport: { width: number; height: number } | undefined) {
+  const width = viewport?.width ?? 0;
+  const height = viewport?.height ?? 0;
+  const step = Math.round(Math.log2(camera.zoom) * 2);
+  const zoom = 2 ** (step / 2);
+  const cellWidth = width / zoom;
+  const cellHeight = height / zoom;
+  const measured = width > 0 && height > 0;
+  const start = screenToWorld(camera, { x: 0, y: 0 }, width, height);
+  const end = screenToWorld(camera, { x: width, y: height }, width, height);
+  const x0 = measured ? Math.floor(start.x / cellWidth) - 1 : 0;
+  const y0 = measured ? Math.floor(start.y / cellHeight) - 1 : 0;
+  const x1 = measured ? Math.floor(end.x / cellWidth) + 1 : 0;
+  const y1 = measured ? Math.floor(end.y / cellHeight) + 1 : 0;
+  const area = useMemo<Box | null>(
+    () =>
+      measured
+        ? {
+            x: x0 * cellWidth,
+            y: y0 * cellHeight,
+            width: (x1 - x0 + 1) * cellWidth,
+            height: (y1 - y0 + 1) * cellHeight,
+          }
+        : null,
+    [measured, x0, y0, x1, y1, cellWidth, cellHeight],
+  );
+  return { area, zoom };
+}
 
 const TOOL_CURSORS: Partial<Record<ToolId, string>> = {
   text: "cursor-text",
@@ -68,6 +110,7 @@ export function BoardCanvas({
   onToolDone,
   onPointerWorld,
   onDropFiles,
+  viewport,
 }: {
   state: BoardState;
   dispatch: Dispatch<BoardAction>;
@@ -89,6 +132,8 @@ export function BoardCanvas({
   /** The pointer's last world position, for pasting where the user is looking. */
   onPointerWorld: (p: Point) => void;
   onDropFiles: (files: File[], p: Point) => void;
+  /** The canvas's size on screen. Without it every element is drawn, wherever it is. */
+  viewport?: { width: number; height: number };
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const pan = useRef<{ x: number; y: number; camera: Camera } | null>(null);
@@ -127,6 +172,7 @@ export function BoardCanvas({
   // A selected table or relation shows what it connects and dims the rest (only here on screen:
   // exports and previews draw everything as it is).
   const focus = useMemo(() => erFocus(elements, selectedIds), [elements, selectedIds]);
+  const drawn = useDrawnArea(camera, viewport);
 
   const borrowingHand = spaceHeld || panning;
   useEffect(() => {
@@ -355,13 +401,17 @@ export function BoardCanvas({
           transformBox: "view-box",
         }}
       >
-        {grid && <rect x="-8000" y="-8000" width="16000" height="16000" fill="url(#dot-grid)" />}
+        {grid && camera.zoom >= GRID_MIN_ZOOM && (
+          <rect x="-8000" y="-8000" width="16000" height="16000" fill="url(#dot-grid)" />
+        )}
 
         <ElementLayer
           ordered={ordered}
           editingId={editingId}
           erasing={overlay?.erasing}
           focus={focus}
+          area={drawn.area}
+          zoom={drawn.zoom}
         />
 
         <MindToggles toggles={toggles} zoom={camera.zoom} />
@@ -414,33 +464,79 @@ export function BoardCanvas({
   );
 }
 
+/** Whether `el` is text too small at `zoom` to read: it's drawn as bars instead. */
+const greeked = (el: BoardElement, zoom: number) =>
+  el.type === "text" && fontPx(el) * zoom < GREEK_BELOW_PX;
+
+/** Text too small to read, as one faint bar per line (what Miro and Figma show zoomed out). */
+const TextBars = memo(function TextBars({ el }: { el: BoardElement }) {
+  const px = fontPx(el);
+  const lineHeight = px * lineHeightOf(el);
+  const lines = Math.min(12, Math.max(1, Math.round(el.height / lineHeight)));
+  const bar = px * 0.6;
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  return (
+    <g
+      fill={displayColor(el.stroke)}
+      opacity={0.3}
+      transform={el.rotation ? `rotate(${el.rotation} ${cx} ${cy})` : undefined}
+    >
+      {Array.from({ length: lines }, (_, i) => (
+        <rect
+          key={i}
+          x={el.x}
+          y={el.y + i * lineHeight + (lineHeight - bar) / 2}
+          width={i === lines - 1 && lines > 1 ? el.width * 0.65 : el.width}
+          height={bar}
+        />
+      ))}
+    </g>
+  );
+});
+
 /**
- * The board's elements, bottom layer first. Memoized apart from the camera, the hover and the
- * selection frame, so a pan or zoom frame doesn't walk the elements at all.
+ * The board's elements, bottom layer first: those in `area` (the view and a margin around it),
+ * with text too small to read at `zoom` drawn as bars. Memoized apart from the camera, the hover
+ * and the selection frame, so a pan or zoom frame doesn't walk the elements at all.
  */
 const ElementLayer = memo(function ElementLayer({
   ordered,
   editingId,
   erasing,
   focus,
+  area,
+  zoom,
 }: {
   ordered: BoardElement[];
   editingId: string | null;
   erasing: ReadonlySet<string> | undefined;
   focus: ReadonlySet<string> | null;
+  /** Null draws everything. */
+  area: Box | null;
+  zoom: number;
 }) {
   const below = useMemo(() => ordered.map((_, i) => backdropOf(ordered, i)), [ordered]);
+  const shown = useMemo(
+    () =>
+      ordered.flatMap((el, i) => (!area || intersects(elementBounds(el), area) ? [{ el, i }] : [])),
+    [ordered, area],
+  );
   return (
     <>
       <MindBranches elements={ordered} />
 
-      {ordered.map((el, i) => (
+      {shown.map(({ el, i }) => (
         <g
           key={el.id}
           data-id={el.id}
           opacity={erasing?.has(el.id) ? 0.25 : focus && !focus.has(el.id) ? 0.18 : undefined}
         >
-          <ElementShape el={el} hidden={el.id === editingId} below={below[i]} />
+          {greeked(el, zoom) && el.id !== editingId ? (
+            <TextBars el={el} />
+          ) : (
+            <ElementShape el={el} hidden={el.id === editingId} below={below[i]} />
+          )}
         </g>
       ))}
 

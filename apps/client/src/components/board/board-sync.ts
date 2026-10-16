@@ -5,7 +5,6 @@
 
 import {
   type BoardElement,
-  boardElementsSchema,
   type EditRequest,
   type ElementOp,
   type CompareReferenceReply,
@@ -50,6 +49,28 @@ const elementsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boar
 
 type BoardElementsReply = { elements: BoardElement[] };
 
+/**
+ * Checks an elements reply's shape only. The server checked every element when it was saved,
+ * and running boardElementsSchema over a big board again took up to half a second of opening it
+ * (3,500 elements). Read replies carry no fields the schema would strip.
+ */
+const elementsReply = {
+  parse(data: unknown): BoardElementsReply {
+    const elements = (data as { elements?: unknown } | null)?.elements;
+    const valid =
+      Array.isArray(elements) &&
+      elements.every(
+        (el: unknown) =>
+          typeof el === "object" &&
+          el !== null &&
+          typeof (el as { id?: unknown }).id === "string" &&
+          typeof (el as { type?: unknown }).type === "string",
+      );
+    if (!valid) throw new Error("The board's elements came back in an unexpected shape.");
+    return data as BoardElementsReply;
+  },
+};
+
 /** How long elements fetched ahead (on a hover) may open the board. */
 const AHEAD_FRESH_MS = 15_000;
 /** Elements fetched ahead of opening a board, each used once by the board's query. */
@@ -65,7 +86,7 @@ const saving = new Set<string>();
 export function fetchBoardElementsAhead(boardId: string) {
   const current = ahead.get(boardId);
   if (saving.has(boardId) || (current && Date.now() - current.at < AHEAD_FRESH_MS)) return;
-  const reply = apiFetch(elementsPath(boardId), boardElementsSchema);
+  const reply = apiFetch(elementsPath(boardId), elementsReply);
   reply.catch(() => ahead.delete(boardId));
   ahead.set(boardId, { at: Date.now(), reply });
 }
@@ -87,7 +108,7 @@ export const boardElementsQuery = (boardId: string) =>
     queryKey: ["board-elements", boardId],
     queryFn: async () =>
       (await takeAhead(boardId)?.catch(() => null)) ??
-      apiFetch(elementsPath(boardId), boardElementsSchema),
+      apiFetch(elementsPath(boardId), elementsReply),
     // The editor owns the elements once loaded; a background refetch must not replace them.
     staleTime: Infinity,
     gcTime: 0,
@@ -443,5 +464,5 @@ export function reportSelection(boardId: string, elementIds: string[]) {
 
 /** The board's elements as the server has them now (for a resync). */
 export function fetchBoardElements(boardId: string) {
-  return apiFetch(elementsPath(boardId), boardElementsSchema).then((data) => data.elements);
+  return apiFetch(elementsPath(boardId), elementsReply).then((data) => data.elements);
 }

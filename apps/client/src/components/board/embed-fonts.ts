@@ -163,12 +163,14 @@ export function blobToDataUrl(blob: Blob) {
 
 /**
  * @font-face CSS, with the files inlined, for the text in `svg` (attached to the page, so its
- * computed styles are real). A font that fails to download is left out and falls back.
+ * computed styles are real). A font that fails to download is left out and falls back. `pace`,
+ * awaited between text nodes, lets a long export give the page its turns.
  */
-export async function embeddedFontCss(svg: SVGSVGElement) {
+export async function embeddedFontCss(svg: SVGSVGElement, pace?: () => Promise<void>) {
   const faces = await pageFaces();
   const needed = new Set<FaceRule>();
   for (const text of svg.querySelectorAll("text")) {
+    await pace?.();
     const content = text.textContent;
     if (!content.trim()) continue;
     const style = getComputedStyle(text);
