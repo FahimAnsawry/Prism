@@ -117,13 +117,26 @@ export async function boardFor(
   const row = boardId
     ? await prisma.board.findFirst({
         where: { id: boardId, ...accessibleBoardWhere(userId) },
-        select: { id: true, name: true, projectId: true, ...boardAccessSelect(userId) },
+        select: {
+          id: true,
+          name: true,
+          projectId: true,
+          editedAt: true,
+          ...boardAccessSelect(userId),
+        },
       })
     : null;
   if (!row) throw notFound(BOARD_NOT_FOUND);
   const access = accessOf(row, userId);
   if (need === "edit" && access === "viewer") throw readOnly("board");
-  return { id: row.id, name: row.name, projectId: row.projectId, ownerId: row.ownerId, access };
+  return {
+    id: row.id,
+    name: row.name,
+    projectId: row.projectId,
+    ownerId: row.ownerId,
+    editedAt: row.editedAt,
+    access,
+  };
 }
 
 /**

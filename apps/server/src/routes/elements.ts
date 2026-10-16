@@ -12,7 +12,7 @@ import { prisma } from "../db/client.js";
 import { parseBody } from "../errors.js";
 import { broadcastOps } from "../realtime.js";
 import { requireUser } from "../session.js";
-import { boardFor, uuidParam } from "./board-access.js";
+import { boardFor } from "./board-access.js";
 
 type ElementRow = Prisma.ElementGetPayload<object>;
 type Props = Record<string, unknown>;
@@ -186,8 +186,48 @@ export async function applyOps(board: { id: string; projectId: string | null }, 
       ],
       { timeout: SAVE_TIMEOUT_MS },
     );
+    replies.delete(board.id);
   }
   return { applied, stale };
+}
+
+/**
+ * Each board's last element reply (its JSON), with the board's `editedAt` it was read at. Every
+ * element write goes through applyOps, which moves `editedAt` in the same transaction, so a reply
+ * is reused only while the board's `editedAt` still matches. That holds across server processes
+ * too; this process also drops a board's reply as soon as it writes. A big board takes ~0.5 s to
+ * read from the database (2 MB of rows), and about nothing from here.
+ */
+const replies = new Map<string, { editedAt: number; body: string }>();
+let repliesSize = 0;
+/** Characters of JSON kept in all; the boards opened longest ago go first. */
+const REPLIES_MAX_SIZE = 64 * 1024 * 1024;
+
+function rememberReply(boardId: string, editedAt: number, body: string) {
+  const old = replies.get(boardId);
+  if (old) repliesSize -= old.body.length;
+  replies.delete(boardId);
+  if (body.length > REPLIES_MAX_SIZE / 4) return;
+  replies.set(boardId, { editedAt, body });
+  repliesSize += body.length;
+  for (const [id, reply] of replies) {
+    if (repliesSize <= REPLIES_MAX_SIZE) break;
+    replies.delete(id);
+    repliesSize -= reply.body.length;
+  }
+}
+
+/** The board's remembered reply if it's still current, moved to the newest place. */
+function currentReply(boardId: string, editedAt: number) {
+  const reply = replies.get(boardId);
+  if (!reply) return null;
+  replies.delete(boardId);
+  if (reply.editedAt !== editedAt) {
+    repliesSize -= reply.body.length;
+    return null;
+  }
+  replies.set(boardId, reply);
+  return reply.body;
 }
 
 // Mounted before the app-wide express.json(), so the save route can take a larger body. Each
@@ -196,19 +236,20 @@ export const elementsRouter = Router();
 
 /** The board's live elements, bottom layer first. */
 elementsRouter.get("/boards/:boardId/elements", requireUser, async (req, res) => {
-  // The rows load alongside the access check (one round trip instead of two); they're only
-  // sent once it passes.
-  const boardId = uuidParam(req.params.boardId);
-  const [, rows] = await Promise.all([
-    boardFor(boardId, res.locals.userId, "view"),
-    boardId
-      ? prisma.element.findMany({
-          where: { boardId, deletedAt: null },
-          orderBy: { z: "asc" },
-        })
-      : [],
-  ]);
-  res.json({ elements: rows.map(toElement) });
+  // The board is read first: its `editedAt` says whether the remembered reply is still current.
+  // Read after the rows, a save in between could leave old rows under the new `editedAt`.
+  const board = await boardFor(req.params.boardId, res.locals.userId, "view");
+  const editedAt = board.editedAt.getTime();
+  let body = currentReply(board.id, editedAt);
+  if (!body) {
+    const rows = await prisma.element.findMany({
+      where: { boardId: board.id, deletedAt: null },
+      orderBy: { z: "asc" },
+    });
+    body = JSON.stringify({ elements: rows.map(toElement) });
+    rememberReply(board.id, editedAt, body);
+  }
+  res.type("json").send(body);
 });
 
 /** Saves a batch of ops (see applyOps) and sends the applied ones to the board's other tabs. */

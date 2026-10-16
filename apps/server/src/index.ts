@@ -26,10 +26,12 @@ const app = express();
 // credentials: the client sends the session cookie cross-origin (Vite :5173 → server :4000)
 app.use(cors({ origin: clientUrl, credentials: true }));
 
-// Better Auth reads the raw request body, so it must be mounted before express.json()
-app.all("/api/auth/*splat", toNodeHandler(auth));
+// Better Auth reads the raw request body, so it must be mounted before express.json().
+// `auth` is read per request: it's replaced if its startup failed (src/auth.ts).
+const authHandler: express.RequestHandler = (req, res) => toNodeHandler(auth)(req, res);
+app.all("/api/auth/*splat", authHandler);
 // OAuth discovery for MCP clients (authorization server and protected resource metadata).
-app.get("/.well-known/*splat", toNodeHandler(auth));
+app.get("/.well-known/*splat", authHandler);
 
 // The remote MCP endpoint for AI editors (Claude Code, Codex, …). Reads its own body.
 app.use(mcpRouter);
