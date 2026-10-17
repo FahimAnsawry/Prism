@@ -38,7 +38,10 @@ function BoardDate({ board, sort }: { board: BoardItem; sort: SortKey }) {
   );
 }
 
-/** A whiteboard in the grid: its picture, name, project and size. */
+/**
+ * A whiteboard in the grid: its cover (a sketch of what it holds), its name, then its project and
+ * when it was last edited. The actions menu shows on hover, over the cover's corner.
+ */
 export function BoardCard({
   board,
   sort,
@@ -61,16 +64,18 @@ export function BoardCard({
           name={board.name}
           projectId={board.projectId}
           itemCount={board.itemCount}
-          className="h-[132px] shrink-0 border-b border-divider"
+          className="h-[140px] shrink-0 border-b border-divider"
         />
         <div className="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-3.5">
-          <h3 className="truncate text-[15px] leading-[21px] font-bold text-foreground">
-            {board.name}
-          </h3>
-          <BoardProject board={board} className="mt-1 text-[13px] text-muted-foreground" />
-          <p className="mt-2 flex items-center gap-2 font-mono text-2xs text-muted-foreground">
+          <h3 className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[15px] leading-[21px] font-bold text-foreground">
+              {board.name}
+            </span>
             <RoleBadge item={board} />
-            <span className="truncate">
+          </h3>
+          <p className="mt-1.5 flex min-w-0 items-center justify-between gap-3 text-[13px] text-muted-foreground">
+            <BoardProject board={board} />
+            <span className="shrink-0 tabular-nums">
               <BoardDate board={board} sort={sort} />
             </span>
           </p>
@@ -86,28 +91,23 @@ export function BoardCard({
   );
 }
 
-/** The first card of the Whiteboards grid: a blank cover that starts a new board. */
+/** The first card of the Whiteboards grid: a dashed blank sheet that starts a new board. */
 function NewBoardCard({ onCreate }: { onCreate: () => void }) {
   return (
     <button
       type="button"
       onClick={onCreate}
-      className="flex h-full w-full cursor-pointer flex-col border border-divider bg-card text-left shadow-sm transition-colors duration-150 ease-standard hover:border-input"
+      className="group flex h-full w-full cursor-pointer flex-col border border-dashed border-input bg-card text-left transition-colors duration-150 ease-standard hover:border-foreground"
     >
-      <BoardPreview
-        boardId="new"
-        name=""
-        projectId={null}
-        itemCount={0}
-        className="h-[132px] shrink-0 border-b border-divider"
-      />
-      <div className="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-3.5">
-        <h3 className="flex items-center gap-2 text-[15px] leading-[21px] font-bold text-foreground">
-          <Plus aria-hidden="true" className="size-4 shrink-0" strokeWidth={2.5} />
-          New whiteboard
-        </h3>
-        <p className="mt-1 text-[13px] text-muted-foreground">Start from a blank canvas</p>
-      </div>
+      <span className="flex h-[140px] w-full shrink-0 items-center justify-center">
+        <span className="flex size-10 items-center justify-center bg-secondary text-secondary-foreground transition-transform duration-200 ease-standard group-hover:-translate-y-0.5 motion-reduce:transition-none">
+          <Plus aria-hidden="true" className="size-5" strokeWidth={2.5} />
+        </span>
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-3.5">
+        <span className="text-[15px] leading-[21px] font-bold text-foreground">New whiteboard</span>
+        <span className="mt-1.5 text-[13px] text-muted-foreground">Start from a blank canvas</span>
+      </span>
     </button>
   );
 }
