@@ -36,7 +36,6 @@ import {
   sharedProjectWhere,
   uuidParam,
 } from "./board-access.js";
-import { deletePreviews } from "./previews.js";
 
 /** How many board tiles a project card shows. */
 const PROJECT_TILES = 3;
@@ -57,7 +56,6 @@ const boardSelect = (userId: string) =>
     customFonts: true,
     createdAt: true,
     editedAt: true,
-    thumbnailEditedAt: true,
     _count: { select: { elements: { where: { deletedAt: null } } } },
     ...ownerName,
     ...boardAccessSelect(userId),
@@ -79,7 +77,6 @@ const projectSelect = (userId: string) =>
         id: true,
         name: true,
         editedAt: true,
-        thumbnailEditedAt: true,
         _count: { select: { elements: { where: { deletedAt: null } } } },
       },
     },
@@ -99,7 +96,6 @@ type BoardRow = {
   customFonts: string[];
   createdAt: Date;
   editedAt: Date;
-  thumbnailEditedAt: Date | null;
   _count: { elements: number };
   owner: { name: string };
   ownerId: string;
@@ -118,7 +114,6 @@ type ProjectRow = {
     id: string;
     name: string;
     editedAt: Date;
-    thumbnailEditedAt: Date | null;
     _count: { elements: number };
   }[];
   owner: { name: string };
@@ -131,7 +126,6 @@ function toBoardSummary(row: BoardRow, userId: string): BoardSummary {
     _count,
     createdAt,
     editedAt,
-    thumbnailEditedAt,
     owner,
     ownerId: _o,
     members: _m,
@@ -141,7 +135,6 @@ function toBoardSummary(row: BoardRow, userId: string): BoardSummary {
   return {
     ...board,
     itemCount: _count.elements,
-    thumbnailEditedAt: thumbnailEditedAt?.toISOString() ?? null,
     access: accessOf(row, userId),
     ownerName: owner.name,
     createdAt: createdAt.toISOString(),
@@ -159,7 +152,6 @@ function toProjectSummary(row: ProjectRow, userId: string): ProjectSummary {
       name: board.name,
       itemCount: board._count.elements,
       editedAt: board.editedAt.toISOString(),
-      thumbnailEditedAt: board.thumbnailEditedAt?.toISOString() ?? null,
     })),
     access: accessOf(row, userId),
     ownerName: owner.name,
@@ -529,18 +521,10 @@ workspaceRouter.patch("/projects/:projectId", async (req, res) => {
 workspaceRouter.delete("/projects/:projectId", async (req, res) => {
   const projectId = uuidParam(req.params.projectId);
   const ownerId = res.locals.userId;
-  // Read first: the boards' pictures are removed with them.
-  const boards = projectId
-    ? await prisma.board.findMany({
-        where: { projectId, project: { ownerId } },
-        select: { thumbnailKey: true },
-      })
-    : [];
   const { count } = projectId
     ? await prisma.project.deleteMany({ where: { id: projectId, ownerId } })
     : { count: 0 };
   if (count === 0) throw notFound(PROJECT_NOT_FOUND);
-  await deletePreviews(boards.map((board) => board.thumbnailKey));
   res.json({ id: projectId });
 });
 
@@ -609,14 +593,10 @@ workspaceRouter.delete("/boards/:boardId", async (req, res) => {
   const ownerId = res.locals.userId;
   if (!boardId) throw notFound(BOARD_NOT_FOUND);
 
-  const { projectId, thumbnailKey } = await orNotFound(
-    prisma.board.delete({
-      where: { id: boardId, ownerId },
-      select: { projectId: true, thumbnailKey: true },
-    }),
+  const { projectId } = await orNotFound(
+    prisma.board.delete({ where: { id: boardId, ownerId }, select: { projectId: true } }),
     BOARD_NOT_FOUND,
   );
-  await deletePreviews([thumbnailKey]);
   // Losing a board counts as an edit to its project.
   if (projectId) await touchProject(projectId, new Date());
   res.json({ id: boardId });

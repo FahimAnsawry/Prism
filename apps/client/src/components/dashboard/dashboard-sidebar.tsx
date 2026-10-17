@@ -22,10 +22,10 @@ import { EditorLogo } from "./editor-logo";
 import { sectionSearch, type Section } from "./workspace-data";
 
 const NAV: { id: Section; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-  { id: "all", label: "All work", Icon: LayoutDashboard },
-  { id: "projects", label: "Projects", Icon: FolderKanban },
+  { id: "all", label: "Home", Icon: LayoutDashboard },
   { id: "boards", label: "Whiteboards", Icon: PencilRuler },
-  { id: "shared", label: "Shared with you", Icon: UsersRound },
+  { id: "projects", label: "Projects", Icon: FolderKanban },
+  { id: "shared", label: "Shared with me", Icon: UsersRound },
 ];
 
 export type SidebarProps = {

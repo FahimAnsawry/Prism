@@ -95,11 +95,9 @@ function SharedProject({
                 >
                   <BoardPreview
                     boardId={board.id}
+                    name={board.name}
                     projectId={project.id}
                     itemCount={board.itemCount}
-                    editedAt={board.editedAt}
-                    thumbnailEditedAt={board.thumbnailEditedAt}
-                    picturePath={`/api/share/${token}/boards/${board.id}/preview`}
                     className="h-[175px] shrink-0 border-b border-divider"
                   />
                   <div className="px-5 pt-3.5">

@@ -1,9 +1,6 @@
-import { Link2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { BoardGrid } from "./board-card";
 import { NameAvatar, NoMatches, PageHeader, type ViewProps } from "./dashboard-parts";
-import { outlineButton } from "./dashboard-styles";
-import { InviteLinkForm } from "./invite-link-form";
 import { ProjectRow } from "./project-card";
 import {
   matchesQuery,
@@ -18,7 +15,6 @@ type OwnerGroup = { owner: string; projects: ProjectItem[]; boards: BoardItem[];
 
 /** What other people shared with the user, grouped by who shared it. */
 export function SharedView({ workspace, query, prefs, onAction, onCreate }: ViewProps) {
-  const [pasting, setPasting] = useState(false);
   const all = useMemo(() => sharedItemsFor(workspace, "all"), [workspace]);
   const groups = useMemo(() => {
     const byOwner = new Map<string, OwnerGroup>();
@@ -44,36 +40,18 @@ export function SharedView({ workspace, query, prefs, onAction, onCreate }: View
   return (
     <>
       <PageHeader
-        title="Shared with you"
+        title="Shared with me"
         summary={
           all.length === 0
             ? "Nothing shared yet"
             : `${plural(all.length, "item")} from ${plural(people, "person", "people")}`
         }
-        action={
-          // With nothing shared yet, the form below is already open.
-          all.length > 0 && (
-            <button
-              type="button"
-              aria-expanded={pasting}
-              onClick={() => setPasting((open) => !open)}
-              className={`${outlineButton} h-11 max-sm:w-full`}
-            >
-              <Link2 aria-hidden="true" />
-              Paste an invite link
-            </button>
-          )
-        }
       />
 
-      {(pasting || all.length === 0) && (
-        <section className="mt-8 border border-divider bg-card p-5 shadow-sm">
-          <h2 className="text-[15px] font-bold text-foreground">Have an invite link?</h2>
-          <p className="mt-1.5 text-[13px] text-muted-foreground">
-            Paste it to join a board or project. It shows up here once you accept.
-          </p>
-          <InviteLinkForm className="mt-4 max-w-xl" autoFocus={pasting} />
-        </section>
+      {all.length === 0 && (
+        <p className="mt-12 text-center text-sm text-muted-foreground">
+          Boards and projects people share with you show up here.
+        </p>
       )}
 
       {all.length > 0 && groups.length === 0 && <NoMatches query={query} />}

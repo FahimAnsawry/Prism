@@ -12,6 +12,8 @@ import {
 } from "@prism/shared";
 import { Router, type Response } from "express";
 import { prisma } from "../db/client.js";
+import { sendEmail } from "../email/send.js";
+import { shareInviteEmail } from "../email/templates.js";
 import { badRequest, HttpError, notFound, parseBody } from "../errors.js";
 import { acceptInvite } from "../invites.js";
 import { notifyAccessChanged, revokeBoardTabs } from "../realtime.js";
@@ -31,7 +33,6 @@ import {
   shareTokenParam,
   uuidParam,
 } from "./board-access.js";
-import { sendPreview } from "./previews.js";
 
 // Sharing a board or a project: the owner's Share dialog (members, invites, the public link),
 // invite links, and the public view-only pages, which need no account.
@@ -187,11 +188,23 @@ for (const kind of ["board", "project"] as const) {
             data: { ...target, email, role, token: newShareToken(), invitedById: userId },
           });
       const url = inviteUrl(invite.token);
-      // Until an email provider is attached, the owner sends the link (the dialog shows it).
-      console.info(`[share] Invite for ${email} to a ${kind} (${role}):\n  ${url}`);
       result = { status: "invited", url };
     }
-    res.status(201).json({ ...result, settings: await loadSettings(kind, id) });
+    const settings = await loadSettings(kind, id);
+    if (result.status === "invited" && result.url) {
+      // The owner can still copy the link from the dialog; the email just delivers it.
+      sendEmail(
+        shareInviteEmail({
+          to: email,
+          inviterName: settings.owner.name,
+          kind,
+          itemName: settings.name,
+          role,
+          url: result.url,
+        }),
+      );
+    }
+    res.status(201).json({ ...result, settings });
   });
 
   shareRouter.patch(`${base}/members/:userId`, requireUser, async (req, res) => {
@@ -347,7 +360,6 @@ const publicBoardSelect = {
   name: true,
   description: true,
   editedAt: true,
-  thumbnailEditedAt: true,
   _count: { select: { elements: { where: { deletedAt: null } } } },
 } as const;
 
@@ -356,7 +368,6 @@ function toPublicBoard(row: {
   name: string;
   description: string | null;
   editedAt: Date;
-  thumbnailEditedAt: Date | null;
   _count: { elements: number };
 }): PublicBoard {
   return {
@@ -365,7 +376,6 @@ function toPublicBoard(row: {
     description: row.description,
     itemCount: row._count.elements,
     editedAt: row.editedAt.toISOString(),
-    thumbnailEditedAt: row.thumbnailEditedAt?.toISOString() ?? null,
   };
 }
 
@@ -411,13 +421,6 @@ shareRouter.get("/share/:token", async (req, res) => {
       boards: project.boards.map(toPublicBoard),
     },
   } satisfies PublicShare);
-});
-
-/** The cover picture of a board behind a public link (what the project page's cards show). */
-shareRouter.get("/share/:token/boards/:boardId/preview", async (req, res) => {
-  const board = await boardForShareToken(req.params.token, req.params.boardId);
-  if (!board) throw notFound(LINK_GONE);
-  await sendPreview(res, board.id);
 });
 
 /** One board behind a public link, with its elements. */

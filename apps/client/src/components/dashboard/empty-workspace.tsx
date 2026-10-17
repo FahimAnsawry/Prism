@@ -1,8 +1,6 @@
-import { FolderPlus, Plus, Sparkles, Link2 } from "lucide-react";
+import { FolderPlus, Plus } from "lucide-react";
 import { PrismMark } from "@/components/prism-logo";
-import { CLAUDE_COMMAND, CODEX_COMMAND } from "@/lib/ai";
 import { outlineButton } from "./dashboard-styles";
-import { InviteLinkForm } from "./invite-link-form";
 import type { CreateKind } from "./item-dialog";
 
 /** A board in miniature: a sticky note, a screen and a phone joined by dashed lines. */
@@ -46,10 +44,8 @@ function FirstBoardSketch() {
 /** First run: nothing in the workspace yet, and nothing shared. */
 export function EmptyWorkspace({
   onCreate,
-  onConnectAi,
 }: {
   onCreate: (kind: CreateKind) => void;
-  onConnectAi: () => void;
 }) {
   return (
     <div className="mt-8">
@@ -89,46 +85,6 @@ export function EmptyWorkspace({
           </div>
         </div>
       </section>
-
-      <div className="mt-6 grid gap-6 md:grid-cols-2">
-        <section className="flex flex-col border border-divider bg-card p-5 shadow-sm">
-          <h2 className="flex items-center gap-3 text-[15px] font-bold text-foreground">
-            <span className="flex size-8 items-center justify-center bg-seafoam text-slate">
-              <Sparkles aria-hidden="true" className="size-4" />
-            </span>
-            Let an AI editor draw it
-          </h2>
-          <p className="mt-3 text-[13px] leading-5 text-muted-foreground">
-            Add Prism to Claude Code or Codex once, then ask for a screen. It appears on your board
-            as it is drawn.
-          </p>
-          <pre className="mt-4 bg-slate break-all whitespace-pre-wrap px-4 py-3 font-mono text-2xs leading-5 text-fog dark:bg-black/40">
-            {CLAUDE_COMMAND}
-            {"\n"}
-            {CODEX_COMMAND}
-          </pre>
-          <button
-            type="button"
-            onClick={onConnectAi}
-            className="mt-3 self-start text-[13px] font-bold text-foreground underline-offset-4 hover:underline"
-          >
-            More ways to connect →
-          </button>
-        </section>
-        <section className="border border-divider bg-card p-5 shadow-sm">
-          <h2 className="flex items-center gap-3 text-[15px] font-bold text-foreground">
-            <span className="flex size-8 items-center justify-center bg-lime text-slate">
-              <Link2 aria-hidden="true" className="size-4" />
-            </span>
-            Have an invite link?
-          </h2>
-          <p className="mt-3 text-[13px] leading-5 text-muted-foreground">
-            Paste it to join a board or project someone shared with you. It will show up under
-            Shared with you.
-          </p>
-          <InviteLinkForm className="mt-4" />
-        </section>
-      </div>
     </div>
   );
 }

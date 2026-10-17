@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Plus } from "lucide-react";
 import { Fragment } from "react";
 import { cn } from "@/lib/utils";
 import { BoardPreview } from "./board-preview";
@@ -55,11 +56,9 @@ export function BoardCard({
       >
         <BoardPreview
           boardId={board.id}
+          name={board.name}
           projectId={board.projectId}
           itemCount={board.itemCount}
-          editedAt={board.editedAt}
-          thumbnailEditedAt={board.thumbnailEditedAt}
-          canEdit={board.access !== "viewer"}
           className="h-[132px] shrink-0 border-b border-divider"
         />
         <div className="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-3.5">
@@ -85,15 +84,44 @@ export function BoardCard({
   );
 }
 
+/** The first card of the Whiteboards grid: a blank cover that starts a new board. */
+function NewBoardCard({ onCreate }: { onCreate: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onCreate}
+      className="flex h-full w-full cursor-pointer flex-col border border-divider bg-card text-left shadow-sm transition-colors duration-150 ease-standard hover:border-input"
+    >
+      <BoardPreview
+        boardId="new"
+        name=""
+        projectId={null}
+        itemCount={0}
+        className="h-[132px] shrink-0 border-b border-divider"
+      />
+      <div className="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-3.5">
+        <h3 className="flex items-center gap-2 text-[15px] leading-[21px] font-bold text-foreground">
+          <Plus aria-hidden="true" className="size-4 shrink-0" strokeWidth={2.5} />
+          New whiteboard
+        </h3>
+        <p className="mt-1 text-[13px] text-muted-foreground">Start from a blank canvas</p>
+      </div>
+    </button>
+  );
+}
+
 export function BoardGrid({
   boards,
   sort,
   onAction,
+  onCreate,
   className,
 }: {
   boards: BoardItem[];
   sort: SortKey;
   onAction: OnAction;
+  /** Puts a "New whiteboard" card before the boards. */
+  onCreate?: () => void;
   className?: string;
 }) {
   return (
@@ -103,6 +131,11 @@ export function BoardGrid({
         className,
       )}
     >
+      {onCreate && (
+        <li className="min-w-0">
+          <NewBoardCard onCreate={onCreate} />
+        </li>
+      )}
       {boards.map((board) => (
         <li key={board.id} className="min-w-0">
           <BoardCard board={board} sort={sort} onAction={onAction} />
@@ -123,11 +156,14 @@ export function BoardTable({
   boards,
   sort,
   onAction,
+  onCreate,
   className,
 }: {
   boards: BoardItem[];
   sort: SortKey;
   onAction: OnAction;
+  /** Puts a "New whiteboard" row before the boards. */
+  onCreate?: () => void;
   className?: string;
 }) {
   const dateLabel = sort === "created" ? "Created" : "Edited";
@@ -146,6 +182,33 @@ export function BoardTable({
         <span className="w-12 shrink-0" />
       </div>
       <ul>
+        {onCreate && (
+          <li className="border-b border-divider">
+            <button
+              type="button"
+              onClick={onCreate}
+              className={cn(
+                columns,
+                "w-full cursor-pointer py-2 pr-4 pl-4 text-left transition-colors duration-150 ease-standard hover:bg-hover focus-visible:-outline-offset-2",
+              )}
+            >
+              <BoardPreview
+                boardId="new"
+                name=""
+                projectId={null}
+                itemCount={0}
+                className="h-9 w-14 border border-divider"
+              />
+              <span className="flex min-w-0 items-center gap-2 text-[14px] leading-5 font-bold text-foreground">
+                <Plus aria-hidden="true" className="size-4 shrink-0" strokeWidth={2.5} />
+                <span className="truncate">New whiteboard</span>
+              </span>
+              <span className="text-[13px] text-muted-foreground max-md:hidden md:col-span-3">
+                Start from a blank canvas
+              </span>
+            </button>
+          </li>
+        )}
         {boards.map((board, i) => {
           const group = sort === "edited" ? editedGroup(board.editedAt) : undefined;
           const previous = boards[i - 1];
@@ -171,11 +234,9 @@ export function BoardTable({
                 >
                   <BoardPreview
                     boardId={board.id}
+                    name={board.name}
                     projectId={board.projectId}
                     itemCount={board.itemCount}
-                    editedAt={board.editedAt}
-                    thumbnailEditedAt={board.thumbnailEditedAt}
-                    canEdit={board.access !== "viewer"}
                     className="h-9 w-14 border border-divider"
                   />
                   <span className="min-w-0">

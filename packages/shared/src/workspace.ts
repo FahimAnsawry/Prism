@@ -52,9 +52,6 @@ export const boardStyleSchema = z.object({
 /** Replaces either list (or both). */
 export const updateBoardStyleSchema = boardStyleSchema.partial();
 
-/** Reply to a cover picture upload: false when a newer picture was already stored. */
-export const previewStoredSchema = z.object({ stored: z.boolean() });
-
 /** Reply to a delete. */
 export const deletedSchema = z.object({ id: z.uuid() });
 
@@ -78,8 +75,6 @@ export const boardSummarySchema = z.object({
   projectId: z.uuid().nullable(),
   /** Live (non-deleted) elements on the board. */
   itemCount: z.number().int(),
-  /** The board `editedAt` its stored cover picture shows; null before there's one. */
-  thumbnailEditedAt: z.iso.datetime().nullable(),
   ...boardStyleSchema.shape,
   ...ownership,
   ...timestamps,
@@ -95,10 +90,9 @@ export const projectSummarySchema = z.object({
     z.object({
       id: z.uuid(),
       name: z.string(),
-      /** Live elements on the board; the tile previews them unless there are none. */
+      /** Live elements on the board; a tile's cover is empty when there are none. */
       itemCount: z.number().int(),
       editedAt: z.iso.datetime(),
-      thumbnailEditedAt: z.iso.datetime().nullable(),
     }),
   ),
   ...ownership,

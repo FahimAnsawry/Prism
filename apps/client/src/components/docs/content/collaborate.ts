@@ -22,7 +22,7 @@ export const COLLABORATE_PAGES: DocPage[] = [
       { type: "h2", title: "Invite people" },
       {
         type: "p",
-        text: "Choose Share on a board or a project. Add people by email with a role, or make an invite link. Sharing a project shares every board in it, and a board inside a project always belongs to the project's owner, even when an editor made it.",
+        text: "Choose Share on a board or a project. Add people by email with a role, or turn on a public view-only link. Sharing a project shares every board in it, and a board inside a project always belongs to the project's owner, even when an editor made it.",
       },
       { type: "figure", name: "shareDialog" },
       { type: "h2", title: "Public links and access" },

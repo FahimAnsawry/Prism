@@ -2,7 +2,7 @@ import { Menu } from "@base-ui/react/menu";
 import { AnimatePresence, motion } from "motion/react";
 import { popupMotion, usePopupExit } from "@/components/popup-motion";
 import { TurningChevron } from "@/components/motion-parts";
-import { Check, Folder, Plus } from "lucide-react";
+import { Check, Folder } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BoardGrid, BoardTable } from "./board-card";
 import {
@@ -14,7 +14,6 @@ import {
   ViewToggle,
   type ViewProps,
 } from "./dashboard-parts";
-import { primaryButton } from "./dashboard-styles";
 import { SortMenu } from "./sort-menu";
 import { boardItems, matchesQuery, sortItems, type Owner } from "./workspace-data";
 
@@ -66,15 +65,7 @@ export function BoardsView({
 
   return (
     <>
-      <PageHeader
-        title="Whiteboards"
-        action={
-          <button type="button" onClick={() => onCreate("whiteboard")} className={primaryButton}>
-            <Plus aria-hidden="true" strokeWidth={2.5} />
-            New whiteboard
-          </button>
-        }
-      />
+      <PageHeader title="Whiteboards" />
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 max-sm:w-full">
@@ -97,16 +88,24 @@ export function BoardsView({
         </div>
       </div>
 
-      {boards.length === 0 ? (
-        query.trim() ? (
-          <NoMatches query={query} />
-        ) : (
-          <p className="mt-12 text-center text-sm text-muted-foreground">No boards here yet.</p>
-        )
+      {boards.length === 0 && query.trim() ? (
+        <NoMatches query={query} />
       ) : prefs.view === "grid" ? (
-        <BoardGrid boards={shown} sort={prefs.sort} onAction={onAction} className="mt-4" />
+        <BoardGrid
+          boards={shown}
+          sort={prefs.sort}
+          onAction={onAction}
+          onCreate={() => onCreate("whiteboard")}
+          className="mt-4"
+        />
       ) : (
-        <BoardTable boards={shown} sort={prefs.sort} onAction={onAction} className="mt-4" />
+        <BoardTable
+          boards={shown}
+          sort={prefs.sort}
+          onAction={onAction}
+          onCreate={() => onCreate("whiteboard")}
+          className="mt-4"
+        />
       )}
       <ShowMore
         shown={shown.length}

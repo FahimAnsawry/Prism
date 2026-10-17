@@ -37,15 +37,59 @@ import { createContext } from "react";
  * description ("Apon Health" → a heart), and a color from a fixed set in the order the projects
  * were made. The same project looks the same in the sidebar, on its boards and in lists.
  */
+/** A board cover's colors: a diagonal wash and the three dots under the icon. */
+export type Cover = { from: string; to: string; dots: readonly [string, string, string] };
+
+const INK = "#2b2b38";
+
 const COLORS = [
-  { bg: "bg-[#f2c94c]", fg: "text-slate" },
-  { bg: "bg-[#1e3fa8]", fg: "text-white" },
-  { bg: "bg-[#1d5c3c]", fg: "text-white" },
-  { bg: "bg-[#c4462c]", fg: "text-white" },
-  { bg: "bg-violet", fg: "text-white" },
-  { bg: "bg-pink", fg: "text-slate" },
-  { bg: "bg-sky", fg: "text-slate" },
-  { bg: "bg-coral", fg: "text-slate" },
+  {
+    bg: "bg-[#f2c94c]",
+    fg: "text-slate",
+    cover: { from: "#f6df80", to: "#fbf3cf", dots: ["#f3d34a", "#e6d9a0", INK] },
+  },
+  {
+    bg: "bg-[#1e3fa8]",
+    fg: "text-white",
+    cover: { from: "#b9cdfb", to: "#e3ecfd", dots: ["#1e3fa8", "#dbe5fb", INK] },
+  },
+  {
+    bg: "bg-[#1d5c3c]",
+    fg: "text-white",
+    cover: { from: "#a6dcc2", to: "#dff3e8", dots: ["#1d5c3c", "#d3ecdf", INK] },
+  },
+  {
+    bg: "bg-[#c4462c]",
+    fg: "text-white",
+    cover: { from: "#f5b9a8", to: "#fde3da", dots: ["#c4462c", "#f7d4c9", INK] },
+  },
+  {
+    bg: "bg-violet",
+    fg: "text-white",
+    cover: { from: "#cdb8f5", to: "#ece3fb", dots: ["#7b5cd6", "#e3d9f8", INK] },
+  },
+  {
+    bg: "bg-pink",
+    fg: "text-slate",
+    cover: { from: "#f8b9d6", to: "#fde0ee", dots: ["#ee6fa8", "#f9d3e5", INK] },
+  },
+  {
+    bg: "bg-sky",
+    fg: "text-slate",
+    cover: { from: "#a9dcf5", to: "#def2fc", dots: ["#3aa7dc", "#cfe9f7", INK] },
+  },
+  {
+    bg: "bg-coral",
+    fg: "text-slate",
+    cover: { from: "#f9c0a4", to: "#fde5d8", dots: ["#f08a5d", "#f7d6c5", INK] },
+  },
+] as const;
+
+/** Covers for boards outside any project, picked from the board id. */
+export const LOOSE_COVERS: readonly Cover[] = [
+  { from: "#86f0c8", to: "#c9f7e2", dots: ["#1fd69a", "#cdf5e6", "#3d3b4f"] },
+  { from: "#b9cdfb", to: "#fbd0ea", dots: ["#b9cdfb", "#f6a9d0", "#e3ee8a"] },
+  { from: "#c3b8f5", to: "#f3d9f2", dots: ["#8f7be0", "#ecd9f4", INK] },
 ] as const;
 
 /** Words in a project's name or description, and the icon they suggest. First match wins. */
@@ -74,7 +118,7 @@ const ICON_WORDS: [RegExp, LucideIcon][] = [
 /** For projects whose name suggests nothing, in turn. */
 const FALLBACK_ICONS: LucideIcon[] = [Rocket, Shapes, Compass, Layers, Zap, Box, Sparkles, Star];
 
-export type ProjectLook = { bg: string; fg: string; Icon: LucideIcon };
+export type ProjectLook = { bg: string; fg: string; cover: Cover; Icon: LucideIcon };
 
 export function projectLooks(
   projects: { id: string; name: string; description: string | null; createdAt: string }[],

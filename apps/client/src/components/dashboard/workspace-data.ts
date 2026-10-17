@@ -16,7 +16,7 @@ export type ViewMode = "grid" | "list";
 export type Section = "all" | "projects" | "boards" | "shared";
 export const SECTIONS: readonly Section[] = ["all", "projects", "boards", "shared"];
 
-/** `?view=` for a section; "All work" is the bare /dashboard. */
+/** `?view=` for a section; "Home" is the bare /dashboard. */
 export const sectionSearch = (section: Section) =>
   section === "all" ? {} : { view: section as Exclude<Section, "all"> };
 

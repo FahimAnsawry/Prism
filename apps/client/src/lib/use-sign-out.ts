@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { forgetPreviewPictures } from "@/components/dashboard/preview-pictures";
 import { signOut } from "./auth-client";
 import { closeSocket } from "./realtime";
 
@@ -11,8 +10,6 @@ export function useSignOut() {
   return async () => {
     signOut();
     closeSocket();
-    // Board pictures stay in this tab's memory otherwise.
-    forgetPreviewPictures();
     await navigate({ to: "/login" });
     // Once the signed-in pages are gone, so the next account never sees this one's workspace.
     queryClient.clear();

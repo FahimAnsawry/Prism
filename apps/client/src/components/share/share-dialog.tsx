@@ -9,7 +9,6 @@ import { FormError, fieldInputClass } from "@/components/auth/form-field";
 import { ctaVariants } from "@/components/cta";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { apiErrorMessage } from "@/lib/api";
-import { EASE_STANDARD } from "@/lib/motion";
 import {
   shareSettingsQuery,
   useCancelInvite,
@@ -105,9 +104,7 @@ function InviteForm({ kind, id }: { kind: ShareKind; id: string }) {
   const invite = useInviteMember(kind, id);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<ShareRole>("editor");
-  const [result, setResult] = useState<
-    { email: string; status: "added" } | { email: string; status: "invited"; url: string } | null
-  >(null);
+  const [result, setResult] = useState<{ email: string; status: "added" | "invited" } | null>(null);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -118,11 +115,7 @@ function InviteForm({ kind, id }: { kind: ShareKind; id: string }) {
       {
         onSuccess: (reply) => {
           setEmail("");
-          setResult(
-            reply.status === "invited" && reply.url
-              ? { email: address, status: "invited", url: reply.url }
-              : { email: address, status: "added" },
-          );
+          setResult({ email: address, status: reply.status === "invited" ? "invited" : "added" });
         },
       },
     );
@@ -168,13 +161,10 @@ function InviteForm({ kind, id }: { kind: ShareKind; id: string }) {
           </p>
         )}
         {result?.status === "invited" && (
-          <div className="mt-4">
-            <p className="text-[13px] text-foreground">
-              {result.email} doesn't have a Prism account yet. Send them this invite link; it works
-              once they sign up or sign in with that email.
-            </p>
-            <CopyField text={result.url} label="Invite link" className="mt-2" />
-          </div>
+          <p className="mt-3 text-[13px] text-foreground">
+            {result.email} doesn't have a Prism account yet. They get access once they sign up or
+            sign in with that email.
+          </p>
         )}
       </div>
     </section>
@@ -209,7 +199,6 @@ function People({ kind, id, settings }: { kind: ShareKind; id: string; settings:
               name={invite.email}
               email={`Invited · ${ROLE_LABELS[invite.role].toLowerCase()}`}
             />
-            <CopyButton text={invite.url} label={`Copy the invite link for ${invite.email}`} />
             <button
               type="button"
               aria-label={`Cancel the invite for ${invite.email}`}
@@ -284,59 +273,51 @@ function PublicLink({
 }) {
   const link = useShareLink(kind, id);
   const [confirm, setConfirm] = useState<"regenerate" | "disable" | null>(null);
-  const on = settings.link !== null;
 
   return (
     <section className="mt-8 border-t border-divider pt-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className={sectionLabel}>Public link</h3>
-          <p className="mt-1.5 text-[13px] text-foreground">
-            {kind === "project"
-              ? "Anyone with the link can view this project and all its boards, without an account. They can't change anything."
-              : "Anyone with the link can view this board, without an account. They can't change anything."}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          aria-label="Public link"
-          disabled={link.isPending}
-          onClick={() => (on ? setConfirm("disable") : link.mutate("enable"))}
-          className={cn(
-            "relative mt-0.5 h-6 w-11 shrink-0 border transition-colors duration-150 ease-standard disabled:opacity-60",
-            on ? "border-transparent bg-brand" : "border-input bg-card",
-          )}
-        >
-          <motion.span
-            aria-hidden="true"
-            className={cn(
-              "absolute top-0.5 left-0.5 size-[18px]",
-              on ? "bg-slate" : "bg-muted-foreground",
-            )}
-            initial={false}
-            animate={{ x: on ? 20 : 0 }}
-            transition={{ duration: 0.15, ease: EASE_STANDARD }}
-          />
-        </button>
-      </div>
+      <h3 className={sectionLabel}>Public link</h3>
+      <p className="mt-1.5 text-[13px] text-foreground">
+        {kind === "project"
+          ? "Anyone with the link can view this project and all its boards, without an account. They can't change anything."
+          : "Anyone with the link can view this board, without an account. They can't change anything."}
+      </p>
 
       <FormError message={link.error ? apiErrorMessage(link.error) : undefined} className="mt-3" />
 
-      {settings.link && (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <CopyField text={settings.link} label="Public link" className="min-w-0 flex-1" />
-          <button
-            type="button"
-            onClick={() => setConfirm("regenerate")}
-            disabled={link.isPending}
-            className={ctaVariants({ variant: "secondary", size: "sm" })}
-          >
-            <RefreshCw aria-hidden="true" />
-            New link
-          </button>
+      {settings.link ? (
+        <div className="mt-4">
+          <CopyField text={settings.link} label="Public link" />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirm("regenerate")}
+              disabled={link.isPending}
+              className={ctaVariants({ variant: "secondary", size: "sm" })}
+            >
+              <RefreshCw aria-hidden="true" />
+              New link
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirm("disable")}
+              disabled={link.isPending}
+              className="inline-flex h-[38px] items-center px-2 text-[13px] text-muted-foreground transition-colors duration-150 ease-standard hover:text-destructive disabled:opacity-60"
+            >
+              Turn off link
+            </button>
+          </div>
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => link.mutate("enable")}
+          disabled={link.isPending}
+          className={cn(ctaVariants({ variant: "secondary", size: "sm" }), "mt-4")}
+        >
+          <Link2 aria-hidden="true" />
+          {link.isPending ? "Creating…" : "Create public link"}
+        </button>
       )}
 
       <ConfirmDialog
@@ -443,25 +424,6 @@ function useCopy(text: string) {
     });
   };
   return { copied, copy };
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const { copied, copy } = useCopy(text);
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      aria-label={copied ? "Copied" : label}
-      title={copied ? "Copied" : "Copy link"}
-      className="flex size-8 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-standard hover:text-ink"
-    >
-      {copied ? (
-        <Check aria-hidden="true" className="size-4" />
-      ) : (
-        <Link2 aria-hidden="true" className="size-4" />
-      )}
-    </button>
-  );
 }
 
 function CopyField({

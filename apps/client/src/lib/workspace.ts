@@ -90,12 +90,11 @@ export function useDeleteProject() {
   });
 }
 
-const tileOf = ({ id, name, itemCount, editedAt, thumbnailEditedAt }: BoardSummary) => ({
+const tileOf = ({ id, name, itemCount, editedAt }: BoardSummary) => ({
   id,
   name,
   itemCount,
   editedAt,
-  thumbnailEditedAt,
 });
 
 /** Every board the user can open: their own and the ones shared with them. */

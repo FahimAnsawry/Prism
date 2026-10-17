@@ -1,6 +1,6 @@
 import { motion, type Variants } from "motion/react";
-import { type MouseEvent, useId } from "react";
-import { EASE_STANDARD, EASE_TOGGLE, HOVER_SECONDS } from "@/lib/motion";
+import { type CSSProperties, type MouseEvent, useId } from "react";
+import { EASE_TOGGLE } from "@/lib/motion";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -125,18 +125,16 @@ export function ThemeToggle({
       onClick={onClick}
       aria-label={label}
       title={label}
+      // The hover color is plain CSS: animating it would freeze the theme's value at hover time
+      // (the click that switches themes happens while hovering) and keep it in the other theme.
+      style={{ "--toggle-hover": hoverBackground } as CSSProperties}
       className={cn(
-        "theme-toggle inline-flex shrink-0 items-center justify-center text-foreground",
+        "theme-toggle inline-flex shrink-0 items-center justify-center text-foreground transition-colors duration-150 ease-standard hover:bg-(--toggle-hover)",
         className,
       )}
       initial={false}
       animate={theme}
-      variants={{
-        lightHover: { backgroundColor: hoverBackground },
-        darkHover: { backgroundColor: hoverBackground },
-      }}
       whileHover={theme === "dark" ? "darkHover" : "lightHover"}
-      transition={{ duration: HOVER_SECONDS, ease: EASE_STANDARD }}
     >
       <motion.svg viewBox="0 0 24 24" aria-hidden="true" className="size-5" variants={icon}>
         <mask id={maskId}>

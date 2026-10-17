@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, FolderPlus } from "lucide-react";
-import { use, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { BoardGrid, BoardProject, BoardTable } from "./board-card";
 import { BoardPreview } from "./board-preview";
@@ -14,7 +14,7 @@ import {
   ViewToggle,
   type ViewProps,
 } from "./dashboard-parts";
-import { ConnectAiContext, outlineButton } from "./dashboard-styles";
+import { outlineButton } from "./dashboard-styles";
 import { EmptyWorkspace } from "./empty-workspace";
 import { NewMenu } from "./new-menu";
 import { ProjectCard } from "./project-card";
@@ -40,7 +40,7 @@ const RECENT = 4;
 
 const newestFirst = (a: BoardItem, b: BoardItem) => Date.parse(b.editedAt) - Date.parse(a.editedAt);
 
-/** "All work": the latest board to pick up, projects at a glance, then every whiteboard. */
+/** "Home": the latest board to pick up, projects at a glance, then every whiteboard. */
 export function AllWorkView({
   workspace,
   query,
@@ -49,7 +49,6 @@ export function AllWorkView({
   onAction,
   onCreate,
 }: ViewProps) {
-  const onConnectAi = use(ConnectAiContext);
   const [owner, setOwner] = useState<Owner>("all");
   const [limit, setLimit] = useState(BOARD_PAGE);
   const searching = query.trim() !== "";
@@ -91,7 +90,7 @@ export function AllWorkView({
       />
 
       {isEmpty ? (
-        <EmptyWorkspace onCreate={(kind) => onCreate(kind)} onConnectAi={onConnectAi} />
+        <EmptyWorkspace onCreate={(kind) => onCreate(kind)} />
       ) : (
         <>
           <SectionTabs
@@ -267,11 +266,9 @@ function ResumeCard({ board }: { board: BoardItem }) {
     <article className="group relative flex min-w-0 flex-col border border-divider bg-card shadow-sm transition-colors duration-150 ease-standard hover:border-input">
       <BoardPreview
         boardId={board.id}
+        name={board.name}
         projectId={board.projectId}
         itemCount={board.itemCount}
-        editedAt={board.editedAt}
-        thumbnailEditedAt={board.thumbnailEditedAt}
-        canEdit={board.access !== "viewer"}
         className="h-[200px] border-b border-divider sm:h-[260px]"
       />
       <div className="flex flex-wrap items-end justify-between gap-4 p-4 sm:px-5">
@@ -327,11 +324,9 @@ function RecentPanel({ boards }: { boards: BoardItem[] }) {
               >
                 <BoardPreview
                   boardId={board.id}
+                  name={board.name}
                   projectId={board.projectId}
                   itemCount={board.itemCount}
-                  editedAt={board.editedAt}
-                  thumbnailEditedAt={board.thumbnailEditedAt}
-                  canEdit={board.access !== "viewer"}
                   className="h-9 w-14 shrink-0 border border-divider"
                 />
                 <span className="min-w-0 flex-1">

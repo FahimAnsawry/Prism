@@ -1,102 +1,83 @@
-import { useQuery } from "@tanstack/react-query";
-import { type RefObject, useEffect, useRef, useState } from "react";
-import { fetchBoardElements } from "@/components/board/board-sync";
+import { Database, LayoutTemplate, LogIn, type LucideIcon, Network, Plus } from "lucide-react";
+import { use } from "react";
 import { cn } from "@/lib/utils";
-import { ProjectLogo } from "./dashboard-parts";
-import { loadPreviewPicture, requestPreviewPicture, usePreviewPicture } from "./preview-pictures";
-import { CanvasPreview } from "./workspace-item-parts";
+import { type Cover, LOOSE_COVERS, ProjectLookContext } from "./dashboard-styles";
+
+/** Words in a board's name and the icon they suggest. First match wins. */
+const KIND_WORDS: [RegExp, LucideIcon][] = [
+  [/sign.?in|log.?in|sign.?up|register|auth|password|onboard/, LogIn],
+  [/schema|database|\ber\b|tables?\b|erd|data model/, Database],
+  [/map|flow|mind|sitemap|diagram|architecture|journey|structure/, Network],
+];
+
+const EMPTY_COVER: Cover = {
+  from: "#ececf0",
+  to: "#ececf0",
+  dots: ["#ececf0", "#ececf0", "#ececf0"],
+};
+
+function hash(text: string) {
+  let h = 0;
+  for (const ch of text) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return Math.abs(h);
+}
 
 /**
- * A board's cover picture (preview-pictures.ts), so mounting a grid of cards costs no more than
- * their images. The picture is downloaded once the card scrolls near the viewport. A board that
- * has none, or whose picture is older than `editedAt`, is drawn by an editor's tab (the board's
- * elements load only then) and uploaded for everyone else; until a picture exists the card shows
- * its project's logo.
+ * A board's cover: a soft wash in its project's color, a white tile with an icon for what the
+ * board holds (picked from its name), and three palette dots. A board outside a project takes a
+ * wash from its id; an empty board is gray with a plus. The tile and dots shrink with the card.
  */
 export function BoardPreview({
   boardId,
+  name,
   projectId,
   itemCount,
-  editedAt,
-  thumbnailEditedAt,
-  canEdit = false,
-  picturePath = `/api/boards/${boardId}/preview`,
   className,
 }: {
   boardId: string;
-  /** The board's project, whose logo stands in until there's a picture. */
+  name: string;
+  /** The board's project, whose color the cover takes. */
   projectId: string | null;
   itemCount: number;
-  editedAt: string;
-  /** The board `editedAt` the server's stored picture shows; null if it has none. */
-  thumbnailEditedAt: string | null;
-  /** Whether this user may draw and upload the picture (an owner or editor). */
-  canEdit?: boolean;
-  /** Where the stored picture is downloaded from (a public link has its own). */
-  picturePath?: string;
   className?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const near = useNearViewport(ref);
   const empty = itemCount === 0;
-  const picture = usePreviewPicture(boardId);
-
-  useEffect(() => {
-    if (near && !empty && thumbnailEditedAt) {
-      loadPreviewPicture(boardId, thumbnailEditedAt, picturePath);
-    }
-  }, [near, empty, boardId, thumbnailEditedAt, picturePath]);
-
-  // The stored picture shows an older version of the board, or there is none.
-  const drawing =
-    near && !empty && canEdit && picture?.version !== editedAt && thumbnailEditedAt !== editedAt;
-  const elements = useQuery({
-    queryKey: ["board-preview", boardId, editedAt],
-    queryFn: () => fetchBoardElements(boardId),
-    enabled: drawing,
-    staleTime: Infinity,
-    // Big boards are heavy; the picture is all that's kept.
-    gcTime: 30_000,
-  });
-  useEffect(() => {
-    if (drawing && elements.data) requestPreviewPicture(boardId, editedAt, elements.data);
-  }, [drawing, elements.data, boardId, editedAt]);
+  const look = use(ProjectLookContext).get(projectId ?? "");
+  const cover = empty
+    ? EMPTY_COVER
+    : (look?.cover ?? LOOSE_COVERS[hash(boardId) % LOOSE_COVERS.length] ?? EMPTY_COVER);
+  const Icon = empty
+    ? Plus
+    : (KIND_WORDS.find(([words]) => words.test(name.toLowerCase()))?.[1] ?? LayoutTemplate);
 
   return (
-    <div ref={ref} className={className}>
-      <CanvasPreview empty={empty} className="size-full">
-        {empty ? null : picture ? (
-          <img
-            src={picture.url}
-            alt=""
-            draggable={false}
-            className={cn(
-              "pointer-events-none absolute inset-0 size-full select-none",
-              picture.portrait ? "object-contain" : "object-cover object-top",
-            )}
-          />
-        ) : (
-          <ProjectLogo projectId={projectId} size="lg" pulse={drawing} />
+    <div
+      aria-hidden="true"
+      style={{ backgroundImage: `linear-gradient(135deg, ${cover.from}, ${cover.to})` }}
+      className={cn(
+        "@container relative flex items-center justify-center overflow-hidden",
+        className,
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-6 items-center justify-center bg-white shadow-sm @[8rem]:size-8 @[12rem]:size-12",
+          empty ? "text-muted-foreground" : "text-ink",
         )}
-      </CanvasPreview>
+      >
+        <Icon className="size-3.5 @[8rem]:size-4 @[12rem]:size-5" />
+      </span>
+      {!empty && (
+        <span className="absolute bottom-3 left-3 hidden items-center gap-1 @[12rem]:flex">
+          {cover.dots.map((color, i) => (
+            <span
+              key={i}
+              style={{ backgroundColor: color }}
+              className="size-3 rounded-full border border-white"
+            />
+          ))}
+        </span>
+      )}
     </div>
   );
-}
-
-/** True once the element comes within a screen of the viewport (and stays true). */
-function useNearViewport(ref: RefObject<HTMLElement | null>) {
-  const [near, setNear] = useState(false);
-  useEffect(() => {
-    const node = ref.current;
-    if (near || !node) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) setNear(true);
-      },
-      { rootMargin: "100% 0px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [ref, near]);
-  return near;
 }
