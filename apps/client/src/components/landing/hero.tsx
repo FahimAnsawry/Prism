@@ -98,8 +98,9 @@ const NOTE_TEXT = "Let teammates\njoin a board\nwith a role.";
  * One run of the hero's entrance, in ms from its start: the note types out, the connector draws
  * down, the prism pops in, then one view at a time its ray draws and its card slides in, and only
  * then does the next ray start. Each step starts from the one before, so changing one number
- * shifts everything after it. The pieces animate with `enter` below. It plays once
- * on every mount of the landing page, and stays finished; below xl only the note types and the view
+ * shifts everything after it. The pieces animate with `enter` below. It plays when
+ * the hero first shows, and again each time it comes back after leaving the window completely
+ * (see useHeroEntrance); below xl only the note types and the view
  * cards reveal on scroll instead.
  *
  * With the prism flight the entrance starts at takeoff (the note types while the dot flies), the
@@ -164,8 +165,8 @@ const ENTRANCES = {
 
 /**
  * The motion props that play one piece of the hero's entrance. Until `on` turns true the piece
- * holds on its hidden first frame, and `delay` (ms) counts from the moment it does. `skip` (a key
- * or press) jumps it to its final frame. With reduced motion the hero shows complete.
+ * holds on its hidden first frame, and `delay` (ms) counts from the moment it does. `skip` (a key,
+ * press or scroll) jumps it to its final frame. With reduced motion the hero shows complete.
  */
 function enter(
   kind: keyof typeof ENTRANCES,
@@ -202,25 +203,60 @@ function useWide() {
   );
 }
 
+const LOGO_DOT = '[data-flight-target="logo-dot"]';
+/**
+ * How long scrolling must have stopped before a waiting flight takes off: the header slides back
+ * in over 0.3s on an upward scroll, and the dot leaves from its logo.
+ */
+const SCROLL_SETTLE_MS = 350;
+
+/** True when the logo's i dot is on screen (the header isn't tucked away above it). */
+function logoDotInView() {
+  const box = document.querySelector(LOGO_DOT)?.getBoundingClientRect();
+  return !!box && box.top >= 0 && box.bottom <= window.innerHeight;
+}
+
+/** True when every facet of the hero's prism is inside the window, below the sticky header. */
+function prismInView() {
+  const facets = document.querySelectorAll('[data-flight-target^="hero-"]');
+  const header = document.querySelector("header")?.getBoundingClientRect().bottom ?? 0;
+  if (facets.length === 0) return false;
+  return Array.from(facets).every((facet) => {
+    const box = facet.getBoundingClientRect();
+    return box.width > 0 && box.top >= Math.max(0, header) && box.bottom <= window.innerHeight;
+  });
+}
+
 /**
  * When the hero's entrance plays: as soon as the loader is gone (`splashDone`), the hero is on
- * screen and it is `ready`
- * (the prism flight, when there is one,
- * has built the hero's prism). Then it stays finished. Attach `ref` to the section watched.
+ * screen and it is `ready` (the prism flight, when there is one, has built the hero's prism).
+ * Then it stays finished until the whole hero has left the window: that starts a new `run`
+ * (the flight is reset too), which plays from the start the next time the hero shows. A hero
+ * that only partly leaves the window keeps its finished frame. Attach `ref` to the section
+ * watched, and key the animated pieces by `run` so each one starts from its first frame.
  */
 function useHeroEntrance(splashDone: boolean, ready: boolean) {
   const ref = useRef<HTMLElement>(null);
   // Without IntersectionObserver there is nothing to wait for: treat the hero as in view.
   const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
   const [started, setStarted] = useState(false);
+  const [run, setRun] = useState(0);
 
   useEffect(() => {
     const node = ref.current;
     if (!node || typeof IntersectionObserver === "undefined") return;
+    let wasInView = false;
     const observer = new IntersectionObserver((entries) => {
       // Entries are in time order; the last one is where the hero is now.
       const entry = entries[entries.length - 1];
-      if (entry) setInView(entry.isIntersecting);
+      if (!entry) return;
+      setInView(entry.isIntersecting);
+      if (wasInView && !entry.isIntersecting) {
+        resetFlight();
+        setStarted(false);
+        setRun((count) => count + 1);
+      }
+      wasInView = entry.isIntersecting;
     });
     observer.observe(node);
     return () => observer.disconnect();
@@ -229,7 +265,7 @@ function useHeroEntrance(splashDone: boolean, ready: boolean) {
   // Set while rendering (not in an effect) so the first frame already plays.
   if (!started && splashDone && ready && inView) setStarted(true);
 
-  return { ref, play: started };
+  return { ref, play: started, run };
 }
 
 /**
@@ -271,7 +307,7 @@ function useTypewriter(
     return () => window.clearTimeout(timer);
   }, [text, play, delay, speed, caretUntil]);
 
-  // Finished (skipped with a key or press): the whole note, no caret.
+  // Finished (skipped with a key, press or scroll): the whole note, no caret.
   return finished ? { count: text.length, caret: false } : state;
 }
 
@@ -563,32 +599,53 @@ function ViewsBoard({
 
 export function Hero() {
   // The entrance waits for the startup loader to lift and for the hero to be on screen; until
-  // then it holds on its first frame. It plays once on each mount and stays finished.
+  // then it holds on its first frame. It plays again only after the
+  // whole hero has left the window and come back.
   const splashDone = useSplashDone();
   const wide = useWide();
   const flight = usePrismFlight();
   // With the prism flight, the note starts typing as the dot takes off (not after it has built
   // the prism); the rays wait for the prism's last facet (`rays`, below).
   const ready = flight.plan === "off" || (flight.plan === "flight" && flight.dotAway);
-  const { ref, play } = useHeroEntrance(splashDone, ready);
+  const { ref, play, run } = useHeroEntrance(splashDone, ready);
 
-  // As the loader lifts, decide whether the logo's dot flies in to build the prism: only where
-  // the prism shows (xl and up), with the hero on screen and motion allowed. Otherwise every
-  // piece plays its own entrance.
+  // Once the loader lifts, the logo's dot flies in to build the prism the first time the prism
+  // is on screen: only where it shows (xl and up) and with motion allowed, else every piece plays
+  // its own entrance. A page reloaded further down waits (the hero holds its first frame) until
+  // someone scrolls back up and stops, with the logo back in view: a scroll during the flight
+  // finishes it at once (see prism-flight.tsx).
   useEffect(() => {
     if (!splashDone || flight.plan !== "pending") return;
-    const box = ref.current?.getBoundingClientRect();
-    const inView = !!box && box.bottom > 0 && box.top < window.innerHeight;
-    const logo = document.querySelector('[data-flight-target="logo-dot"]');
-    const fly = wide && inView && !!logo && !prefersReducedMotion();
-    updateFlight({ plan: fly ? "flight" : "off" });
-  }, [splashDone, flight.plan, wide, ref]);
+    if (!wide || !document.querySelector(LOGO_DOT) || prefersReducedMotion()) {
+      updateFlight({ plan: "off" });
+      return;
+    }
+    const canFly = () => prismInView() && logoDotInView();
+    if (canFly()) {
+      updateFlight({ plan: "flight" });
+      return;
+    }
+    let timer = 0;
+    const onMove = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (canFly()) updateFlight({ plan: "flight" });
+      }, SCROLL_SETTLE_MS);
+    };
+    window.addEventListener("scroll", onMove, { passive: true });
+    window.addEventListener("resize", onMove);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("scroll", onMove);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [splashDone, flight.plan, wide]);
 
   // A later visit to the landing page flies again.
   useEffect(() => resetFlight, []);
 
   const byFlight = flight.plan === "flight";
-  // Finished early by a key or press: everything shows in its final frame.
+  // Finished early by a key, press or scroll: everything shows in its final frame.
   const finished = flight.skipped;
   const rays = play && (!byFlight || flight.heroPlaced === 4 || finished);
   const timeline = useMemo(
@@ -642,6 +699,7 @@ export function Hero() {
         <div id="views" className="xl:min-w-0 xl:flex-1">
           <div className="hidden xl:block">
             <ViewsBoard
+              key={run}
               play={play}
               finished={finished}
               rays={rays}
@@ -655,6 +713,7 @@ export function Hero() {
               rays here: the note types and each card reveals as it comes completely into view. */}
           <div className="xl:hidden">
             <IdeaNote
+              key={run}
               play={play}
               finished={finished}
               timeline={timeline}

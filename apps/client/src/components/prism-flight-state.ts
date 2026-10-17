@@ -6,17 +6,19 @@ import { useSyncExternalStore } from "react";
  * again. The logo's own mark is there from the start. The hero's note starts typing at takeoff
  * and its rays draw once the prism is built.
  *
- * - `plan` is decided by the hero when the startup loader lifts: "flight" when the hero's prism
- *   is on screen (xl and up, hero in view, motion allowed), else "off" and every piece plays
- *   its own entrance. Until then it is "pending".
+ * - `plan` is decided by the hero after the startup loader lifts: "off" right away below xl or
+ *   with reduced motion (every piece plays its own entrance), else "flight" the first time the
+ *   hero's prism and the logo are both on screen with scrolling stopped. Until then it is
+ *   "pending" and the hero holds its first frame.
  * - `heroPlaced` counts the hero's facets placed so far (0-4, in the order of CORNER_FACETS then
  *   CENTER_FACET); `dotAway` is true while the i's dot is out flying.
  * - `landMs` is how long the dot takes to reach the hero's prism, so the hero's connector can
  *   arrive with it.
- * - `done` turns true when the dot is back on the i; `skipped` when someone's key or
- *   press finished it early (everything is placed and shows complete).
+ * - `done` turns true when the dot is back on the i; `skipped` when a key, press or scroll
+ *   finished it early (everything is placed and shows complete).
  *
- * The hero resets it when it unmounts, so a later visit to the landing page flies again.
+ * The hero resets it when it unmounts and when the whole hero leaves the window, so a later
+ * visit to the landing page, or the hero scrolling back into view, flies again.
  */
 export interface PrismFlightState {
   plan: "pending" | "flight" | "off";

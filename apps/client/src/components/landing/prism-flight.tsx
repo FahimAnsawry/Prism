@@ -416,7 +416,7 @@ async function fly(traveler: HTMLElement, rig: Rig, ghosts: HTMLElement[], signa
  * The landing page's prism flight (see prism-flight-state.ts): while `active`, a winged copy of
  * the logo's i dot flies over the page in a fixed layer, built in the logo's own svg units and
  * scaled to each facet it lands on. Positions are measured from the live page at every leg, so
- * it follows the layout at any window size. Any key or press finishes it at once.
+ * it follows the layout at any window size. Any key, press or scroll finishes it at once.
  */
 export function PrismFlight({ active }: { active: boolean }) {
   const travelerRef = useRef<HTMLDivElement>(null);
@@ -431,14 +431,21 @@ export function PrismFlight({ active }: { active: boolean }) {
     const finishAtOnce = (changes: Parameters<typeof updateFlight>[0]) =>
       updateFlight({ heroPlaced: 4, dotAway: false, done: true, ...changes });
 
-    // Someone who types or presses has somewhere to be: place everything and stop. Scrolling
-    // doesn't count; the dot keeps flying.
+    // Someone who types or presses has somewhere to be: place everything and stop. So does a
+    // scroll (by hand, or the router restoring a reloaded page's position): the dot flies in
+    // window coordinates measured at each leg's start, so once the page moves under it, it
+    // would land beside the facets it places.
     const skip = () => {
       controller.abort();
       finishAtOnce({ skipped: true });
     };
+    const startY = window.scrollY;
+    const skipOnScroll = () => {
+      if (Math.abs(window.scrollY - startY) > 1) skip();
+    };
     const skipEvents = ["keydown", "pointerdown"] as const;
     for (const type of skipEvents) window.addEventListener(type, skip, { passive: true });
+    window.addEventListener("scroll", skipOnScroll, { passive: true });
 
     fly(traveler, rig, ghosts, controller.signal).catch((error: unknown) => {
       if (controller.signal.aborted) return;
@@ -449,6 +456,7 @@ export function PrismFlight({ active }: { active: boolean }) {
     return () => {
       controller.abort();
       for (const type of skipEvents) window.removeEventListener(type, skip);
+      window.removeEventListener("scroll", skipOnScroll);
     };
   }, [active, rig]);
 
