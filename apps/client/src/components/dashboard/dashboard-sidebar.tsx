@@ -2,14 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
-  FolderKanban,
-  PencilRuler,
-  LayoutDashboard,
+  Folders,
+  Handshake,
+  House,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   PlugZap,
-  UsersRound,
+  SquareDashedMousePointer,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { type ComponentType, type ReactNode, useState } from "react";
@@ -22,10 +22,10 @@ import { EditorLogo } from "./editor-logo";
 import { sectionSearch, type Section } from "./workspace-data";
 
 const NAV: { id: Section; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-  { id: "all", label: "Home", Icon: LayoutDashboard },
-  { id: "boards", label: "Whiteboards", Icon: PencilRuler },
-  { id: "projects", label: "Projects", Icon: FolderKanban },
-  { id: "shared", label: "Shared with me", Icon: UsersRound },
+  { id: "all", label: "Home", Icon: House },
+  { id: "boards", label: "Whiteboards", Icon: SquareDashedMousePointer },
+  { id: "projects", label: "Projects", Icon: Folders },
+  { id: "shared", label: "Shared with me", Icon: Handshake },
 ];
 
 export type SidebarProps = {
