@@ -24,11 +24,68 @@
         }
       })();
     </script>
+    <!-- The theme's page background from the first frame, before the app's CSS has loaded
+         (keep in step with --color-canvas and the dark --background in src/index.css). -->
+    <style>
+      html {
+        background: #fcfcfd;
+      }
+      html.dark {
+        background: #1d1c23;
+      }
+      /* The loader until the app's first render replaces it: the same mark, size and fade as
+         PrismLoader's full-screen one (src/components/feedback/prism-loader.tsx). */
+      .boot-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .boot-loader svg {
+        width: 57.6px;
+        height: 57.6px;
+        fill: #2a2a2a;
+        animation: boot-fade 0.6s ease-in-out both;
+      }
+      html.dark .boot-loader svg {
+        fill: #f6f5f9;
+      }
+      .boot-loader .center {
+        fill: #28e99f;
+      }
+      @keyframes boot-fade {
+        from {
+          opacity: 0;
+        }
+      }
+    </style>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Prism</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-loader" role="status" aria-label="Loading">
+        <svg viewBox="1.24 2.47 33.53 33.53" aria-hidden="true">
+          <path
+            d="M19.79 3.58L24.41 12.83A2 2 0 0 1 22.62 15.72L13.38 15.72A2 2 0 0 1 11.59 12.83L16.21 3.58A2 2 0 0 1 19.79 3.58Z"
+          />
+          <path
+            d="M9.65 23.86L14.27 33.11A2 2 0 0 1 12.48 36L3.24 36A2 2 0 0 1 1.45 33.11L6.07 23.86A2 2 0 0 1 9.65 23.86Z"
+          />
+          <path
+            d="M29.93 23.86L34.55 33.11A2 2 0 0 1 32.76 36L23.52 36A2 2 0 0 1 21.73 33.11L26.35 23.86A2 2 0 0 1 29.93 23.86Z"
+          />
+          <path
+            class="center"
+            d="M13.38 18.54L22.62 18.54A2 2 0 0 1 24.41 21.43L19.79 30.68A2 2 0 0 1 16.21 30.68L11.59 21.43A2 2 0 0 1 13.38 18.54Z"
+          />
+        </svg>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

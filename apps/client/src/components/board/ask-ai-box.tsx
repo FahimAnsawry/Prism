@@ -76,7 +76,10 @@ function AskAiBoxView({
       )}
 
       {selectedIds.length > 0 && (
-        <form onSubmit={submit} className="flex flex-col border border-chrome bg-card shadow-sm">
+        <form
+          onSubmit={submit}
+          className="flex flex-col border border-chrome bg-card shadow-sm focus-within:border-foreground"
+        >
           <div className="flex items-center gap-2 pr-1.5 pl-3">
             <Sparkles aria-hidden="true" className="size-4 shrink-0 text-violet" />
             <label className="min-w-0 flex-1">
@@ -195,7 +198,7 @@ function RequestStatus({
     <li
       className={cn(
         "flex items-start gap-2.5 border bg-card px-3 py-2.5 text-sm",
-        request.status === "failed" ? "border-coral" : "border-chrome",
+        request.status === "failed" ? "border-danger dark:border-coral" : "border-chrome",
       )}
     >
       {!finished && !paused ? (
@@ -207,8 +210,8 @@ function RequestStatus({
             "mt-0.5 size-4 shrink-0",
             finished
               ? request.status === "done"
-                ? "text-brand"
-                : "text-coral"
+                ? "text-brand-ink"
+                : "text-danger dark:text-coral"
               : "text-muted-foreground",
           )}
         />

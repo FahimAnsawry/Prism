@@ -132,7 +132,7 @@ export function SignupForm() {
         >
           {passwordsMatch && (
             <>
-              <Check aria-hidden="true" className="size-3.5 text-[#1a8f62] dark:text-brand" />
+              <Check aria-hidden="true" className="size-3.5 text-brand-ink" />
               Passwords match
             </>
           )}

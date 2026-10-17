@@ -61,14 +61,6 @@ export function sharedBoardWhere(userId: string) {
   } satisfies Prisma.BoardWhereInput;
 }
 
-/** Live projects the user may see or edit: their own and ones shared with them. */
-export function accessibleProjectWhere(userId: string, need: Need = "view") {
-  return {
-    archivedAt: null,
-    OR: [{ ownerId: userId }, { members: { some: { userId, ...roleFor(need) } } }],
-  } satisfies Prisma.ProjectWhereInput;
-}
-
 /** Live projects shared with the user (not their own). */
 export const sharedProjectWhere = (userId: string) =>
   ({
@@ -123,6 +115,8 @@ export async function boardFor(
           projectId: true,
           editedAt: true,
           ...boardAccessSelect(userId),
+          // The project's theme comes along, so boardTheme needn't read the project again.
+          project: { select: { theme: true, ...boardAccessSelect(userId).project.select } },
         },
       })
     : null;
@@ -135,18 +129,22 @@ export async function boardFor(
     projectId: row.projectId,
     ownerId: row.ownerId,
     editedAt: row.editedAt,
+    /** The project's stored theme (null: none, or no project). */
+    projectTheme: row.project?.theme ?? null,
     access,
   };
 }
 
 /**
  * The project if the user may view it (or edit it). Viewing also covers someone a board of the
- * project is shared with: its theme and components draw that board.
+ * project is shared with: its theme and components draw that board. `with` reads its stored theme
+ * or components in the same query.
  */
 export async function projectFor(
   projectIdParam: string | string[] | undefined,
   userId: string,
   need: Need,
+  { with: extra }: { with?: "theme" | "components" } = {},
 ) {
   const projectId = uuidParam(projectIdParam);
   const row = projectId
@@ -167,13 +165,23 @@ export async function projectFor(
           name: true,
           ownerId: true,
           members: { where: { userId }, select: { role: true } },
+          theme: extra === "theme",
+          components: extra === "components",
         },
       })
     : null;
   if (!row) throw notFound(PROJECT_NOT_FOUND);
   const access = accessOf(row, userId);
   if (need === "edit" && access === "viewer") throw readOnly("project");
-  return { id: row.id, name: row.name, ownerId: row.ownerId, access };
+  return {
+    id: row.id,
+    name: row.name,
+    ownerId: row.ownerId,
+    access,
+    /** Read only when asked for (`with`). */
+    theme: row.theme ?? null,
+    components: row.components ?? null,
+  };
 }
 
 // ── Public links ───────────────────────────────────────────────────────────

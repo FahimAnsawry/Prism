@@ -18,7 +18,7 @@ import { badRequest, HttpError, notFound, parseBody } from "../errors.js";
 import { acceptInvite } from "../invites.js";
 import { notifyAccessChanged, revokeBoardTabs } from "../realtime.js";
 import { requireUser } from "../session.js";
-import { toElement } from "./elements.js";
+import { elementChanges, sinceParam, toElement } from "./elements.js";
 import {
   accessibleBoardWhere,
   BOARD_NOT_FOUND,
@@ -423,10 +423,20 @@ shareRouter.get("/share/:token", async (req, res) => {
   } satisfies PublicShare);
 });
 
-/** One board behind a public link, with its elements. */
+/**
+ * One board behind a public link, with its elements. With `?since=<editedAt>` (the board's
+ * `editedAt` from an earlier reply), only what changed since then (ElementChangesReply).
+ */
 shareRouter.get("/share/:token/boards/:boardId", async (req, res) => {
+  const since = sinceParam(req.query["since"]);
+  // Read before the elements, like the signed-in route (elementsReplyBody).
   const board = await boardForShareToken(req.params.token, req.params.boardId);
   if (!board) throw notFound(LINK_GONE);
+  if (since !== undefined) {
+    noStore(res);
+    res.json(await elementChanges(board.id, board.editedAt.getTime(), since));
+    return;
+  }
   const rows = await prisma.element.findMany({
     where: { boardId: board.id, deletedAt: null },
     orderBy: { z: "asc" },

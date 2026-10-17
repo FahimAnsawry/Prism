@@ -39,10 +39,13 @@ export function PrismLoader({
   fullScreen = false,
   label,
   className,
+  fadeIn = fullScreen,
 }: {
   fullScreen?: boolean;
   label?: string;
   className?: string;
+  /** How the mark fades in (PrismMark's `fadeIn`); full-screen loaders fade in by default. */
+  fadeIn?: boolean | number;
 }) {
   return (
     <div
@@ -56,7 +59,7 @@ export function PrismLoader({
     >
       <PrismMark
         className={fullScreen ? "size-[57.6px]" : "size-6"}
-        fadeIn={fullScreen}
+        fadeIn={fadeIn}
         renderFacet={pulseFacets(facetDim())}
       />
       {label ? (

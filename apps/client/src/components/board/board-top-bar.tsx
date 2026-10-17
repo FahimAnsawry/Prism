@@ -83,7 +83,7 @@ export function ModeMenu({
                       <Icon aria-hidden="true" className="size-3.5" />
                       <span className="min-w-0">
                         <span className="block leading-4">{label}</span>
-                        <span className="block text-3xs leading-4 font-normal text-muted-foreground">
+                        <span className="block text-2xs leading-4 font-normal text-muted-foreground">
                           {hint}
                         </span>
                       </span>
@@ -192,8 +192,8 @@ export function BoardTopBar({
             <p
               role="status"
               className={cn(
-                "ml-3 hidden font-mono text-3xs whitespace-nowrap uppercase lg:block",
-                saveStatus === "error" ? "text-coral" : "text-muted-foreground",
+                "ml-3 hidden font-mono text-2xs whitespace-nowrap uppercase lg:block",
+                saveStatus === "error" ? "text-danger dark:text-coral" : "text-muted-foreground",
               )}
             >
               {SAVE_LABELS[saveStatus]}

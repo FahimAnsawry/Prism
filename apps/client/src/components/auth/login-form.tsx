@@ -86,7 +86,7 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
           labelAside={
             <Link
               to="/forgot-password"
-              className="font-mono text-xs font-bold tracking-[0.08em] text-foreground uppercase underline-offset-4 transition-colors hover:text-ink hover:underline"
+              className="-my-1 inline-flex min-h-6 items-center font-mono text-xs font-bold tracking-[0.08em] text-foreground uppercase underline-offset-4 transition-colors hover:text-ink hover:underline"
             >
               Forgot?
             </Link>

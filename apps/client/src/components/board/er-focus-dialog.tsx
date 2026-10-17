@@ -611,7 +611,7 @@ export function FocusView({
           />
         )}
       </svg>
-      <p className="pointer-events-none absolute bottom-3 left-3 hidden border border-chrome bg-card px-2.5 py-1.5 font-mono text-3xs text-muted-foreground lg:block">
+      <p className="pointer-events-none absolute bottom-3 left-3 hidden border border-chrome bg-card px-2.5 py-1.5 font-mono text-2xs text-muted-foreground lg:block">
         Scroll to zoom · Drag to pan · Click a table to focus it
       </p>
       <div className="absolute right-3 bottom-3 flex h-9 items-stretch border border-chrome bg-card text-foreground">

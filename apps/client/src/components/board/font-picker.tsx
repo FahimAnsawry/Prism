@@ -180,7 +180,7 @@ function AddFontForm({ onAdded }: { onAdded: (family: string) => void }) {
     <div className="border-t border-divider p-2.5">
       <label
         htmlFor={inputId}
-        className="mb-1.5 block font-mono text-3xs text-muted-foreground uppercase"
+        className="mb-1.5 block font-mono text-2xs text-muted-foreground uppercase"
       >
         Add a Google font
       </label>
@@ -206,7 +206,7 @@ function AddFontForm({ onAdded }: { onAdded: (family: string) => void }) {
           }}
           className={cn(
             "h-7 min-w-0 flex-1 border bg-card px-2 text-xs text-foreground outline-none",
-            error ? "border-coral" : "border-divider focus:border-foreground",
+            error ? "border-danger dark:border-coral" : "border-divider focus:border-foreground",
           )}
         />
         <button
@@ -219,7 +219,7 @@ function AddFontForm({ onAdded }: { onAdded: (family: string) => void }) {
         </button>
       </div>
       {error && (
-        <p id={errorId} role="alert" className="mt-1.5 text-3xs text-coral">
+        <p id={errorId} role="alert" className="mt-1.5 text-2xs text-danger dark:text-coral">
           {error}
         </p>
       )}

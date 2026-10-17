@@ -58,6 +58,18 @@ let io: PrismServer | null = null;
 
 const room = (boardId: string) => `board:${boardId}`;
 
+/**
+ * The board's `editedAt` (ms) for a join's ack, read once the socket is in the room: a save that
+ * isn't in it yet commits later and reaches the socket live. Null when it can't be read; the tab
+ * then catches up as after any reconnect.
+ */
+async function editedAtNow(boardId: string) {
+  const board = await prisma.board
+    .findUnique({ where: { id: boardId }, select: { editedAt: true } })
+    .catch(() => null);
+  return board?.editedAt.getTime() ?? null;
+}
+
 /** What each connected tab has selected, so AI editors can read it (get_selection). */
 interface TabSelection {
   userId: string;
@@ -140,7 +152,7 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
           await socket.join(room(boardId));
           // In as the user now, not through a link.
           socket.data.shareRooms.delete(boardId);
-          reply(true);
+          reply(true, await editedAtNow(boardId));
           sendSelections(socket, boardId);
           for (const waiter of joinWaiters) {
             if (waiter.userId === userId && waiter.boardId === boardId) waiter.resolve();
@@ -164,7 +176,7 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
           // A member's own join takes precedence over a link.
           if (!socket.rooms.has(room(board.id))) socket.data.shareRooms.set(board.id, token);
           await socket.join(room(board.id));
-          reply(true);
+          reply(true, await editedAtNow(board.id));
         })
         .catch((error: unknown) => {
           console.error("[Prism] Couldn't join a shared board:", error);
@@ -584,30 +596,54 @@ const ANNOUNCE_MAX = 400;
 export function announceAiEdit(boardId: string, userId: string, ops: ElementOp[]) {
   const editor = editorContext.getStore();
   if (!io || !editor) return;
-  const ids = [
-    ...new Set(
-      ops
-        .filter((op) => op.op !== "delete")
-        .map((op) => (op.op === "create" ? op.element.id : op.id)),
-    ),
-  ].slice(0, ANNOUNCE_MAX);
+  // Each element's box as the batch leaves it: a created one's is in its op; an updated one's is
+  // read back (its op carries only what changed); a deleted one has none.
+  const created = new Map<string, { x: number; y: number; width: number; height: number }>();
+  const updated = new Set<string>();
+  const order: string[] = [];
+  for (const op of ops) {
+    const id = op.op === "create" ? op.element.id : op.id;
+    if (op.op === "delete") {
+      created.delete(id);
+      updated.delete(id);
+      continue;
+    }
+    if (!created.has(id) && !updated.has(id)) order.push(id);
+    if (op.op === "create") {
+      created.set(id, op.element);
+      updated.delete(id);
+    } else {
+      updated.add(id);
+    }
+  }
+  const ids = order.filter((id) => created.has(id) || updated.has(id)).slice(0, ANNOUNCE_MAX);
   if (ids.length === 0) return;
+  const toRead = ids.filter((id) => updated.has(id));
   void (async () => {
     const [name, rows] = await Promise.all([
       editor.name(),
-      prisma.element.findMany({
-        where: { boardId, id: { in: ids }, deletedAt: null },
-        select: { id: true, x: true, y: true, width: true, height: true },
-      }),
+      toRead.length > 0
+        ? prisma.element.findMany({
+            where: { boardId, id: { in: toRead }, deletedAt: null },
+            select: { id: true, x: true, y: true, width: true, height: true },
+          })
+        : [],
     ]);
+    const read = new Map(rows.map((row) => [row.id, row]));
     // Lines and arrows keep their end as a vector, which may point left or up.
-    const boxes: PresenceBox[] = rows.map((row) => ({
-      id: row.id,
-      x: Math.min(row.x, row.x + row.width),
-      y: Math.min(row.y, row.y + row.height),
-      width: Math.abs(row.width),
-      height: Math.abs(row.height),
-    }));
+    const boxes: PresenceBox[] = ids.flatMap((id) => {
+      const el = created.get(id) ?? read.get(id);
+      if (!el) return [];
+      return [
+        {
+          id,
+          x: Math.min(el.x, el.x + el.width),
+          y: Math.min(el.y, el.y + el.height),
+          width: Math.abs(el.width),
+          height: Math.abs(el.height),
+        },
+      ];
+    });
     if (boxes.length === 0) return;
     const peer: Peer = {
       id: `ai:${userId}:${name.toLowerCase()}`,

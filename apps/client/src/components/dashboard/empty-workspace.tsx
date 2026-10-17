@@ -42,11 +42,7 @@ function FirstBoardSketch() {
 }
 
 /** First run: nothing in the workspace yet, and nothing shared. */
-export function EmptyWorkspace({
-  onCreate,
-}: {
-  onCreate: (kind: CreateKind) => void;
-}) {
+export function EmptyWorkspace({ onCreate }: { onCreate: (kind: CreateKind) => void }) {
   return (
     <div className="mt-8">
       <section

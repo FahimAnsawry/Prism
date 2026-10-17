@@ -12,8 +12,6 @@ export type ErrorContext = {
   [key: string]: unknown;
 };
 
-const GENERIC_MESSAGE = "Something went wrong. Please try again.";
-
 // The same Error can reach several hooks (e.g. a route render error hits both the router's
 // onCatch and React's onCaughtError), so each one is reported once.
 const reported = new WeakSet<Error>();
@@ -46,20 +44,6 @@ export function reportError(value: unknown, context: ErrorContext): Error {
   if (Object.keys(details).length > 0) console.info(details);
   console.groupEnd();
   return error;
-}
-
-/**
- * A message that is safe to show users. Developer detail stays in the console; only plain
- * string errors and HTTP-ish client errors with their own message get through in production.
- */
-export function getErrorMessage(value: unknown, fallback = GENERIC_MESSAGE): string {
-  if (import.meta.env.DEV) return toError(value).message || fallback;
-  if (typeof value === "string" && value.trim()) return value;
-  if (value && typeof value === "object" && "status" in value && "message" in value) {
-    const status = Number(value.status);
-    if (status >= 400 && status < 500 && typeof value.message === "string") return value.message;
-  }
-  return fallback;
 }
 
 let installed = false;

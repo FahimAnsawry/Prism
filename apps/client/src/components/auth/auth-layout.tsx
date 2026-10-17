@@ -43,7 +43,7 @@ export function AuthLayout({
             <motion.span className="inline-flex" whileHover="hover">
               <Link
                 to="/"
-                className="inline-flex items-center gap-2 text-sm font-medium text-foreground underline-offset-4 transition-colors hover:text-ink hover:underline"
+                className="inline-flex min-h-6 items-center gap-2 text-sm font-medium text-foreground underline-offset-4 transition-colors hover:text-ink hover:underline"
               >
                 <motion.span
                   className="inline-flex"

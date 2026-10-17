@@ -86,7 +86,7 @@ export function EmojiPicker({
       // Not a dialog: the board's keys keep working, and the board stays clickable.
       role="group"
       aria-label="Emoji picker"
-      className="absolute top-6 left-20 z-10 flex w-[316px] flex-col border border-chrome bg-card shadow-sm"
+      className="absolute top-6 left-20 z-10 flex w-[316px] max-w-[calc(100vw-6rem)] flex-col border border-chrome bg-card shadow-sm"
     >
       <div role="tablist" aria-label="Emoji categories" className="flex border-b border-divider">
         {CATEGORIES.map((category, i) => (

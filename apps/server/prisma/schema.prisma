@@ -8,6 +8,8 @@ generator client {
   runtime             = "nodejs"
   moduleFormat        = "esm"
   importFileExtension = "js"
+  // Relations in a select load in the same query (a JOIN) instead of one query each.
+  previewFeatures     = ["relationJoins"]
 }
 
 datasource db {
@@ -178,10 +180,6 @@ model Board {
   project           Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name              String    @default("Untitled board")
   description       String?
-  // S3 object key of the cover picture (a WebP or PNG of the cover frame) shown on dashboard
-  // cards, and the board `editedAt` it was drawn from: the picture is stale while this is older.
-  thumbnailKey      String?
-  thumbnailEditedAt DateTime?
   // Swatches added with the color picker (#rrggbb) and Google Fonts family names, newest first.
   customColors      String[]  @default([])
   customFonts       String[]  @default([])

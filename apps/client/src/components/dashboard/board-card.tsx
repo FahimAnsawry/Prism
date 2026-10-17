@@ -14,6 +14,7 @@ import {
   type SortKey,
   type WorkspaceItem,
 } from "./workspace-data";
+import { BOARD_PRELOAD_DELAY } from "@/lib/workspace";
 
 type OnAction = (action: ItemAction, item: WorkspaceItem) => void;
 
@@ -52,6 +53,7 @@ export function BoardCard({
       <Link
         to="/board/$boardId"
         params={{ boardId: board.id }}
+        preloadDelay={BOARD_PRELOAD_DELAY}
         className="flex h-full flex-col border border-divider bg-card shadow-sm transition-colors duration-150 ease-standard hover:border-input"
       >
         <BoardPreview
@@ -227,6 +229,7 @@ export function BoardTable({
                 <Link
                   to="/board/$boardId"
                   params={{ boardId: board.id }}
+                  preloadDelay={BOARD_PRELOAD_DELAY}
                   className={cn(
                     columns,
                     "min-w-0 flex-1 py-2 pl-4 transition-colors duration-150 ease-standard hover:bg-hover focus-visible:-outline-offset-2",

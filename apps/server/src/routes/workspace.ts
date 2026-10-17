@@ -59,6 +59,7 @@ const boardSelect = (userId: string) =>
     _count: { select: { elements: { where: { deletedAt: null } } } },
     ...ownerName,
     ...boardAccessSelect(userId),
+    project: { select: { name: true, ...boardAccessSelect(userId).project.select } },
   }) as const;
 
 const projectSelect = (userId: string) =>
@@ -100,7 +101,7 @@ type BoardRow = {
   owner: { name: string };
   ownerId: string;
   members: { role: Role }[];
-  project: { members: { role: Role }[] } | null;
+  project: { name: string; members: { role: Role }[] } | null;
 };
 
 type ProjectRow = {
@@ -122,18 +123,12 @@ type ProjectRow = {
 };
 
 function toBoardSummary(row: BoardRow, userId: string): BoardSummary {
-  const {
-    _count,
-    createdAt,
-    editedAt,
-    owner,
-    ownerId: _o,
-    members: _m,
-    project: _p,
-    ...board
-  } = row;
+  const { _count, createdAt, editedAt, owner, ownerId: _o, members: _m, project, ...board } = row;
   return {
     ...board,
+    // Only a project the user can open: one they own or are a member of, not just this board's.
+    projectName:
+      project && (row.ownerId === userId || project.members.length > 0) ? project.name : null,
     itemCount: _count.elements,
     access: accessOf(row, userId),
     ownerName: owner.name,
@@ -269,12 +264,8 @@ const projectTheme = (projectId: string, stored: Theme | null): ProjectTheme => 
 
 /** A live project's theme (one the user may see): its own, or the default while it has none. */
 export async function getProjectTheme(userId: string, projectIdParam: string | undefined) {
-  const { id } = await projectFor(projectIdParam, userId, "view");
-  const project = await prisma.project.findUniqueOrThrow({
-    where: { id },
-    select: { theme: true },
-  });
-  return projectTheme(id, storedTheme(project.theme));
+  const { id, theme } = await projectFor(projectIdParam, userId, "view", { with: "theme" });
+  return projectTheme(id, storedTheme(theme));
 }
 
 /** Replaces the project's theme. Not a content edit, so editedAt stays. */
@@ -301,12 +292,10 @@ function storedComponents(value: unknown): Components {
 
 /** A live project's components (one the user may see), by name. */
 export async function getProjectComponents(userId: string, projectIdParam: string | undefined) {
-  const { id } = await projectFor(projectIdParam, userId, "view");
-  const project = await prisma.project.findUniqueOrThrow({
-    where: { id },
-    select: { components: true },
+  const { id, components } = await projectFor(projectIdParam, userId, "view", {
+    with: "components",
   });
-  return { projectId: id, components: storedComponents(project.components) };
+  return { projectId: id, components: storedComponents(components) };
 }
 
 /** Replaces the project's components. Not a content edit, so editedAt stays. */
@@ -332,9 +321,16 @@ export async function boardComponents(board: { projectId: string | null }): Prom
   return storedComponents(project?.components);
 }
 
-/** The theme a board draws with: its project's, else the default. */
-export async function boardTheme(board: { projectId: string | null }): Promise<Theme> {
+/**
+ * The theme a board draws with: its project's, else the default. A board from boardFor carries its
+ * project's stored theme (`projectTheme`); any other is looked up.
+ */
+export async function boardTheme(board: {
+  projectId: string | null;
+  projectTheme?: unknown;
+}): Promise<Theme> {
   if (!board.projectId) return DEFAULT_THEME;
+  if (board.projectTheme !== undefined) return storedTheme(board.projectTheme) ?? DEFAULT_THEME;
   const project = await prisma.project.findUnique({
     where: { id: board.projectId },
     select: { theme: true },
@@ -373,11 +369,36 @@ export type DesignSite = {
 /** How many recently edited boards to look through for the user's other sites. */
 const RECENT_BOARDS = 40;
 
+/** How long designSites answers from its last reading of the same user's board. */
+const SITES_FRESH_MS = 30_000;
+const SITES_CACHE_MAX = 100;
+/** Recent designSites readings (and ones in progress) by user and board, oldest first. */
+const sitesCache = new Map<string, { at: number; sites: ReturnType<typeof readDesignSites> }>();
+
 /**
  * The site a board belongs to and the user's other recent sites, for the design guide: one site
- * stays consistent, different sites stay different.
+ * stays consistent, different sites stay different. An AI editor asks for it on most screens it
+ * draws (get_design_guide, search_images), so a reading is reused for SITES_FRESH_MS.
  */
-export async function designSites(userId: string, boardIdParam: string) {
+export function designSites(userId: string, boardIdParam: string) {
+  const key = `${userId}:${boardIdParam}`;
+  const cached = sitesCache.get(key);
+  if (cached && Date.now() - cached.at < SITES_FRESH_MS) return cached.sites;
+  sitesCache.delete(key);
+  const sites = readDesignSites(userId, boardIdParam);
+  sitesCache.set(key, { at: Date.now(), sites });
+  // A failed reading (no access, a database error) isn't kept.
+  sites.catch(() => {
+    if (sitesCache.get(key)?.sites === sites) sitesCache.delete(key);
+  });
+  for (const [old, entry] of sitesCache) {
+    if (sitesCache.size <= SITES_CACHE_MAX && Date.now() - entry.at < SITES_FRESH_MS) break;
+    sitesCache.delete(old);
+  }
+  return sites;
+}
+
+async function readDesignSites(userId: string, boardIdParam: string) {
   const boardId = uuidParam(boardIdParam);
   const siteBoard = { id: true, name: true, projectId: true } as const;
   const projectInfo = { select: { name: true, theme: true } } as const;

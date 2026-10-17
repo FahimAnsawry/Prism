@@ -2,8 +2,8 @@ import type { BoardSummary, ProjectSummary, Workspace } from "@prism/shared";
 
 export type WorkspaceItem =
   | ({ kind: "project" } & ProjectSummary)
-  /** `projectName` is set when the board lives inside a project. */
-  | ({ kind: "board"; projectName?: string } & BoardSummary);
+  /** `projectName` is set when the board lives inside a project on the dashboard. */
+  | ({ kind: "board"; projectName?: string } & Omit<BoardSummary, "projectName">);
 
 export type BoardItem = Extract<WorkspaceItem, { kind: "board" }>;
 export type ProjectItem = Extract<WorkspaceItem, { kind: "project" }>;
@@ -57,25 +57,6 @@ export const SORT_OPTIONS: { id: SortKey; label: string }[] = [
   { id: "created", label: "Date created" },
   { id: "name", label: "Name" },
 ];
-
-/**
- * What each filter lists. "All" is the top level: projects and the boards outside them.
- * "Whiteboards" is every board, so boards past a project card's three tiles stay reachable.
- */
-export function itemsFor(workspace: Workspace, filter: Filter): WorkspaceItem[] {
-  const projects = workspace.projects.map((p) => ({ kind: "project" as const, ...p }));
-  if (filter === "project") return projects;
-
-  const projectNames = new Map(workspace.projects.map((p) => [p.id, p.name]));
-  const boards = workspace.boards
-    .filter((b) => filter === "board" || b.projectId === null)
-    .map((b) => ({
-      kind: "board" as const,
-      ...b,
-      projectName: (b.projectId && projectNames.get(b.projectId)) || undefined,
-    }));
-  return filter === "board" ? boards : [...projects, ...boards];
-}
 
 /**
  * What others shared with the user, under the same filters: shared projects, and shared boards

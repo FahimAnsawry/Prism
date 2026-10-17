@@ -5,7 +5,7 @@ import {
   createRootRouteWithContext,
   useRouterState,
 } from "@tanstack/react-router";
-import { AiBoardFollower } from "@/components/ai-board-follower";
+import { lazy, Suspense } from "react";
 import { ErrorPage } from "@/components/feedback/error-page";
 import { NotFoundPage } from "@/components/feedback/not-found-page";
 
@@ -21,6 +21,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFoundPage,
 });
 
+// Loaded with the first page that follows: it brings socket.io-client, which the landing page,
+// sign-in and docs don't need.
+const AiBoardFollower = lazy(() =>
+  import("@/components/ai-board-follower").then((m) => ({ default: m.AiBoardFollower })),
+);
+
 /** Signed-in pages, where the tab follows boards an AI editor opens (signed-out sockets are refused). */
 const FOLLOWING_ROUTES = new Set<string>(["/dashboard", "/board/$boardId"]);
 
@@ -32,7 +38,11 @@ function RootLayout() {
     <>
       <HeadContent />
       <Outlet />
-      {following && <AiBoardFollower />}
+      {following && (
+        <Suspense fallback={null}>
+          <AiBoardFollower />
+        </Suspense>
+      )}
     </>
   );
 }

@@ -12,7 +12,7 @@ import {
   latestSelection,
 } from "./realtime.js";
 import { accessibleBoardWhere, boardFor } from "./routes/board-access.js";
-import { applyOps, toElement } from "./routes/elements.js";
+import { applyOps, elementsReplyBody, toElement } from "./routes/elements.js";
 import { putObject } from "./storage.js";
 import { sanitizeSvg, svgSize, unsafeSvgParts } from "./svg-sanitize.js";
 
@@ -49,13 +49,13 @@ export const toEditRequest = (row: EditRow): EditRequest => ({
   updatedAt: row.updatedAt.toISOString(),
 });
 
-/** The board's live elements, bottom layer first. */
-export async function loadElements(boardId: string): Promise<BoardElement[]> {
-  const rows = await prisma.element.findMany({
-    where: { boardId, deletedAt: null },
-    orderBy: { z: "asc" },
-  });
-  return rows.map(toElement);
+/**
+ * The board's live elements, bottom layer first. `board` comes from boardFor: its `editedAt`, read
+ * before the elements, lets the elements route's remembered reply answer (elementsReplyBody).
+ */
+export async function loadElements(board: { id: string; editedAt: Date }): Promise<BoardElement[]> {
+  const body = await elementsReplyBody(board.id, board.editedAt.getTime());
+  return (JSON.parse(body) as { elements: BoardElement[] }).elements;
 }
 
 /** The live elements with these ids, bottom layer first. */
@@ -275,23 +275,25 @@ async function claimRequests(userId: string, boardId: string | undefined): Promi
     select: { ...editSelect, claimedAt: true, board: { select: { name: true } } },
   });
 
-  const claimed: PendingEdit[] = [];
-  for (const { board, claimedAt, ...row } of rows) {
-    // Another waiting editor may take the same request first; whoever updates it gets it.
-    const { count } = await prisma.editRequest.updateMany({
-      where: { id: row.id, status: row.status, claimedAt },
-      data: { status: "working", claimedAt: new Date() },
-    });
-    if (count === 0) continue;
-    const request = toEditRequest({ ...row, status: "working", updatedAt: new Date() });
-    broadcastEdit(request);
-    claimed.push({
-      ...request,
-      boardName: board.name,
-      elements: await elementsByIds(row.boardId, row.elementIds),
-    });
-  }
-  return claimed;
+  // Each request is claimed on its own, all at once; the list stays oldest first.
+  const claimed = await Promise.all(
+    rows.map(async ({ board, claimedAt, ...row }): Promise<PendingEdit | null> => {
+      // Another waiting editor may take the same request first; whoever updates it gets it.
+      const { count } = await prisma.editRequest.updateMany({
+        where: { id: row.id, status: row.status, claimedAt },
+        data: { status: "working", claimedAt: new Date() },
+      });
+      if (count === 0) return null;
+      const request = toEditRequest({ ...row, status: "working", updatedAt: new Date() });
+      broadcastEdit(request);
+      return {
+        ...request,
+        boardName: board.name,
+        elements: await elementsByIds(row.boardId, row.elementIds),
+      };
+    }),
+  );
+  return claimed.filter((request) => request !== null);
 }
 
 /**

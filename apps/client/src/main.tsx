@@ -53,6 +53,23 @@ declare module "@tanstack/react-router" {
  */
 const SPLASH_PATH = /^\/(about\/?)?$/;
 
+/** The longest the startup cover waits for the first page. */
+const FIRST_PAGE_MAX_MS = 10_000;
+
+/**
+ * Settles once the router has resolved the first page (after its session check, loader and
+ * code, and any redirect). Until then the router draws nothing for up to `defaultPendingMs`,
+ * so app pages keep the startup cover up until this.
+ */
+const firstPageReady = new Promise<void>((resolve) => {
+  const unsubscribe = router.subscribe("onResolved", () => {
+    unsubscribe();
+    resolve();
+  });
+  // Never left covering the app, whatever happens to that load.
+  setTimeout(resolve, FIRST_PAGE_MAX_MS);
+});
+
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing #root element in index.html");
 
@@ -72,7 +89,10 @@ createRoot(rootElement, {
             <RouterProvider router={router} />
           </Suspense>
           {/* Only the landing page opens behind the loader. */}
-          <AppSplash skip={!SPLASH_PATH.test(router.state.location.pathname)} />
+          <AppSplash
+            skip={!SPLASH_PATH.test(router.state.location.pathname)}
+            ready={firstPageReady}
+          />
         </QueryClientProvider>
       </ThemeProvider>
     </AppErrorBoundary>

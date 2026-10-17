@@ -71,7 +71,7 @@ export function TableSwitcher({
                 className="w-80 max-w-[var(--available-width)] origin-[var(--transform-origin)] border border-input bg-popover shadow-lg"
                 render={<motion.div {...popupMotion} onAnimationComplete={onExitComplete} />}
               >
-                <div className="flex items-center gap-2 border-b border-divider px-3">
+                <div className="flex items-center gap-2 border-b border-divider px-3 focus-within:border-foreground">
                   <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
                   <Combobox.Input
                     // Opened by a key, nothing else moves focus into the popup: the box takes it as

@@ -499,7 +499,7 @@ function PropertiesPanelView({
                   onChange={(option) => onChange({ shadow: SHADOW_PRESETS[option] })}
                 />
                 {Array.isArray(shadowEl.shadow) && (
-                  <p className="mt-2 font-mono text-3xs text-muted-foreground">
+                  <p className="mt-2 font-mono text-2xs text-muted-foreground">
                     Custom ({shadowEl.shadow.length}{" "}
                     {shadowEl.shadow.length === 1 ? "layer" : "layers"}). Pick a size to replace it.
                   </p>
@@ -711,7 +711,7 @@ function PropertiesPanelView({
 
       <section className="flex flex-col px-4 pt-4.5 pb-5">
         <label className="flex flex-col">
-          <span className="mb-4 flex justify-between font-mono text-3xs leading-[14px] text-muted-foreground">
+          <span className="mb-4 flex justify-between font-mono text-2xs leading-[14px] text-muted-foreground">
             OPACITY
             <span className="text-2xs text-foreground tabular-nums">
               {Math.round(first.opacity * 100)}%
@@ -1079,9 +1079,12 @@ function ColorChoices({
               aria-label={`Remove saved color ${color}`}
               title="Remove from this board"
               onClick={() => onRemove(color)}
-              className="absolute -top-1.5 -right-1.5 hidden size-3.5 items-center justify-center rounded-full border border-divider bg-card text-foreground group-focus-within:flex group-hover:flex hover:text-ink"
+              className="absolute -top-[11px] -right-[11px] hidden size-6 items-center justify-center text-foreground group-focus-within:flex group-hover:flex hover:text-ink"
             >
-              <X aria-hidden="true" className="size-2.5" />
+              {/* The button is a 24px target around the small circle. */}
+              <span className="flex size-3.5 items-center justify-center rounded-full border border-divider bg-card">
+                <X aria-hidden="true" className="size-2.5" />
+              </span>
             </button>
           </span>
         ))}

@@ -47,11 +47,16 @@ export function useRevokeApiToken() {
 
 const editsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}/edits`;
 
-/** The board's recent edit requests, newest first. Kept current by the board's socket. */
+/**
+ * The board's recent edit requests, newest first. Kept current by the board's socket, so it's
+ * never refetched on its own: the board's loader fetches it fresh, and a reconnect refetches it.
+ */
 export const boardEditsQuery = (boardId: string) =>
   queryOptions({
     queryKey: ["board-edits", boardId],
     queryFn: () => apiFetch(editsPath(boardId), editRequestsSchema).then((data) => data.requests),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 
 /** Puts a created or changed request into the cached list (newest first). */

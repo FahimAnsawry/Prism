@@ -15,6 +15,7 @@ import { ItemDialog, type ItemDialogTarget } from "./item-dialog";
 import { ProjectIcon } from "./new-menu";
 import { CanvasPreview, ItemDate } from "./workspace-item-parts";
 import { itemMeta, plural, sharedLabel, type SortKey, type WorkspaceItem } from "./workspace-data";
+import { BOARD_PRELOAD_DELAY } from "@/lib/workspace";
 
 /** Shows on row hover or keyboard focus; always on touch screens. */
 const revealOnHover =
@@ -149,6 +150,7 @@ export function ProjectDialog({
                           <Link
                             to="/board/$boardId"
                             params={{ boardId: board.id }}
+                            preloadDelay={BOARD_PRELOAD_DELAY}
                             className="-ml-2 flex min-w-0 flex-1 items-center gap-4 py-3 pr-2 pl-2 transition-colors duration-150 ease-standard hover:bg-hover focus-visible:-outline-offset-2"
                           >
                             {board.kind === "board" ? (

@@ -1,9 +1,9 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { DocArticle } from "@/components/docs/doc-article";
-import { findPage } from "@/components/docs/docs-pages";
 
 export const Route = createFileRoute("/docs/$")({
-  loader: ({ params }) => {
+  loader: async ({ params }) => {
+    const { findPage } = await import("@/components/docs/docs-pages");
     const page = findPage(params._splat ?? "");
     if (!page) throw notFound();
     return { page };

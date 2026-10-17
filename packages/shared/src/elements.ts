@@ -369,6 +369,24 @@ export const saveElementsSchema = z.object({ ops: z.array(elementOpSchema).min(1
 
 export const boardElementsSchema = z.object({ elements: z.array(boardElementSchema) });
 
+/**
+ * Header on a board's elements reply: the board's `editedAt` (ms since 1970) the elements were
+ * read at. A tab that missed live updates asks for what changed since then (`?since=`).
+ */
+export const EDITED_AT_HEADER = "x-prism-edited-at";
+
+/**
+ * Reply to `?since=<editedAt>`: the elements changed since then, live ones whole and deleted ones
+ * by id and version, and the `editedAt` to ask from next time. `full` means the server couldn't
+ * tell what changed (`since` is too old) and `elements` is every live element instead.
+ */
+export interface ElementChangesReply {
+  full: boolean;
+  editedAt: number;
+  elements: BoardElement[];
+  deleted: { id: string; version: number }[];
+}
+
 /** Reply to a save: how many ops were applied and the ids whose op lost to a newer version. */
 export const saveElementsResultSchema = z.object({
   applied: z.number().int(),

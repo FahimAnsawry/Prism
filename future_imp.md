@@ -18,12 +18,12 @@ Read `tools.md` first: this file adds to it and follows the same rules (§8, no 
 
 Follow **Miro's approach** (HTML for screens, native board items, Mermaid for diagrams), not MagicPath's (live code components on the canvas).
 
-| | MagicPath approach | Miro approach (chosen) |
-|---|---|---|
+|                            | MagicPath approach                                  | Miro approach (chosen)                             |
+| -------------------------- | --------------------------------------------------- | -------------------------------------------------- |
 | New screen from references | Live React components; changed only by re-prompting | Static HTML converted into editable Prism elements |
-| User flows and ER diagrams | Not its focus | Mermaid `flowchart` and `erDiagram` |
-| Security | Runs generated code in the browser | Static HTML, scripts stripped, nothing runs |
-| Fits the SVG engine | No, needs a live iframe layer | Yes, everything ends up as normal elements |
+| User flows and ER diagrams | Not its focus                                       | Mermaid `flowchart` and `erDiagram`                |
+| Security                   | Runs generated code in the browser                  | Static HTML, scripts stripped, nothing runs        |
+| Fits the SVG engine        | No, needs a live iframe layer                       | Yes, everything ends up as normal elements         |
 
 **Key rules:**
 
@@ -47,13 +47,13 @@ Follow **Miro's approach** (HTML for screens, native board items, Mermaid for di
 
 The foundation. Every later phase is an MCP tool on top of it.
 
-| Item | Details |
-|------|---------|
-| Package | New workspace package `packages/mcp` using `@modelcontextprotocol/sdk` |
+| Item       | Details                                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package    | New workspace package `packages/mcp` using `@modelcontextprotocol/sdk`                                                                                      |
 | Connection | Connects to the server with `socket.io-client` and sends normal `element:create/update/delete` events `{id, version, changes}` with `updatedBy: "ai_agent"` |
-| Auth | A personal API token per user; the bridge can only access that user's boards |
-| Tools | `list_boards`, `open_board`, `get_board`, `create_elements`, `update_elements`, `delete_elements`, `get_selection` |
-| Undo | One Claude command = one undo step (tools.md §2) |
+| Auth       | A personal API token per user; the bridge can only access that user's boards                                                                                |
+| Tools      | `list_boards`, `open_board`, `get_board`, `create_elements`, `update_elements`, `delete_elements`, `get_selection`                                          |
+| Undo       | One Claude command = one undo step (tools.md §2)                                                                                                            |
 
 **Done when:** Claude Code draws a rectangle on an open board and it appears live in the browser.
 
@@ -61,12 +61,12 @@ The foundation. Every later phase is an MCP tool on top of it.
 
 ## Phase 2: Mobbin references on the board
 
-| Item | Details |
-|------|---------|
-| MCP tool | `add_image({ boardId, frameId, url })` |
-| Server | Downloads the image into S3 storage (`apps/server/src/storage.ts`) and creates an `image` element |
-| Flow | Claude searches with the Mobbin MCP (`search_screens`, `search_flows`), places 3 screens in a "References" frame and writes its analysis as sticky notes next to each one ("Ref A: big balance card") |
-| Licensing | Keep Mobbin screenshots private, as inspiration only. Check Mobbin's terms. Never include them in shipped output |
+| Item      | Details                                                                                                                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP tool  | `add_image({ boardId, frameId, url })`                                                                                                                                                                |
+| Server    | Downloads the image into S3 storage (`apps/server/src/storage.ts`) and creates an `image` element                                                                                                     |
+| Flow      | Claude searches with the Mobbin MCP (`search_screens`, `search_flows`), places 3 screens in a "References" frame and writes its analysis as sticky notes next to each one ("Ref A: big balance card") |
+| Licensing | Keep Mobbin screenshots private, as inspiration only. Check Mobbin's terms. Never include them in shipped output                                                                                      |
 
 **Done when:** "Get 3 banking home screens from Mobbin" fills a frame on the board.
 
@@ -74,17 +74,17 @@ The foundation. Every later phase is an MCP tool on top of it.
 
 ## Phase 3: HTML → editable screen (core feature)
 
-| Item | Details |
-|------|---------|
-| MCP tool | `create_screen({ frameId, device: "mobile" \| "tablet" \| "desktop", html })` |
-| Input | Static HTML + inline CSS. No scripts and no event handlers. Interactivity is limited to CSS `:hover`/`:focus` |
-| Sanitize | Strip `<script>`, `on*` attributes and external resources except images (same approach as `svg-sanitize.ts`) |
-| Render | In the browser, load the HTML into a hidden `<iframe sandbox="allow-same-origin">` (no `allow-scripts`, so nothing can run, but Prism can still read its layout) at the device width |
-| Convert | Walk the DOM and read `getBoundingClientRect()` + `getComputedStyle()` for each node |
-| Mapping | Box with background or border → `rect` (radius, fill, stroke) · text → `text` (font, size, weight, color) · `<img>` → `image` · inline `<svg>` → `svg` |
-| Semantics | Set `role` from the tag or `data-role` (`button`, `input`, `nav`, `card`, …) and group the screen inside the frame |
-| Look | A **clean render mode** (`sketch: false`) plus **shadow** support so screens look like real UI |
-| Fonts | Map CSS `font-family` to the fonts Prism already ships (Inter, Roboto, Poppins, …) |
+| Item      | Details                                                                                                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| MCP tool  | `create_screen({ frameId, device: "mobile" \| "tablet" \| "desktop", html })`                                                                                                        |
+| Input     | Static HTML + inline CSS. No scripts and no event handlers. Interactivity is limited to CSS `:hover`/`:focus`                                                                        |
+| Sanitize  | Strip `<script>`, `on*` attributes and external resources except images (same approach as `svg-sanitize.ts`)                                                                         |
+| Render    | In the browser, load the HTML into a hidden `<iframe sandbox="allow-same-origin">` (no `allow-scripts`, so nothing can run, but Prism can still read its layout) at the device width |
+| Convert   | Walk the DOM and read `getBoundingClientRect()` + `getComputedStyle()` for each node                                                                                                 |
+| Mapping   | Box with background or border → `rect` (radius, fill, stroke) · text → `text` (font, size, weight, color) · `<img>` → `image` · inline `<svg>` → `svg`                               |
+| Semantics | Set `role` from the tag or `data-role` (`button`, `input`, `nav`, `card`, …) and group the screen inside the frame                                                                   |
+| Look      | A **clean render mode** (`sketch: false`) plus **shadow** support so screens look like real UI                                                                                       |
+| Fonts     | Map CSS `font-family` to the fonts Prism already ships (Inter, Roboto, Poppins, …)                                                                                                   |
 
 **v1 scope:** boxes, text, images and icons. **v2:** gradients, shadows, per-corner radius.
 
@@ -94,14 +94,14 @@ The foundation. Every later phase is an MCP tool on top of it.
 
 ## Phase 4: User flows and ER diagrams (Mermaid)
 
-| Item | Details |
-|------|---------|
-| MCP tool | `create_diagram({ frameId, mermaid })` |
-| Parser | A hand-written parser for a small Mermaid subset. `flowchart`: nodes, edges, edge labels, decision (diamond) shapes. `erDiagram`: tables, columns, PK/FK, relationships |
-| New element | `table`: a name plus rows of `{name, type, pk, fk, nullable}` for ER entities |
-| Relations | Arrows bound to tables (existing `startBinding`/`endBinding`) with cardinality markers (one, many, crow's foot) |
-| Layout | A simple hand-written layered layout, or allow `dagre` as a **layout-only** dependency (add it to tools.md §8 if chosen) |
-| Bonus | `import_prisma_schema` draws `apps/server/prisma/schema.prisma` as an ER diagram; `export_prisma_schema` turns a diagram back into a schema |
+| Item        | Details                                                                                                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP tool    | `create_diagram({ frameId, mermaid })`                                                                                                                                  |
+| Parser      | A hand-written parser for a small Mermaid subset. `flowchart`: nodes, edges, edge labels, decision (diamond) shapes. `erDiagram`: tables, columns, PK/FK, relationships |
+| New element | `table`: a name plus rows of `{name, type, pk, fk, nullable}` for ER entities                                                                                           |
+| Relations   | Arrows bound to tables (existing `startBinding`/`endBinding`) with cardinality markers (one, many, crow's foot)                                                         |
+| Layout      | A simple hand-written layered layout, or allow `dagre` as a **layout-only** dependency (add it to tools.md §8 if chosen)                                                |
+| Bonus       | `import_prisma_schema` draws `apps/server/prisma/schema.prisma` as an ER diagram; `export_prisma_schema` turns a diagram back into a schema                             |
 
 **Done when:** Claude draws a login flow and the database tables for it from Mermaid code.
 
@@ -109,11 +109,11 @@ The foundation. Every later phase is an MCP tool on top of it.
 
 ## Phase 5: Read-back and export
 
-| Item | Details |
-|------|---------|
-| `get_board` | Returns screens as HTML and diagrams as Mermaid, with element ids |
-| `export_image` | PNG of a frame, the selection or given ids, so Claude can compare its result with the references |
-| `export_reference` | Writes the spec folder below |
+| Item               | Details                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
+| `get_board`        | Returns screens as HTML and diagrams as Mermaid, with element ids                                |
+| `export_image`     | PNG of a frame, the selection or given ids, so Claude can compare its result with the references |
+| `export_reference` | Writes the spec folder below                                                                     |
 
 ```
 .prism/specs/<board>/
@@ -130,13 +130,13 @@ The foundation. Every later phase is an MCP tool on top of it.
 
 ## Order and effort
 
-| Phase | Effort | Value |
-|-------|--------|-------|
-| 1. MCP bridge | Medium | Everything depends on it |
-| 2. Mobbin images | Small | Quick win |
-| 3. HTML → elements | **Large** | Core of the product |
+| Phase                 | Effort       | Value                                 |
+| --------------------- | ------------ | ------------------------------------- |
+| 1. MCP bridge         | Medium       | Everything depends on it              |
+| 2. Mobbin images      | Small        | Quick win                             |
+| 3. HTML → elements    | **Large**    | Core of the product                   |
 | 4. Mermaid flows + ER | Medium-large | Covers user flows and database design |
-| 5. Read-back + export | Medium | Closes the loop with Claude Code |
+| 5. Read-back + export | Medium       | Closes the loop with Claude Code      |
 
 ---
 

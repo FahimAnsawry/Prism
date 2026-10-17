@@ -14,7 +14,7 @@ import { isTyping } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { BoardCanvas } from "./board-canvas";
 import { type BoardAction, boardReducer, initialBoardState } from "./board-model";
-import { reportCursor, useBoardRealtime, useBoardSaver } from "./board-sync";
+import { type CatchUpSource, reportCursor, useBoardRealtime, useBoardSaver } from "./board-sync";
 import { type Camera, fitCamera, inView, stepZoom, zoomAt } from "./camera";
 import { ErFocusDialog } from "./er-focus-dialog";
 import { ExportMenu } from "./export-menu";
@@ -41,7 +41,8 @@ export function BoardViewer({
   boardId,
   initial,
   shareToken,
-  fetchElements,
+  initialEditedAt,
+  catchUpSource,
   title,
   context,
   leading,
@@ -53,8 +54,10 @@ export function BoardViewer({
   initial: BoardElement[];
   /** Joins through this public link instead of as the signed-in user. */
   shareToken?: string;
-  /** The board's elements as the server has them now, to catch up after reconnecting. */
-  fetchElements: () => Promise<BoardElement[]>;
+  /** The board's `editedAt` (ms) when `initial` was read. */
+  initialEditedAt: number | null;
+  /** Where to catch up from after (re)joining. */
+  catchUpSource: CatchUpSource;
   title: string;
   /** A line above the title (the project, who shared it). */
   context?: ReactNode;
@@ -76,7 +79,10 @@ export function BoardViewer({
   const [grid, setGrid] = useState(true);
   const viewport = useRef<HTMLElement>(null);
   const size = useElementSize(viewport);
-  const { receive, resync } = useBoardSaver(boardId, initial, state.elements, { readOnly: true });
+  const { receive, catchUp } = useBoardSaver(boardId, initial, state.elements, {
+    readOnly: true,
+    editedAt: initialEditedAt,
+  });
 
   const chosenTableId = state.selectedIds.length === 1 ? (state.selectedIds[0] ?? null) : null;
   const selectedTable = chosenTableId
@@ -129,10 +135,9 @@ export function BoardViewer({
     boardId,
     {
       onOps: applyRemote,
-      onJoined: () => {
-        fetchElements().then(
-          (server) => {
-            const fresh = resync(server);
+      onJoined: (editedAt) => {
+        catchUp(catchUpSource, editedAt).then(
+          (fresh) => {
             if (fresh.length > 0) rawDispatch({ type: "remote", ops: fresh });
           },
           (error: unknown) => console.warn("[Prism] Couldn't catch up with the board:", error),

@@ -26,32 +26,12 @@ export function CanvasPreview({
       )}
     >
       {empty && (
-        <span className="border border-divider bg-card px-2 py-0.5 font-mono text-3xs text-muted-foreground">
+        <span className="border border-divider bg-card px-2 py-0.5 font-mono text-2xs text-muted-foreground">
           EMPTY
         </span>
       )}
       {children}
     </div>
-  );
-}
-
-export function KindBadge({
-  kind,
-  className,
-}: {
-  kind: WorkspaceItem["kind"];
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex h-5 shrink-0 items-center px-[15px] font-mono text-3xs leading-none font-bold text-slate",
-        kind === "project" ? "bg-lime" : "bg-ice",
-        className,
-      )}
-    >
-      {kind === "project" ? "PROJECT" : "BOARD"}
-    </span>
   );
 }
 

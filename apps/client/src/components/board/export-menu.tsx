@@ -236,7 +236,7 @@ export function ExportMenu({
                       <Icon aria-hidden="true" className="size-3.5" />
                       <span className="min-w-0">
                         <span className="block leading-4 font-medium">{label}</span>
-                        <span className="block truncate text-3xs leading-4 text-muted-foreground">
+                        <span className="block truncate text-2xs leading-4 text-muted-foreground">
                           {hint(scale)}
                         </span>
                       </span>

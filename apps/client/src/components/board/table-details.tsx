@@ -80,7 +80,7 @@ export function TableDetails({
           type="button"
           onClick={() => onSelect([item.arrow.id])}
           title="Select this relation"
-          className="block max-w-full truncate text-left font-mono text-3xs text-muted-foreground hover:text-ink"
+          className="block max-w-full truncate text-left font-mono text-2xs text-muted-foreground hover:text-ink"
         >
           {/* Read from this table, like the pill: its column first, the arrow pointing the way
               the foreign key points (User: "id ← Account.userId", Account: "userId → User.id"). */}
@@ -111,7 +111,7 @@ export function TableDetails({
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-ink">{table.table?.name}</p>
-          <p className="font-mono text-3xs text-muted-foreground">
+          <p className="font-mono text-2xs text-muted-foreground">
             {columns} {columns === 1 ? "column" : "columns"} ·{" "}
             {references.length + referencedBy.length}{" "}
             {references.length + referencedBy.length === 1 ? "relation" : "relations"}

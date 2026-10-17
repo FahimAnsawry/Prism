@@ -18,7 +18,9 @@
 @import "@fontsource-variable/anybody"; /* display headings (h1, h2) */
 @import "@fontsource/space-mono/400.css"; /* labels, eyebrows, code */
 @import "@fontsource/space-mono/700.css";
-@import "@fontsource/nanum-pen-script"; /* handwritten annotations */
+/* Handwritten annotations: Latin only here. The board needs every script, so board-fonts.css
+   imports the full set, whose later faces take over on the board's pages. */
+@import "@fontsource/nanum-pen-script/latin-400.css";
 @import "@fontsource/caveat"; /* the board's handwriting font (Handwriting tool) */
 
 /* A `.light` subtree stays light on a dark page (dashboard preview pictures are drawn in both). */
@@ -421,6 +423,7 @@
   --accent: color-mix(in oklab, var(--color-brand) 20%, transparent); /* row hover tint */
   --accent-foreground: var(--color-slate);
   --destructive: var(--color-danger);
+  --brand-ink: #0e7348; /* brand green as text and icons (5.7:1 on --background); the fill is too light */
   --border: var(--color-rule);
   --input: var(--color-edge);
   --ring: var(--color-slate); /* inferred: the site's ring color is undefined */
@@ -478,6 +481,7 @@
   --accent: color-mix(in oklab, var(--color-brand) 14%, transparent);
   --accent-foreground: #ecebf0;
   --destructive: var(--color-bloom); /* danger red is too dark to read on night surfaces */
+  --brand-ink: var(--color-brand);
   --border: rgb(236 235 240 / 0.16);
   --input: #7c7a89;
   --ring: #ecebf0;
@@ -521,6 +525,7 @@
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-hover: var(--hover);
+  --color-brand-ink: var(--brand-ink);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);

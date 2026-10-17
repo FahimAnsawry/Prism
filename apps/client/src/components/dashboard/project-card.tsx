@@ -4,6 +4,7 @@ import { BoardPreview } from "./board-preview";
 import { ProjectLogo, RoleBadge } from "./dashboard-parts";
 import { ItemActionsMenu, type ItemAction } from "./item-actions-menu";
 import { exactTime, plural, timeAgo, type ProjectItem, type WorkspaceItem } from "./workspace-data";
+import { BOARD_PRELOAD_DELAY } from "@/lib/workspace";
 
 type OnAction = (action: ItemAction, item: WorkspaceItem) => void;
 
@@ -65,7 +66,7 @@ export function ProjectCard({ project, onAction }: { project: ProjectItem; onAct
               className="flex items-center justify-center border border-divider bg-card text-muted-foreground"
             >
               {i === 0 && shown.length === 0 ? (
-                <span className="font-mono text-3xs">NO BOARDS YET</span>
+                <span className="font-mono text-2xs">NO BOARDS YET</span>
               ) : (
                 i === 0 && <Plus className="size-4" />
               )}
@@ -182,7 +183,12 @@ export function ProjectRow({
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {shown.map((board) => (
           <li key={board.id} className="min-w-0">
-            <Link to="/board/$boardId" params={{ boardId: board.id }} className="group/tile block">
+            <Link
+              to="/board/$boardId"
+              params={{ boardId: board.id }}
+              preloadDelay={BOARD_PRELOAD_DELAY}
+              className="group/tile block"
+            >
               <BoardPreview
                 boardId={board.id}
                 name={board.name}

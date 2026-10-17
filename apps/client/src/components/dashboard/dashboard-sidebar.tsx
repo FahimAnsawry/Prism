@@ -331,11 +331,11 @@ function EditorsCard({ onConnectAi, collapsed }: { onConnectAi: () => void; coll
             </li>
           ))}
           {tools.length > 4 && (
-            <li className="font-mono text-3xs text-muted-foreground">+{tools.length - 4} more</li>
+            <li className="font-mono text-2xs text-muted-foreground">+{tools.length - 4} more</li>
           )}
         </ul>
       ) : (
-        <span className="mt-1 block font-mono text-3xs text-muted-foreground">
+        <span className="mt-1 block font-mono text-2xs text-muted-foreground">
           Claude Code, Codex or any MCP client
         </span>
       )}

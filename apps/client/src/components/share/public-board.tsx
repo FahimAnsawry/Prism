@@ -11,7 +11,7 @@ import { ErrorScreen } from "@/components/feedback/error-page";
 import { PrismLoader } from "@/components/feedback/prism-loader";
 import { StatusScreen } from "@/components/feedback/status-screen";
 import { ApiError } from "@/lib/api";
-import { fetchPublicBoardElements, publicBoardQuery } from "@/lib/sharing";
+import { publicBoardQuery, publicCatchUpSource } from "@/lib/sharing";
 
 /** A public link that no longer opens anything (turned off, replaced, or the item is gone). */
 export function LinkGoneScreen() {
@@ -105,8 +105,9 @@ export function PublicBoard({
       key={boardId}
       boardId={boardId}
       initial={data.data.elements}
+      initialEditedAt={Date.parse(board.editedAt)}
       shareToken={token}
-      fetchElements={() => fetchPublicBoardElements(token, boardId)}
+      catchUpSource={publicCatchUpSource(token, boardId)}
       title={board.name}
       context={context || undefined}
       leading={leadingBack}

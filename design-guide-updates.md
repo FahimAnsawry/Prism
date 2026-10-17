@@ -24,24 +24,24 @@ I read every page of both and compared each rule against the current guide. The 
 
 ## 1. Already covered (no change)
 
-| Book rule | Source | Guide today |
-| --- | --- | --- |
-| Spacing on a 4-based scale, no odd values like 19 or 31 | PB p.27–28, EUI p.82–83 | §4 spacing scale, "Nothing in between" |
-| Body text 16px, nothing below 12px | PB p.89, EUI p.64 | §2 table, "Never below 12px" |
-| Contrast 4.5:1 for body text | PB p.20, 92; EUI p.43, 271 | §3 WCAG AA line |
-| One font, or two at most | PB p.74–75, EUI p.306, 380 | §1 Type, §2 Fonts |
-| 45–75 characters per line on desktop | PB p.75–79 | §2 paragraphs 520-640px |
-| Tighter line height for headings, looser for body | PB p.90–91, EUI p.62–63 | §2 table (1.05 hero … 1.5 body) |
-| Negative letter spacing on large type | EUI p.60–61 | §2 letter spacing |
-| Start with too much whitespace, then reduce | PB p.25–26, EUI p.81 | §4 "Leave air" |
-| Soft shadows with a y offset; no harsh shadows | PB p.51, EUI p.90–91 | §4 cards, Refuse list (hard offset shadows) |
-| Shadow **or** border, not both | EUI p.91 | §4 cards "never both" |
-| Siblings share size, radius and treatment | PB p.37–43 | §4 siblings, `uneven-siblings` lint |
-| Status colors only for their meaning | PB p.70, EUI p.94, 150 | §3 meaning colors |
-| Glass only where text sits on a busy image | PB p.62–64 | §6 backdropBlur rule |
-| No lorem ipsum, realistic data | EUI p.65 | §5 App 4 |
-| Right-aligned numbers, muted table header | EUI p.168, 173 | §5 App 3 |
-| Empty, loading and error states as frames | PB p.135–139 | §5 App 5 (structure only; see 2.5 for content) |
+| Book rule                                               | Source                     | Guide today                                    |
+| ------------------------------------------------------- | -------------------------- | ---------------------------------------------- |
+| Spacing on a 4-based scale, no odd values like 19 or 31 | PB p.27–28, EUI p.82–83    | §4 spacing scale, "Nothing in between"         |
+| Body text 16px, nothing below 12px                      | PB p.89, EUI p.64          | §2 table, "Never below 12px"                   |
+| Contrast 4.5:1 for body text                            | PB p.20, 92; EUI p.43, 271 | §3 WCAG AA line                                |
+| One font, or two at most                                | PB p.74–75, EUI p.306, 380 | §1 Type, §2 Fonts                              |
+| 45–75 characters per line on desktop                    | PB p.75–79                 | §2 paragraphs 520-640px                        |
+| Tighter line height for headings, looser for body       | PB p.90–91, EUI p.62–63    | §2 table (1.05 hero … 1.5 body)                |
+| Negative letter spacing on large type                   | EUI p.60–61                | §2 letter spacing                              |
+| Start with too much whitespace, then reduce             | PB p.25–26, EUI p.81       | §4 "Leave air"                                 |
+| Soft shadows with a y offset; no harsh shadows          | PB p.51, EUI p.90–91       | §4 cards, Refuse list (hard offset shadows)    |
+| Shadow **or** border, not both                          | EUI p.91                   | §4 cards "never both"                          |
+| Siblings share size, radius and treatment               | PB p.37–43                 | §4 siblings, `uneven-siblings` lint            |
+| Status colors only for their meaning                    | PB p.70, EUI p.94, 150     | §3 meaning colors                              |
+| Glass only where text sits on a busy image              | PB p.62–64                 | §6 backdropBlur rule                           |
+| No lorem ipsum, realistic data                          | EUI p.65                   | §5 App 4                                       |
+| Right-aligned numbers, muted table header               | EUI p.168, 173             | §5 App 3                                       |
+| Empty, loading and error states as frames               | PB p.135–139               | §5 App 5 (structure only; see 2.5 for content) |
 
 ---
 
@@ -204,11 +204,11 @@ Then the hierarchy check: name the five things on the screen in order of importa
 
 Three pieces of book advice stay out of the guide. Recording them so nobody "fixes" the guide back toward them. The first two are fine advice in general, but they produce the generic page the guide exists to prevent. The third doesn't fit how Prism boards are used.
 
-| Book advice | Source | Why it stays out |
-| --- | --- | --- |
-| Font shortlists: Inter, Roboto, Open Sans, Lato, Manrope, Gotham; pairs Montserrat + Open Sans, Raleway + Merriweather, Playfair + Roboto | PB p.74–75, 96; EUI p.48 | **Against the guide's purpose.** §2 names these as the faces every AI-made page uses. They're fine as an app shell's workhorse sans, and wrong as a landing page's voice. |
-| Category to typeface or color (serif for law, script for beauty, blue = trust, black = luxury, green = calm) | PB p.71–72; EUI p.38–39, 261 | **Against the guide's purpose.** This is the "category default" §1 asks editors to name and avoid. Directions come from the product's materials, not from a psychology chart. |
-| Lorem ipsum and gray boxes in wireframes | EUI p.352 | **Prism-specific.** Prism boards get coded into pages (`build_pages`), so placeholder copy leaks into code. The guide's "realistic data everywhere" and the `missing-imagery` lint stay. |
+| Book advice                                                                                                                               | Source                       | Why it stays out                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Font shortlists: Inter, Roboto, Open Sans, Lato, Manrope, Gotham; pairs Montserrat + Open Sans, Raleway + Merriweather, Playfair + Roboto | PB p.74–75, 96; EUI p.48     | **Against the guide's purpose.** §2 names these as the faces every AI-made page uses. They're fine as an app shell's workhorse sans, and wrong as a landing page's voice.                |
+| Category to typeface or color (serif for law, script for beauty, blue = trust, black = luxury, green = calm)                              | PB p.71–72; EUI p.38–39, 261 | **Against the guide's purpose.** This is the "category default" §1 asks editors to name and avoid. Directions come from the product's materials, not from a psychology chart.            |
+| Lorem ipsum and gray boxes in wireframes                                                                                                  | EUI p.352                    | **Prism-specific.** Prism boards get coded into pages (`build_pages`), so placeholder copy leaks into code. The guide's "realistic data everywhere" and the `missing-imagery` lint stay. |
 
 ---
 
@@ -216,14 +216,14 @@ Three pieces of book advice stay out of the guide. Recording them so nobody "fix
 
 The linter already checks overflow, wrap, orphans, outline-only ratings, off-column blocks, palette size, row fill, type scale, uneven siblings, missing imagery, contrast and tiny text. These rules from section 2 can be checked the same way, from element props alone:
 
-| Proposed kind | Trigger | Rule it backs |
-| --- | --- | --- |
-| `pure-ink` | text `#000000` on a light fill, or `#ffffff` body text on a dark fill | 2.2 |
-| `light-weight` | `fontWeight < 400` and `fontSizePx < 20` | 2.1 |
-| `line-height` | body (≤ 20px) `lineHeight` above 1.75 or below 1.3; text ≥ 32px above 1.3 | 2.1 |
-| `nested-radius` | a child's radius ≥ its container's radius while the child is inset from the edge | 2.3 |
-| `primary-count` | two or more accent-filled `role: "button"` elements in one row or group | 2.4, 2.8 |
-| `proximity` | in a stack, a label's gap to its input ≥ the gap above the label | 2.3 |
-| `gray-shadow` | a neutral shadow color on a saturated fill | 2.3 |
+| Proposed kind   | Trigger                                                                          | Rule it backs |
+| --------------- | -------------------------------------------------------------------------------- | ------------- |
+| `pure-ink`      | text `#000000` on a light fill, or `#ffffff` body text on a dark fill            | 2.2           |
+| `light-weight`  | `fontWeight < 400` and `fontSizePx < 20`                                         | 2.1           |
+| `line-height`   | body (≤ 20px) `lineHeight` above 1.75 or below 1.3; text ≥ 32px above 1.3        | 2.1           |
+| `nested-radius` | a child's radius ≥ its container's radius while the child is inset from the edge | 2.3           |
+| `primary-count` | two or more accent-filled `role: "button"` elements in one row or group          | 2.4, 2.8      |
+| `proximity`     | in a stack, a label's gap to its input ≥ the gap above the label                 | 2.3           |
+| `gray-shadow`   | a neutral shadow color on a saturated fill                                       | 2.3           |
 
 `pure-ink`, `light-weight` and `line-height` are the cheapest: they read one element each. `proximity` and `nested-radius` need the container lookups that `containerOf` already does.

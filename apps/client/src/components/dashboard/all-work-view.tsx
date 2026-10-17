@@ -30,6 +30,7 @@ import {
   type BoardItem,
   type Owner,
 } from "./workspace-data";
+import { BOARD_PRELOAD_DELAY } from "@/lib/workspace";
 
 /** Boards the grid shows before "Show more", and how many more each click adds. */
 const BOARD_PAGE = 8;
@@ -293,6 +294,7 @@ function ResumeCard({ board }: { board: BoardItem }) {
         <Link
           to="/board/$boardId"
           params={{ boardId: board.id }}
+          preloadDelay={BOARD_PRELOAD_DELAY}
           className="inline-flex h-10 shrink-0 items-center gap-2 bg-secondary px-4 text-[13px] font-bold text-secondary-foreground transition-colors duration-150 ease-standard after:absolute after:inset-0 hover:bg-secondary/85 max-sm:w-full max-sm:justify-center"
         >
           Open board
@@ -320,6 +322,7 @@ function RecentPanel({ boards }: { boards: BoardItem[] }) {
               <Link
                 to="/board/$boardId"
                 params={{ boardId: board.id }}
+                preloadDelay={BOARD_PRELOAD_DELAY}
                 className="-mx-2 flex items-center gap-3 px-2 py-2.5 transition-colors duration-150 ease-standard hover:bg-hover"
               >
                 <BoardPreview
@@ -333,7 +336,7 @@ function RecentPanel({ boards }: { boards: BoardItem[] }) {
                   <span className="block truncate text-[13px] font-bold text-foreground">
                     {board.name}
                   </span>
-                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-3xs text-muted-foreground">
+                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-2xs text-muted-foreground">
                     <BoardProject board={board} className="min-w-0" />
                     <span className="shrink-0">· {timeAgo(board.editedAt)}</span>
                   </span>

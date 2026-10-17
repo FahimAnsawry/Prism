@@ -31,10 +31,13 @@ export async function apiFetch<T>(
     method = "GET",
     body,
     headers,
+    onHeaders,
   }: {
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     headers?: Record<string, string>;
+    /** Reads the reply's headers (a successful one's). */
+    onHeaders?: (headers: Headers) => void;
   } = {},
 ): Promise<T> {
   // A Blob (an uploaded file) goes as-is with its own type; anything else as JSON.
@@ -61,6 +64,7 @@ export async function apiFetch<T>(
     const { error, fieldErrors } = (data ?? {}) as ErrorBody;
     throw new ApiError(error ?? SERVER_FAILED, response.status, fieldErrors);
   }
+  onHeaders?.(response.headers);
   return schema.parse(data);
 }
 
