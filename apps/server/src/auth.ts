@@ -7,6 +7,13 @@ import { createAuthMiddleware } from "better-auth/api";
 import { jwt } from "better-auth/plugins";
 import { authPrisma } from "./db/auth-prisma.js";
 import { prisma } from "./db/client.js";
+import { sendEmail } from "./email/send.js";
+import {
+  passwordChangedEmail,
+  resetPasswordEmail,
+  verificationEmail,
+  welcomeEmail,
+} from "./email/templates.js";
 import { claimInvites } from "./invites.js";
 
 function requireEnv(name: string): string {
@@ -73,16 +80,34 @@ const createAuth = () =>
       cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
 
+    // Emails go out through Mailjet (src/email); see apps/server/.env.example. Sends aren't awaited
+    // (sendEmail returns at once) so a slow provider can't delay a request or leak, through
+    // timing, whether an address has an account.
     emailAndPassword: {
       enabled: true,
+      // No session until the address is confirmed. The sign-up screen asks the user to check
+      // their inbox; a sign-in attempt before that sends the link again (sendOnSignIn).
+      requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
-      sendResetPassword: async ({ user, url, token }, _request) => {
-        // In development or until an email provider (Resend, SES) is attached, log the reset URL.
-        console.info(
-          `[auth] Password reset requested for ${user.email}:\n` +
-            `  Reset URL: ${url}\n` +
-            `  Token: ${token}`,
-        );
+      sendResetPassword: async ({ user, url }) => {
+        sendEmail(resetPasswordEmail(user, url));
+      },
+      onPasswordReset: async ({ user }) => {
+        sendEmail(passwordChangedEmail(user));
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      sendOnSignIn: true,
+      // Opening the link signs the user in; the client sends them on to `callbackURL`.
+      autoSignInAfterVerification: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        sendEmail(verificationEmail(user, url));
+      },
+      // The welcome goes out only once the user has opened the link: never at sign-up, and not
+      // for Google or GitHub sign-ins, which have no link to confirm.
+      afterEmailVerification: async (user) => {
+        sendEmail(welcomeEmail(user));
       },
     },
     socialProviders: {
@@ -145,8 +170,9 @@ const createAuth = () =>
         // Google always verifies emails. GitHub links only when it reports the email as verified,
         // since a GitHub account can carry an unverified address that belongs to someone else.
         trustedProviders: ["google"],
-        // Email/password users aren't verified (no email sending yet); without this, linking a
-        // social login to them is refused. The account.create hook below keeps that safe.
+        // A user row can still be unverified (an email sign-up whose link wasn't opened yet);
+        // without this, linking a social login to it is refused. The account.create hook below
+        // keeps that safe.
         requireLocalEmailVerified: false,
         // Copy name and image from the newly linked provider. An uploaded photo lives in
         // imageKey, so it is never overwritten.

@@ -36,6 +36,8 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
     "That email and password don't match. Try again, or continue with Google or GitHub.",
   USER_ALREADY_EXISTS: ALREADY_EXISTS,
   USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: ALREADY_EXISTS,
+  EMAIL_NOT_VERIFIED:
+    "Verify your email first. We just sent a new link: open it, then log in. Check your spam folder too.",
   PASSWORD_TOO_SHORT: "Use 8 or more characters.",
   PASSWORD_TOO_LONG: "Use 128 characters or fewer.",
   account_not_linked:

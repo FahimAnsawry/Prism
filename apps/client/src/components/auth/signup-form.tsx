@@ -1,21 +1,22 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signupSchema, type SignupInput } from "@prism/shared";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { ArrowRight, Check } from "lucide-react";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ctaVariants } from "@/components/cta";
 import { Button } from "@/components/ui/button";
-import { authClient, inOAuthFlow, runAuthAction } from "@/lib/auth-client";
+import { appUrl, authClient, runAuthAction } from "@/lib/auth-client";
 import { rememberLastSignIn } from "@/lib/last-sign-in";
 import { AuthHeading } from "./auth-heading";
 import { FormError, FormField, PasswordToggle } from "./form-field";
 import { PasswordMeter } from "./password-strength";
 import { OrDivider, SocialSignIn } from "./social-sign-in";
+import { VerifyEmailNotice } from "./verify-email-notice";
 
 export function SignupForm() {
-  const navigate = useNavigate();
   const [formError, setFormError] = useState<string>();
+  const [verifyEmail, setVerifyEmail] = useState<string>();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const {
@@ -34,16 +35,20 @@ export function SignupForm() {
   const onSubmit = async ({ name, email, password }: SignupInput) => {
     setFormError(undefined);
     // Better Auth signs the new user in straight away (autoSignIn), so this also starts a session.
-    const message = await runAuthAction(() => authClient.signUp.email({ name, email, password }));
+    // The server requires a verified email, so sign-up starts no session: it emails a link, and
+    // opening the link signs the user in and lands them on the dashboard.
+    const message = await runAuthAction(() =>
+      authClient.signUp.email({ name, email, password, callbackURL: appUrl("/dashboard") }),
+    );
     if (message) {
       setFormError(message);
       return;
     }
     rememberLastSignIn("email");
-    // An AI editor's sign-in continues on its own (Better Auth's client follows the redirect).
-    if (inOAuthFlow()) return;
-    await navigate({ to: "/dashboard" });
+    setVerifyEmail(email);
   };
+
+  if (verifyEmail) return <VerifyEmailNotice email={verifyEmail} />;
 
   return (
     <>
