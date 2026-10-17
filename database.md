@@ -42,7 +42,7 @@ Derived, not stored: **board count** = `_count.boards` (filtered to `archivedAt:
 | `createdAt`    | DateTime | yes      | `now()`            |                                                                                                                                                                 |
 | `updatedAt`    | DateTime | yes      | `@updatedAt`       |                                                                                                                                                                 |
 
-Derived, not stored: **item count** = `_count.elements` (filtered to `deletedAt: null`).
+Stored: **item count** = `elementCount`, the board's live (not deleted) elements. `applyOps` keeps it in the same transaction as the element writes: +1 for a new or revived element, −1 for a delete.
 
 ### `element`
 
@@ -252,12 +252,18 @@ model Element {
 
 ## 5. Indexes
 
-| Index                                 | Serves                                                                                                        |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `project (ownerId, editedAt DESC)`    | Dashboard "Projects" filter: my projects, newest first                                                        |
-| `board (ownerId, editedAt DESC)`      | Dashboard "Boards" and "All" filters: my boards (and standalone boards via `projectId IS NULL`), newest first |
-| `board (projectId, editedAt DESC)`    | A project's board list, the board count, and the first three tiles on its card                                |
-| `element` primary key `(boardId, id)` | Loading a whole board (`WHERE boardId = ?`) and every guarded sync update by id. No extra index needed        |
+| Index                                             | Serves                                                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `project (ownerId, editedAt DESC)`                | Dashboard "Projects" filter: my projects, newest first                                                        |
+| `board (ownerId, editedAt DESC)`                  | Dashboard "Boards" and "All" filters: my boards (and standalone boards via `projectId IS NULL`), newest first |
+| `board (projectId, editedAt DESC)`                | A project's board list, the board count, and the first three tiles on its card                                |
+| `element` primary key `(boardId, id)`             | Every guarded sync update by id                                                                               |
+| `element (boardId, z) WHERE deletedAt IS NULL`    | Loading a board's live elements, bottom layer first                                                           |
+| `element (boardId, updatedAt)`                    | What changed since a time (`?since=`)                                                                         |
+| `element (deletedAt) WHERE deletedAt IS NOT NULL` | The hourly purge of tombstones older than 30 days                                                             |
+| `share_invite (invitedById)`                      | The foreign key's cascade when a user is deleted                                                              |
+
+Board lists that include shared boards (the dashboard's "Shared with me", the design guide's recent sites) first read the user's `board_member` and `project_member` rows, then filter boards by `ownerId`, `id IN (…)` or `projectId IN (…)`, which the indexes above serve. Membership subqueries ORed together would make Postgres read every board.
 
 Why `(boardId, id)` as the element key instead of `id` alone: every write is scoped to its board, so a client can't touch an element on another board by guessing an id. And "Duplicate board" can copy rows with only `boardId` changed, keeping element ids, so arrow bindings and `groupId`s stay valid.
 

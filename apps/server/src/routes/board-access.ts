@@ -38,7 +38,11 @@ export const liveProjectWhere = (ownerId: string) => ({ ownerId, archivedAt: nul
 
 const roleFor = (need: Need) => (need === "edit" ? { role: "editor" as const } : {});
 
-/** Live boards the user may see (`need` "view") or edit: their own and ones shared with them. */
+/**
+ * Live boards the user may see (`need` "view") or edit: their own and ones shared with them. For a
+ * board looked up by id. Over many boards, these member subqueries (ORed) make Postgres read every
+ * board, so list queries use accessibleBoardsWhere instead.
+ */
 export function accessibleBoardWhere(userId: string, need: Need = "view") {
   const member = { some: { userId, ...roleFor(need) } };
   return {
@@ -51,22 +55,60 @@ export function accessibleBoardWhere(userId: string, need: Need = "view") {
   } satisfies Prisma.BoardWhereInput;
 }
 
-/** Live boards shared with the user (not their own). */
-export function sharedBoardWhere(userId: string) {
-  const member = { some: { userId } };
+/**
+ * The boards and projects shared with the user (as an editor, for `need` "edit"), by id: one
+ * query, through the member tables' userId indexes. List queries filter boards by these.
+ */
+export async function sharesOf(userId: string, need: Need = "view") {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      boardShares: { where: roleFor(need), select: { boardId: true } },
+      projectShares: { where: roleFor(need), select: { projectId: true } },
+    },
+  });
+  return {
+    boardIds: user?.boardShares.map((share) => share.boardId) ?? [],
+    projectIds: user?.projectShares.map((share) => share.projectId) ?? [],
+  };
+}
+
+export type Shares = Awaited<ReturnType<typeof sharesOf>>;
+
+/**
+ * accessibleBoardWhere for a query over many boards, from the user's `shares` (sharesOf with the
+ * same `need`): plain ids and owner, which the board table's indexes serve.
+ */
+export function accessibleBoardsWhere(userId: string, shares: Shares) {
   return {
     ...liveBoard,
-    ownerId: { not: userId },
-    AND: [{ OR: [{ members: member }, { project: { members: member } }] }],
+    AND: [
+      {
+        OR: [
+          { ownerId: userId },
+          { id: { in: shares.boardIds } },
+          { projectId: { in: shares.projectIds } },
+        ],
+      },
+    ],
   } satisfies Prisma.BoardWhereInput;
 }
 
-/** Live projects shared with the user (not their own). */
-export const sharedProjectWhere = (userId: string) =>
+/** Live boards shared with the user (not their own), from their `shares`. */
+export function sharedBoardWhere(userId: string, shares: Shares) {
+  return {
+    ...liveBoard,
+    ownerId: { not: userId },
+    AND: [{ OR: [{ id: { in: shares.boardIds } }, { projectId: { in: shares.projectIds } }] }],
+  } satisfies Prisma.BoardWhereInput;
+}
+
+/** Live projects shared with the user (not their own), from their `shares`. */
+export const sharedProjectWhere = (userId: string, shares: Shares) =>
   ({
     archivedAt: null,
     ownerId: { not: userId },
-    members: { some: { userId } },
+    id: { in: shares.projectIds },
   }) satisfies Prisma.ProjectWhereInput;
 
 /** The fields accessOf reads, for a board's select. */
@@ -211,7 +253,7 @@ export async function boardForShareToken(tokenParam: unknown, boardIdParam: unkn
       editedAt: true,
       project: { select: { name: true } },
       owner: { select: { name: true } },
-      _count: { select: { elements: { where: { deletedAt: null } } } },
+      elementCount: true,
     },
   });
 }

@@ -12,7 +12,7 @@ import { aiRouter } from "./routes/ai.js";
 import { elementsRouter } from "./routes/elements.js";
 import { shareRouter } from "./routes/share.js";
 import { tokensRouter } from "./routes/tokens.js";
-import { startTombstonePurge } from "./tombstones.js";
+import { startPurges } from "./tombstones.js";
 import { fileRouter, uploadRouter } from "./routes/uploads.js";
 import { workspaceRouter } from "./routes/workspace.js";
 
@@ -82,5 +82,6 @@ const server = app.listen(port, () => {
 // Socket.IO shares the HTTP server: live element updates for open board tabs.
 attachRealtime(server, clientUrl);
 
-// Deleted elements older than 30 days are removed for good, every hour.
-startTombstonePurge();
+// Every hour: deleted elements and finished edit requests older than 30 days, and OAuth tokens
+// that can no longer be used, are removed for good (src/tombstones.ts).
+startPurges();

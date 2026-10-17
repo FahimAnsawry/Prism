@@ -9,7 +9,8 @@ generator client {
   moduleFormat        = "esm"
   importFileExtension = "js"
   // Relations in a select load in the same query (a JOIN) instead of one query each.
-  previewFeatures     = ["relationJoins"]
+  // partialIndexes: indexes with a WHERE clause (@@index(..., where: raw(...))).
+  previewFeatures     = ["relationJoins", "partialIndexes"]
 }
 
 datasource db {
@@ -187,6 +188,9 @@ model Board {
   shareToken        String?   @unique
   // Last content change (rename or any element change).
   editedAt          DateTime  @default(now())
+  // Live (not deleted) elements, the dashboard's item count. Kept by applyOps in the same
+  // transaction as the element writes (src/routes/elements.ts).
+  elementCount      Int       @default(0)
   archivedAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -259,6 +263,8 @@ model ShareInvite {
   @@unique([boardId, email])
   @@unique([projectId, email])
   @@index([email])
+  // The foreign key's cascade on a user delete looks rows up by it.
+  @@index([invitedById])
   @@map("share_invite")
 }
 
@@ -296,6 +302,12 @@ model Element {
   updatedAt   DateTime    @updatedAt
 
   @@id([boardId, id])
+  // Loading a board's live elements, bottom layer first.
+  @@index([boardId, z], where: raw("\"deletedAt\" IS NULL"))
+  // What changed since a time (`?since=` in src/routes/elements.ts).
+  @@index([boardId, updatedAt])
+  // Tombstones only, for the purge in src/tombstones.ts.
+  @@index([deletedAt], where: raw("\"deletedAt\" IS NOT NULL"))
   @@map("element")
 }
 

@@ -23,6 +23,7 @@ import { prisma } from "../db/client.js";
 import { HttpError, notFound, orNotFound, parseBody } from "../errors.js";
 import { requireUser } from "../session.js";
 import {
+  accessibleBoardsWhere,
   accessibleBoardWhere,
   accessOf,
   boardAccessSelect,
@@ -34,6 +35,7 @@ import {
   projectFor,
   sharedBoardWhere,
   sharedProjectWhere,
+  sharesOf,
   uuidParam,
 } from "./board-access.js";
 
@@ -56,7 +58,7 @@ const boardSelect = (userId: string) =>
     customFonts: true,
     createdAt: true,
     editedAt: true,
-    _count: { select: { elements: { where: { deletedAt: null } } } },
+    elementCount: true,
     ...ownerName,
     ...boardAccessSelect(userId),
     project: { select: { name: true, ...boardAccessSelect(userId).project.select } },
@@ -78,7 +80,7 @@ const projectSelect = (userId: string) =>
         id: true,
         name: true,
         editedAt: true,
-        _count: { select: { elements: { where: { deletedAt: null } } } },
+        elementCount: true,
       },
     },
     ...ownerName,
@@ -97,7 +99,7 @@ type BoardRow = {
   customFonts: string[];
   createdAt: Date;
   editedAt: Date;
-  _count: { elements: number };
+  elementCount: number;
   owner: { name: string };
   ownerId: string;
   members: { role: Role }[];
@@ -115,7 +117,7 @@ type ProjectRow = {
     id: string;
     name: string;
     editedAt: Date;
-    _count: { elements: number };
+    elementCount: number;
   }[];
   owner: { name: string };
   ownerId: string;
@@ -123,13 +125,22 @@ type ProjectRow = {
 };
 
 function toBoardSummary(row: BoardRow, userId: string): BoardSummary {
-  const { _count, createdAt, editedAt, owner, ownerId: _o, members: _m, project, ...board } = row;
+  const {
+    elementCount,
+    createdAt,
+    editedAt,
+    owner,
+    ownerId: _o,
+    members: _m,
+    project,
+    ...board
+  } = row;
   return {
     ...board,
     // Only a project the user can open: one they own or are a member of, not just this board's.
     projectName:
       project && (row.ownerId === userId || project.members.length > 0) ? project.name : null,
-    itemCount: _count.elements,
+    itemCount: elementCount,
     access: accessOf(row, userId),
     ownerName: owner.name,
     createdAt: createdAt.toISOString(),
@@ -145,7 +156,7 @@ function toProjectSummary(row: ProjectRow, userId: string): ProjectSummary {
     boards: boards.map((board) => ({
       id: board.id,
       name: board.name,
-      itemCount: board._count.elements,
+      itemCount: board.elementCount,
       editedAt: board.editedAt.toISOString(),
     })),
     access: accessOf(row, userId),
@@ -169,9 +180,33 @@ export const workspaceRouter = Router();
 
 workspaceRouter.use(requireUser);
 
+/** The live projects and boards shared with the user, most recently edited first. */
+async function loadShared(userId: string) {
+  const shares = await sharesOf(userId);
+  // Most users have nothing shared with them, and then nothing more to read.
+  const anyBoards = shares.boardIds.length > 0 || shares.projectIds.length > 0;
+  const [projects, boards] = await Promise.all([
+    shares.projectIds.length > 0
+      ? prisma.project.findMany({
+          where: sharedProjectWhere(userId, shares),
+          orderBy: { editedAt: "desc" },
+          select: projectSelect(userId),
+        })
+      : [],
+    anyBoards
+      ? prisma.board.findMany({
+          where: sharedBoardWhere(userId, shares),
+          orderBy: { editedAt: "desc" },
+          select: boardSelect(userId),
+        })
+      : [],
+  ]);
+  return { projects, boards };
+}
+
 /** Everything the dashboard shows: the user's live projects and boards, and what's shared with them. */
 export async function loadWorkspace(userId: string): Promise<Workspace> {
-  const [projects, boards, sharedProjects, sharedBoards] = await Promise.all([
+  const [projects, boards, shared] = await Promise.all([
     prisma.project.findMany({
       where: liveProjectWhere(userId),
       orderBy: { editedAt: "desc" },
@@ -182,23 +217,14 @@ export async function loadWorkspace(userId: string): Promise<Workspace> {
       orderBy: { editedAt: "desc" },
       select: boardSelect(userId),
     }),
-    prisma.project.findMany({
-      where: sharedProjectWhere(userId),
-      orderBy: { editedAt: "desc" },
-      select: projectSelect(userId),
-    }),
-    prisma.board.findMany({
-      where: sharedBoardWhere(userId),
-      orderBy: { editedAt: "desc" },
-      select: boardSelect(userId),
-    }),
+    loadShared(userId),
   ]);
   return {
     projects: projects.map((p) => toProjectSummary(p, userId)),
     boards: boards.map((b) => toBoardSummary(b, userId)),
     shared: {
-      projects: sharedProjects.map((p) => toProjectSummary(p, userId)),
-      boards: sharedBoards.map((b) => toBoardSummary(b, userId)),
+      projects: shared.projects.map((p) => toProjectSummary(p, userId)),
+      boards: shared.boards.map((b) => toBoardSummary(b, userId)),
     },
   };
 }
@@ -402,24 +428,28 @@ async function readDesignSites(userId: string, boardIdParam: string) {
   const boardId = uuidParam(boardIdParam);
   const siteBoard = { id: true, name: true, projectId: true } as const;
   const projectInfo = { select: { name: true, theme: true } } as const;
-  const board = boardId
-    ? await prisma.board.findFirst({
-        where: { id: boardId, ...accessibleBoardWhere(userId) },
-        select: { ...siteBoard, project: projectInfo },
-      })
-    : null;
+  // The user's shares are read alongside the board, for the lists below.
+  const [board, shares] = await Promise.all([
+    boardId
+      ? prisma.board.findFirst({
+          where: { id: boardId, ...accessibleBoardWhere(userId) },
+          select: { ...siteBoard, project: projectInfo },
+        })
+      : null,
+    sharesOf(userId),
+  ]);
   if (!board) throw notFound(BOARD_NOT_FOUND);
 
   const [siteBoards, latest] = await Promise.all([
     board.projectId
       ? prisma.board.findMany({
-          where: { projectId: board.projectId, ...accessibleBoardWhere(userId) },
+          where: { projectId: board.projectId, ...accessibleBoardsWhere(userId, shares) },
           orderBy: { createdAt: "asc" },
           select: siteBoard,
         })
       : [board],
     prisma.board.findMany({
-      where: accessibleBoardWhere(userId),
+      where: accessibleBoardsWhere(userId, shares),
       orderBy: { editedAt: "desc" },
       take: RECENT_BOARDS,
       select: { ...siteBoard, project: projectInfo },

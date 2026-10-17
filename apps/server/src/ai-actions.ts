@@ -122,26 +122,28 @@ interface Placement {
 }
 
 /**
- * Places a stored image or SVG `width` × `height` on the board, by default to the right of
- * everything else, and tells open tabs.
+ * Places a stored image or SVG `width` × `height` on the board (one from boardFor), by default to
+ * the right of everything else, and tells open tabs.
  */
 async function placeAsset(
   userId: string,
-  boardId: string,
+  board: { id: string; projectId: string | null },
   type: "image" | "svg",
   assetKey: string,
   input: Placement & { name?: string | undefined; role?: string | undefined },
   width: number,
   height: number,
 ) {
-  const placed = await prisma.element.findMany({
-    where: { boardId, deletedAt: null },
-    select: { x: true, y: true, width: true, z: true },
-  });
-  const x =
-    input.x ?? placed.reduce((max, el) => Math.max(max, el.x + Math.max(el.width, 0)), -80) + 80;
-  const y = input.y ?? (placed.length > 0 ? Math.min(...placed.map((el) => el.y)) : 0);
-  const z = placed.reduce((max, el) => Math.max(max, el.z), -1) + 1;
+  // The live elements' right edge, top and top layer (all null on an empty board).
+  const [placed] = await prisma.$queryRaw<
+    { right: number | null; top: number | null; z: number | null }[]
+  >`
+    SELECT max("x" + greatest("width", 0)) AS "right", min("y") AS "top", max("z") AS "z"
+    FROM "element"
+    WHERE "boardId" = ${board.id} AND "deletedAt" IS NULL`;
+  const x = input.x ?? Math.max(placed?.right ?? -80, -80) + 80;
+  const y = input.y ?? placed?.top ?? 0;
+  const z = Math.max(placed?.z ?? -1, -1) + 1;
 
   const element: BoardElement = {
     id: randomUUID(),
@@ -164,10 +166,9 @@ async function placeAsset(
     ...(input.name && { groupId: input.name }),
     ...(input.role && { role: input.role }),
   };
-  const board = await prisma.board.findUniqueOrThrow({ where: { id: boardId } });
   const { applied } = await applyOps(board, [{ op: "create", element }]);
-  broadcastOps(boardId, applied);
-  announceAiEdit(boardId, userId, applied);
+  broadcastOps(board.id, applied);
+  announceAiEdit(board.id, userId, applied);
   return element;
 }
 
@@ -185,7 +186,7 @@ export async function importImage(
   const assetKey = await storeImage(board.id, input.url, image);
   const width = input.width ?? displayWidth(image);
   const height = Math.round((width * image.height) / image.width);
-  return placeAsset(userId, board.id, "image", assetKey, input, width, height);
+  return placeAsset(userId, board, "image", assetKey, input, width, height);
 }
 
 /**
@@ -218,7 +219,7 @@ export async function importSvg(
   const svg = await storeSvg(board.id, input.svg);
   const width = input.width ?? svg.width;
   const height = Math.round(((width * svg.height) / svg.width) * 10) / 10;
-  return placeAsset(userId, board.id, "svg", svg.assetKey, input, width, height);
+  return placeAsset(userId, board, "svg", svg.assetKey, input, width, height);
 }
 
 // ── Edit requests ("Ask AI") ───────────────────────────────────────────────

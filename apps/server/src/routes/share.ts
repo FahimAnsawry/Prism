@@ -156,10 +156,9 @@ for (const kind of ["board", "project"] as const) {
     const { email, role } = parseBody(inviteMemberSchema, req.body);
     const target = kind === "board" ? { boardId: id } : { projectId: id };
 
-    const user = await prisma.user.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
-      select: { id: true },
-    });
+    // Better Auth stores emails lowercased and `email` is too (inviteMemberSchema), so an exact
+    // match finds the user through the unique index.
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (user?.id === userId) throw badRequest("That's your own email: you already own this.");
 
     let result: Pick<InviteResult, "status" | "url">;
@@ -360,7 +359,7 @@ const publicBoardSelect = {
   name: true,
   description: true,
   editedAt: true,
-  _count: { select: { elements: { where: { deletedAt: null } } } },
+  elementCount: true,
 } as const;
 
 function toPublicBoard(row: {
@@ -368,13 +367,13 @@ function toPublicBoard(row: {
   name: string;
   description: string | null;
   editedAt: Date;
-  _count: { elements: number };
+  elementCount: number;
 }): PublicBoard {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
-    itemCount: row._count.elements,
+    itemCount: row.elementCount,
     editedAt: row.editedAt.toISOString(),
   };
 }
