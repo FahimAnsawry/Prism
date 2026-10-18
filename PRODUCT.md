@@ -35,12 +35,12 @@ Prism is open source and self-hostable, and the drawing engine is written from s
 
 ## Capabilities and Constraints
 
-- The full tool list, engine pieces, properties, data model and dependency rules are in `tools.md`; that file is the product spec.
+- The architecture, MCP tools and dependency rules are summarized in `README.md` and `CLAUDE.md`; the data model is in `docs/database.md`.
 - No drawing libraries (Excalidraw, tldraw, Konva, Fabric.js). Also excluded: `zustand`, `nanoid`, `perfect-freehand`, `roughjs`, `emoji-picker-react` and chart libraries; each has a hand-written replacement.
 - Sync events are `element:create/update/delete` carrying `{id, version, changes}`; the higher `version` wins. One Claude command is one undo step.
 - Exports: PNG, SVG and JSON of a board, a frame or the selection.
 - Sign-in with Google, GitHub or email and password.
-- Current state: the landing page, login and signup exist. The board editor and the MCP bridge are not built yet.
+- Current state: the board editor, real-time sync, sharing, dashboard and the remote MCP endpoint are built.
 - Undecided: the open-source license (no LICENSE file yet), and whether a hosted version will be offered.
 
 ## Brand Commitments
@@ -52,7 +52,7 @@ Prism is open source and self-hostable, and the drawing engine is written from s
 
 ## Evidence on Hand
 
-- Product spec: `tools.md`. Setup guide: `README.md`.
+- Overview: `README.md`. Setup guide: `docs/SETUP.md`. Data model: `docs/database.md`.
 - Mobbin references and mockups for the landing, login and logo work live on the Miro board "Prism · Landing + Login".
 - There are no users, customers, testimonials, usage numbers, benchmarks, press or pricing yet. Do not invent any. Names on the landing-page demo board (for example cursor labels) are illustrative, not real users.
 

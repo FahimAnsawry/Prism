@@ -35,3 +35,9 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
+
+# Local scratch scripts (OCR experiments)
+scripts/extract_*.py
+scripts/*_cache.json
+temp.html
+.ocr_venv/
