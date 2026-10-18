@@ -14,90 +14,90 @@ It adds three tables to the existing Better Auth tables (`user`, `account`, `ses
 
 ### `project`
 
-| Field | Type | Required | Default | Notes |
-|-------|------|----------|---------|-------|
-| `id` | String | yes | `uuid()` | Primary key |
-| `ownerId` | String | yes | | FK → `user.id`. The user who created it |
-| `name` | String | yes | `"Untitled project"` | Shown on the dashboard card |
-| `description` | String | no | | One-line subtitle on the card |
-| `editedAt` | DateTime | yes | `now()` | Last change to the project **or any of its boards**. Drives "edited 2h ago" and dashboard sorting |
-| `archivedAt` | DateTime | no | | Set = in the trash. Hides the project and its boards; clearing it restores them |
-| `createdAt` | DateTime | yes | `now()` | |
-| `updatedAt` | DateTime | yes | `@updatedAt` | Row changed (Prisma sets it) |
+| Field         | Type     | Required | Default              | Notes                                                                                             |
+| ------------- | -------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------- |
+| `id`          | String   | yes      | `uuid()`             | Primary key                                                                                       |
+| `ownerId`     | String   | yes      |                      | FK → `user.id`. The user who created it                                                           |
+| `name`        | String   | yes      | `"Untitled project"` | Shown on the dashboard card                                                                       |
+| `description` | String   | no       |                      | One-line subtitle on the card                                                                     |
+| `editedAt`    | DateTime | yes      | `now()`              | Last change to the project **or any of its boards**. Drives "edited 2h ago" and dashboard sorting |
+| `archivedAt`  | DateTime | no       |                      | Set = in the trash. Hides the project and its boards; clearing it restores them                   |
+| `createdAt`   | DateTime | yes      | `now()`              |                                                                                                   |
+| `updatedAt`   | DateTime | yes      | `@updatedAt`         | Row changed (Prisma sets it)                                                                      |
 
 Derived, not stored: **board count** = `_count.boards` (filtered to `archivedAt: null`). **Tiles** = the three most recently edited boards' `thumbnailKey`.
 
 ### `board`
 
-| Field | Type | Required | Default | Notes |
-|-------|------|----------|---------|-------|
-| `id` | String | yes | `uuid()` | Primary key; also the room id for Socket.IO and the `/board/$id` URL |
-| `ownerId` | String | yes | | FK → `user.id`. Kept even for boards in a project so "my boards" is one query; must equal `project.ownerId` when `projectId` is set (checked in app code) |
-| `projectId` | String | no | | FK → `project.id`. `null` = standalone board |
-| `name` | String | yes | `"Untitled board"` | Renamed from the top bar (tools.md §5) |
-| `description` | String | no | | Card subtitle |
-| `thumbnailKey` | String | no | | S3 object key of a small PNG preview, rendered by the client with the PNG export (tools.md §2) and uploaded after edits settle. Same pattern as `user.imageKey` |
-| `editedAt` | DateTime | yes | `now()` | Last content change (rename or any element change). Bumped at most about once a minute per board, together with the parent `project.editedAt` |
-| `archivedAt` | DateTime | no | | Soft delete / trash |
-| `createdAt` | DateTime | yes | `now()` | |
-| `updatedAt` | DateTime | yes | `@updatedAt` | |
+| Field          | Type     | Required | Default            | Notes                                                                                                                                                           |
+| -------------- | -------- | -------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`           | String   | yes      | `uuid()`           | Primary key; also the room id for Socket.IO and the `/board/$id` URL                                                                                            |
+| `ownerId`      | String   | yes      |                    | FK → `user.id`. Kept even for boards in a project so "my boards" is one query; must equal `project.ownerId` when `projectId` is set (checked in app code)       |
+| `projectId`    | String   | no       |                    | FK → `project.id`. `null` = standalone board                                                                                                                    |
+| `name`         | String   | yes      | `"Untitled board"` | Renamed from the top bar (tools.md §5)                                                                                                                          |
+| `description`  | String   | no       |                    | Card subtitle                                                                                                                                                   |
+| `thumbnailKey` | String   | no       |                    | S3 object key of a small PNG preview, rendered by the client with the PNG export (tools.md §2) and uploaded after edits settle. Same pattern as `user.imageKey` |
+| `editedAt`     | DateTime | yes      | `now()`            | Last content change (rename or any element change). Bumped at most about once a minute per board, together with the parent `project.editedAt`                   |
+| `archivedAt`   | DateTime | no       |                    | Soft delete / trash                                                                                                                                             |
+| `createdAt`    | DateTime | yes      | `now()`            |                                                                                                                                                                 |
+| `updatedAt`    | DateTime | yes      | `@updatedAt`       |                                                                                                                                                                 |
 
-Derived, not stored: **item count** = `_count.elements` (filtered to `deletedAt: null`).
+Stored: **item count** = `elementCount`, the board's live (not deleted) elements. `applyOps` keeps it in the same transaction as the element writes: +1 for a new or revived element, −1 for a delete.
 
 ### `element`
 
 Mirrors `BaseElement` in tools.md §7. Fields shared by every element type are real columns; type-specific data goes in `props`.
 
-| Field | Type | Required | Default | Notes |
-|-------|------|----------|---------|-------|
-| `boardId` | String | yes | | FK → `board.id`. Part of the primary key |
-| `id` | String | yes | | `crypto.randomUUID()`, made by the client (or by the server for MCP `create_elements`). Part of the primary key |
-| `type` | `ElementType` enum | yes | | `text`, `sticky`, `list`, `rect`, `ellipse`, `diamond`, `line`, `arrow`, `freehand`, `emoji`, `image`, `svg`, `chart`, `frame` |
-| `x` | Float | yes | | World coordinates |
-| `y` | Float | yes | | |
-| `width` | Float | yes | | |
-| `height` | Float | yes | | |
-| `rotation` | Float | yes | `0` | Degrees |
-| `z` | Float | yes | | Layer order. Float, so "bring forward" can drop an element between two others (e.g. 2.5) without renumbering the board |
-| `stroke` | String | yes | | Color |
-| `fill` | String | no | | `null` = no fill |
-| `strokeWidth` | Float | yes | | |
-| `strokeStyle` | `StrokeStyle` enum | yes | `solid` | `solid`, `dashed`, `dotted` |
-| `sketch` | Boolean | yes | `false` | Hand-drawn look |
-| `opacity` | Float | yes | `1` | 0–1 |
-| `groupId` | String | no | | Elements with the same value are one group (`Ctrl+G`) |
-| `locked` | Boolean | yes | `false` | |
-| `role` | String | no | | Wireframe meaning: `"button"`, `"input"`, `"card"`, … |
-| `props` | Json | yes | `{}` | Type-specific data, validated by a Zod union in `@prism/shared` (see below) |
-| `updatedBy` | `Author` enum | yes | | `user` or `ai_agent` |
-| `version` | Int | yes | `1` | Sync conflict check: the higher version wins |
-| `deletedAt` | DateTime | no | | Tombstone. A deleted element keeps its row so a late, lower-version update can't bring it back |
-| `createdAt` | DateTime | yes | `now()` | |
-| `updatedAt` | DateTime | yes | `@updatedAt` | |
+| Field         | Type               | Required | Default      | Notes                                                                                                                          |
+| ------------- | ------------------ | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `boardId`     | String             | yes      |              | FK → `board.id`. Part of the primary key                                                                                       |
+| `id`          | String             | yes      |              | `crypto.randomUUID()`, made by the client (or by the server for MCP `create_elements`). Part of the primary key                |
+| `type`        | `ElementType` enum | yes      |              | `text`, `sticky`, `list`, `rect`, `ellipse`, `diamond`, `line`, `arrow`, `freehand`, `emoji`, `image`, `svg`, `chart`, `frame` |
+| `x`           | Float              | yes      |              | World coordinates                                                                                                              |
+| `y`           | Float              | yes      |              |                                                                                                                                |
+| `width`       | Float              | yes      |              |                                                                                                                                |
+| `height`      | Float              | yes      |              |                                                                                                                                |
+| `rotation`    | Float              | yes      | `0`          | Degrees                                                                                                                        |
+| `z`           | Float              | yes      |              | Layer order. Float, so "bring forward" can drop an element between two others (e.g. 2.5) without renumbering the board         |
+| `stroke`      | String             | yes      |              | Color                                                                                                                          |
+| `fill`        | String             | no       |              | `null` = no fill                                                                                                               |
+| `strokeWidth` | Float              | yes      |              |                                                                                                                                |
+| `strokeStyle` | `StrokeStyle` enum | yes      | `solid`      | `solid`, `dashed`, `dotted`                                                                                                    |
+| `sketch`      | Boolean            | yes      | `false`      | Hand-drawn look                                                                                                                |
+| `opacity`     | Float              | yes      | `1`          | 0–1                                                                                                                            |
+| `groupId`     | String             | no       |              | Elements with the same value are one group (`Ctrl+G`)                                                                          |
+| `locked`      | Boolean            | yes      | `false`      |                                                                                                                                |
+| `role`        | String             | no       |              | Wireframe meaning: `"button"`, `"input"`, `"card"`, …                                                                          |
+| `props`       | Json               | yes      | `{}`         | Type-specific data, validated by a Zod union in `@prism/shared` (see below)                                                    |
+| `updatedBy`   | `Author` enum      | yes      |              | `user` or `ai_agent`                                                                                                           |
+| `version`     | Int                | yes      | `1`          | Sync conflict check: the higher version wins                                                                                   |
+| `deletedAt`   | DateTime           | no       |              | Tombstone. A deleted element keeps its row so a late, lower-version update can't bring it back                                 |
+| `createdAt`   | DateTime           | yes      | `now()`      |                                                                                                                                |
+| `updatedAt`   | DateTime           | yes      | `@updatedAt` |                                                                                                                                |
 
 What goes in `props`, per type (from tools.md §1 and §3):
 
-| Type | `props` |
-|------|---------|
-| `text`, `sticky` | `text`, `font` (`sans` / `caveat` / `mono`), `fontSize`, `align` |
-| `list` | `items: {text, indent}[]`, `font`, `fontSize`, `align` |
-| `line`, `arrow` | `points`, and for arrows `startBinding` / `endBinding` (element ids) |
-| `freehand` | `points` |
-| `emoji` | `emoji` |
-| `image`, `svg` | `key` (S3 object key), natural size / `viewBox` |
-| `chart` | `chartType` (`bar` / `line` / `pie` / `donut`), `data` |
-| `frame` | `name` |
+| Type             | `props`                                                              |
+| ---------------- | -------------------------------------------------------------------- |
+| `text`, `sticky` | `text`, `font` (`sans` / `caveat` / `mono`), `fontSize`, `align`     |
+| `list`           | `items: {text, indent}[]`, `font`, `fontSize`, `align`               |
+| `line`, `arrow`  | `points`, and for arrows `startBinding` / `endBinding` (element ids) |
+| `freehand`       | `points`                                                             |
+| `emoji`          | `emoji`                                                              |
+| `image`, `svg`   | `key` (S3 object key), natural size / `viewBox`                      |
+| `chart`          | `chartType` (`bar` / `line` / `pie` / `donut`), `data`               |
+| `frame`          | `name`                                                               |
 
 ---
 
 ## 2. Relationships
 
-| From | To | Kind | onDelete | Why |
-|------|----|------|----------|-----|
-| `user` | `project` | one-to-many (`ownerId`) | Cascade | Deleting an account removes its work |
-| `user` | `board` | one-to-many (`ownerId`) | Cascade | Same |
-| `project` | `board` | one-to-many, optional (`projectId`) | Cascade | Deleting a project deletes its boards. The normal UI path is archive (`archivedAt`) first, so a hard delete only happens when the trash is emptied. Use `SetNull` instead if boards should survive as standalone boards |
-| `board` | `element` | one-to-many (`boardId`) | Cascade | Elements have no meaning without their board |
+| From      | To        | Kind                                | onDelete | Why                                                                                                                                                                                                                     |
+| --------- | --------- | ----------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user`    | `project` | one-to-many (`ownerId`)             | Cascade  | Deleting an account removes its work                                                                                                                                                                                    |
+| `user`    | `board`   | one-to-many (`ownerId`)             | Cascade  | Same                                                                                                                                                                                                                    |
+| `project` | `board`   | one-to-many, optional (`projectId`) | Cascade  | Deleting a project deletes its boards. The normal UI path is archive (`archivedAt`) first, so a hard delete only happens when the trash is emptied. Use `SetNull` instead if boards should survive as standalone boards |
+| `board`   | `element` | one-to-many (`boardId`)             | Cascade  | Elements have no meaning without their board                                                                                                                                                                            |
 
 `User` needs two back-relation fields: `projects Project[]` and `boards Board[]`.
 
@@ -105,15 +105,15 @@ What goes in `props`, per type (from tools.md §1 and §3):
 
 ## 3. How elements are stored: one row per element (recommended)
 
-| | **`element` table, one row per element** | **One `elements Json` column on `board`** |
-|---|---|---|
-| Sync write | One guarded `UPDATE … WHERE boardId = ? AND id = ? AND version < ?`. The database applies "higher version wins" for you | Read the whole JSON, merge, write it back. Needs a row lock, or two users editing different elements overwrite each other |
-| Write size | Only the changed element | The whole board on every drag or keystroke (Postgres rewrites the full value, TOAST churn on big boards) |
-| Concurrency | Edits to different elements never conflict | Every edit to the board fights for the same row |
-| MCP tools | `update_elements` / `delete_elements` by id map directly to rows | Must parse and rewrite the blob |
-| Item count, queries | `_count`, or filter by `type` / `role` | Needs JSON functions |
-| Load a board | `SELECT … WHERE boardId = ?` (served by the primary key) | One row read, slightly simpler |
-| Board copy / export | Copy rows | Copy one value |
+|                     | **`element` table, one row per element**                                                                                | **One `elements Json` column on `board`**                                                                                 |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Sync write          | One guarded `UPDATE … WHERE boardId = ? AND id = ? AND version < ?`. The database applies "higher version wins" for you | Read the whole JSON, merge, write it back. Needs a row lock, or two users editing different elements overwrite each other |
+| Write size          | Only the changed element                                                                                                | The whole board on every drag or keystroke (Postgres rewrites the full value, TOAST churn on big boards)                  |
+| Concurrency         | Edits to different elements never conflict                                                                              | Every edit to the board fights for the same row                                                                           |
+| MCP tools           | `update_elements` / `delete_elements` by id map directly to rows                                                        | Must parse and rewrite the blob                                                                                           |
+| Item count, queries | `_count`, or filter by `type` / `role`                                                                                  | Needs JSON functions                                                                                                      |
+| Load a board        | `SELECT … WHERE boardId = ?` (served by the primary key)                                                                | One row read, slightly simpler                                                                                            |
+| Board copy / export | Copy rows                                                                                                               | Copy one value                                                                                                            |
 
 How a sync event maps to the table:
 
@@ -252,12 +252,18 @@ model Element {
 
 ## 5. Indexes
 
-| Index | Serves |
-|-------|--------|
-| `project (ownerId, editedAt DESC)` | Dashboard "Projects" filter: my projects, newest first |
-| `board (ownerId, editedAt DESC)` | Dashboard "Boards" and "All" filters: my boards (and standalone boards via `projectId IS NULL`), newest first |
-| `board (projectId, editedAt DESC)` | A project's board list, the board count, and the first three tiles on its card |
-| `element` primary key `(boardId, id)` | Loading a whole board (`WHERE boardId = ?`) and every guarded sync update by id. No extra index needed |
+| Index                                             | Serves                                                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `project (ownerId, editedAt DESC)`                | Dashboard "Projects" filter: my projects, newest first                                                        |
+| `board (ownerId, editedAt DESC)`                  | Dashboard "Boards" and "All" filters: my boards (and standalone boards via `projectId IS NULL`), newest first |
+| `board (projectId, editedAt DESC)`                | A project's board list, the board count, and the first three tiles on its card                                |
+| `element` primary key `(boardId, id)`             | Every guarded sync update by id                                                                               |
+| `element (boardId, z) WHERE deletedAt IS NULL`    | Loading a board's live elements, bottom layer first                                                           |
+| `element (boardId, updatedAt)`                    | What changed since a time (`?since=`)                                                                         |
+| `element (deletedAt) WHERE deletedAt IS NOT NULL` | The hourly purge of tombstones older than 30 days                                                             |
+| `share_invite (invitedById)`                      | The foreign key's cascade when a user is deleted                                                              |
+
+Board lists that include shared boards (the dashboard's "Shared with me", the design guide's recent sites) first read the user's `board_member` and `project_member` rows, then filter boards by `ownerId`, `id IN (…)` or `projectId IN (…)`, which the indexes above serve. Membership subqueries ORed together would make Postgres read every board.
 
 Why `(boardId, id)` as the element key instead of `id` alone: every write is scoped to its board, so a client can't touch an element on another board by guessing an id. And "Duplicate board" can copy rows with only `boardId` changed, keeping element ids, so arrow bindings and `groupId`s stay valid.
 

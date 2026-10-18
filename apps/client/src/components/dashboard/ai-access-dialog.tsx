@@ -219,7 +219,7 @@ function ToolGrid({
                         <Check
                           aria-hidden="true"
                           strokeWidth={2.5}
-                          className="size-5 shrink-0 text-[#14804a] dark:text-brand"
+                          className="size-5 shrink-0 text-brand-ink"
                         />
                         <span className="sr-only">Connected</span>
                       </>
@@ -271,7 +271,7 @@ function ToolPage({
             className={cn(
               "ml-auto flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold",
               editor
-                ? "bg-seafoam text-[#0f5c35] dark:bg-seafoam/14 dark:text-brand"
+                ? "bg-seafoam text-brand-ink dark:bg-seafoam/14"
                 : "bg-secondary text-secondary-foreground",
             )}
           >

@@ -1,6 +1,8 @@
 /* The board's fonts (properties panel → Font and Font weight), loaded with the board page only.
-   Each @font-face downloads its file only once text on the board uses it. DM Sans, Space Mono,
-   Caveat 400 and Nanum Pen Script come from index.css. */
+   Each @font-face downloads its file only once text on the board uses it. DM Sans, Space Mono
+   and Caveat 400 come from index.css. Nanum Pen Script's full set (Korean and Latin) is here:
+   index.css has only its Latin file, for the app's own text. */
+@import "@fontsource/nanum-pen-script";
 @import "@fontsource/caveat/500.css";
 @import "@fontsource/caveat/600.css";
 @import "@fontsource/caveat/700.css";

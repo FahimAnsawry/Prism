@@ -1,28 +1,25 @@
-/*
- * Prism theme: the single source of truth for the client's visual system.
- *
- * Values were measured from https://www.greptile.com/ (homepage + its two stylesheets,
- * October 2026). Comments marked "inferred" are not on the site and were filled in.
- * Raw tokens come first (@theme); the shadcn semantic variables further down point at them.
- */
-
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
 
 /* ==========================================================================
    Fonts
-   Greptile uses four Google Fonts, all OFL-licensed, so Prism self-hosts the same ones.
+   All OFL-licensed and self-hosted: no request leaves for a font CDN.
    ========================================================================== */
 
 @import "@fontsource-variable/dm-sans"; /* body / UI */
 @import "@fontsource-variable/anybody"; /* display headings (h1, h2) */
 @import "@fontsource/space-mono/400.css"; /* labels, eyebrows, code */
 @import "@fontsource/space-mono/700.css";
-@import "@fontsource/nanum-pen-script"; /* handwritten annotations */
+/* Handwritten annotations: Latin only here. The board needs every script, so board-fonts.css
+   imports the full set, whose later faces take over on the board's pages. */
+@import "@fontsource/nanum-pen-script/latin-400.css";
 @import "@fontsource/caveat"; /* the board's handwriting font (Handwriting tool) */
 
 /* A `.light` subtree stays light on a dark page (dashboard preview pictures are drawn in both). */
 @custom-variant dark (&:is(.dark *):not(:where(.light *)));
+/* Short windows (laptops, phones in landscape): the login card tightens up so it never scrolls. */
+@custom-variant short (@media (max-height: 820px));
+@custom-variant tiny (@media (max-height: 700px));
 
 @theme {
   --font-sans: "DM Sans Variable", "DM Sans", ui-sans-serif, system-ui, sans-serif;
@@ -34,24 +31,25 @@
 
   /* ========================================================================
      Colors
-     Greptile's palette is flat: one value per name, no 50–950 shades.
+     Prism's palette is flat: one value per name, no 50–950 shades.
      Tailwind's default palette stays available alongside it.
      ======================================================================== */
 
   /* Neutrals (text, surfaces, lines) */
-  --color-onyx: #2a2a2a; /* dark-mode page background (Greptile `primary`) */
-  --color-slate: #3d3b4f; /* all text, secondary button fill (Greptile `secondary`) */
+  --color-onyx: #2a2a2a; /* strongest text (--ink), the dark bands (--inverse) */
+  --color-slate: #3d3b4f; /* all text, secondary button fill */
   --color-graphite: #5f5f5f; /* tertiary text; darkened from #6a6a6a to clear 4.5:1 on canvas (5.3:1) */
   --color-silver: #d6d6d6; /* solid dividers */
-  --color-canvas: #fcfcfd; /* page background (Greptile `background`, renamed) */
+  --color-canvas: #fcfcfd; /* page background */
   --color-fog: #eeeeee; /* light text on dark, hover tints (--muted); no longer a card fill */
-  --color-rule: rgb(85 83 104 / 0.3); /* dashed hairlines (Greptile `border`, renamed) */
+  --color-rule: rgb(85 83 104 / 0.3); /* dashed hairlines */
   --color-edge: #808080; /* control boundaries: inputs, outline buttons, checkboxes (3.3:1 on fog, 3.2:1 on canvas) */
-  --color-ash: #bdbcc2; /* board editor chrome: floating toolbar, properties panel, top-bar button outlines */
+  --color-ash: #bdbcc2; /* light text on the dark code panels; frame outlines on the board */
+  --color-pewter: #8a8896; /* board editor chrome: floating toolbar, panels, top-bar button outlines (3.4:1 on canvas) */
   --color-dot: #b5b5b5; /* board canvas dot grid */
 
   /* Brand */
-  --color-brand: #28e99f; /* primary CTA fill, hover tint at /20 (Greptile `greptile-green`) */
+  --color-brand: #28e99f; /* primary CTA fill, hover tint at /20; the Facets mark's center */
   --color-neon: #daff01;
   --color-lime: #ecffa3; /* highlight markers */
 
@@ -75,7 +73,7 @@
 
   /* ========================================================================
      Typography
-     Tailwind's default size scale (xs–9xl) matches Greptile's; only the extras are added.
+     Tailwind's default size scale (xs–9xl), plus the extras below.
      ======================================================================== */
 
   --text-3xs: 0.625rem; /* 10px: dense metadata */
@@ -97,7 +95,7 @@
 
   /* ========================================================================
      Spacing
-     Greptile uses Tailwind's 4px base scale unchanged (p-4, gap-2, ...).
+     Tailwind's 4px base scale, unchanged (p-4, gap-2, ...).
      ======================================================================== */
 
   --spacing: 0.25rem;
@@ -105,7 +103,8 @@
 
   /* ========================================================================
      Radius
-     Greptile squares every corner (rounded-* are all reset to 0, see --radius in index.css).
+     Every corner is square (rounded-* are all reset to 0, see --radius below): Prism's surfaces
+     are cut like the facets of its mark.
      ======================================================================== */
 
   --radius-hairline: 2px; /* the only non-zero radius on the site (tiny chips) */
@@ -141,7 +140,7 @@
 
   /* ========================================================================
      Breakpoints (mobile-first, min-width)
-     sm–2xl match Tailwind's defaults; Greptile adds xs (480px) and 3xl (1920px).
+     sm–2xl match Tailwind's defaults, plus xs (480px) and 3xl (1920px).
      ======================================================================== */
 
   --breakpoint-xs: 30rem; /* 480px */
@@ -176,7 +175,7 @@
 }
 
 /* ==========================================================================
-   Type styles (Greptile's heading and text roles, with their responsive steps)
+   Type styles (heading and text roles, with their responsive steps)
    ========================================================================== */
 
 @utility type-hero {
@@ -338,7 +337,7 @@
   }
 }
 
-/* Mono labels: Greptile's `.label-*` classes (pair with `uppercase` for eyebrows) */
+/* Mono labels (pair with `uppercase` for eyebrows) */
 @utility type-label {
   font-family: var(--font-mono);
   font-size: var(--text-base);
@@ -374,13 +373,16 @@
    Motion preferences
    ========================================================================== */
 
-/* Motion (the animation library) skips its own animations for reduced-motion users, see
-   installMotionPreferences in lib/motion.ts; this covers the CSS hover and focus transitions. */
+/* Reduced motion keeps what changes state (color and opacity fades) and drops what moves: CSS
+   transitions run on color and opacity only, so a transform, size or position change jumps.
+   Motion components follow the same rule through <MotionConfig reducedMotion="user"> (main.tsx). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    transition-duration: 0.01ms !important;
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+      opacity, box-shadow !important;
     scroll-behavior: auto !important;
   }
 
@@ -400,7 +402,7 @@
 :root,
 .light {
   color-scheme: light;
-  --radius: 0rem; /* Greptile squares every corner */
+  --radius: 0rem; /* every corner is square */
   /* PrismLoader's dimmest facet. Light canvas washes out faint slate and the brand green, so the
      facets dim less by day to keep the mark readable mid-pulse. */
   --facet-dim: 0.4;
@@ -421,6 +423,7 @@
   --accent: color-mix(in oklab, var(--color-brand) 20%, transparent); /* row hover tint */
   --accent-foreground: var(--color-slate);
   --destructive: var(--color-danger);
+  --brand-ink: #0e7348; /* brand green as text and icons (5.7:1 on --background); the fill is too light */
   --border: var(--color-rule);
   --input: var(--color-edge);
   --ring: var(--color-slate); /* inferred: the site's ring color is undefined */
@@ -431,7 +434,8 @@
   ); /* hover and pressed tint on cards and controls (cards share the page color) */
   --divider: var(--color-silver); /* solid dividers, empty bars, placeholder blocks in drawings */
   --ink: var(--color-onyx); /* strongest text, outlines of drawn shapes */
-  --chrome: var(--color-ash); /* board editor chrome outlines */
+  --chrome: var(--color-pewter); /* board editor chrome outlines (3.4:1 on canvas) */
+  --frame-edge: var(--color-ash); /* frame outlines drawn on the board */
   --grid-dot: var(--color-dot); /* board canvas dot grid */
   --inverse: var(--color-onyx); /* the dark bands: views, Claude, the auth prism panel */
   --inverse-foreground: var(--color-fog);
@@ -478,6 +482,7 @@
   --accent: color-mix(in oklab, var(--color-brand) 14%, transparent);
   --accent-foreground: #ecebf0;
   --destructive: var(--color-bloom); /* danger red is too dark to read on night surfaces */
+  --brand-ink: var(--color-brand);
   --border: rgb(236 235 240 / 0.16);
   --input: #7c7a89;
   --ring: #ecebf0;
@@ -485,7 +490,8 @@
   --hover: var(--background);
   --divider: #3d3b48;
   --ink: #f6f5f9;
-  --chrome: #4a4856;
+  --chrome: #72707f; /* 3.5:1 on background, 3.1:1 on card */
+  --frame-edge: #4a4856;
   --grid-dot: #3a3845;
   --inverse: #121117;
   --inverse-foreground: var(--color-fog);
@@ -521,6 +527,7 @@
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-hover: var(--hover);
+  --color-brand-ink: var(--brand-ink);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
@@ -545,6 +552,7 @@
   --color-divider: var(--divider);
   --color-ink: var(--ink);
   --color-chrome: var(--chrome);
+  --color-frame-edge: var(--frame-edge);
   --color-grid-dot: var(--grid-dot);
   --color-inverse: var(--inverse);
   --color-inverse-foreground: var(--inverse-foreground);

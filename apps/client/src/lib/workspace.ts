@@ -17,16 +17,30 @@ import { apiFetch } from "./api";
 
 const WORKSPACE_KEY = ["workspace"] as const;
 
+/**
+ * How long the pointer rests on a link to a board before the board loads ahead (ms): sweeping
+ * across the dashboard's cards doesn't start a load for each one.
+ */
+export const BOARD_PRELOAD_DELAY = 150;
+
+/** The dashboard's projects and boards, fetched outside the query cache. */
+export const fetchWorkspace = () => apiFetch("/api/workspace", workspaceSchema);
+
 /** The dashboard's projects and boards. */
 export const workspaceQuery = queryOptions({
   queryKey: WORKSPACE_KEY,
-  queryFn: () => apiFetch("/api/workspace", workspaceSchema),
+  queryFn: fetchWorkspace,
+  // The dashboard's route starts the fetch before its page mounts (see its beforeLoad); one that
+  // just landed isn't fetched again by the page's queries.
+  staleTime: 5_000,
 });
 
 export const boardQuery = (boardId: string) =>
   queryOptions({
     queryKey: ["board", boardId],
     queryFn: () => apiFetch(`/api/boards/${encodeURIComponent(boardId)}`, boardSummarySchema),
+    // Not refetched when the tab regains focus: the board's socket reports access changes.
+    refetchOnWindowFocus: false,
   });
 
 const projectPath = (id: string) => `/api/projects/${encodeURIComponent(id)}`;

@@ -2,14 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
-  FolderKanban,
-  PencilRuler,
-  LayoutDashboard,
+  Folders,
+  Handshake,
+  House,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   PlugZap,
-  UsersRound,
+  SquareDashedMousePointer,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { type ComponentType, type ReactNode, useState } from "react";
@@ -22,10 +22,10 @@ import { EditorLogo } from "./editor-logo";
 import { sectionSearch, type Section } from "./workspace-data";
 
 const NAV: { id: Section; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-  { id: "all", label: "Home", Icon: LayoutDashboard },
-  { id: "boards", label: "Whiteboards", Icon: PencilRuler },
-  { id: "projects", label: "Projects", Icon: FolderKanban },
-  { id: "shared", label: "Shared with me", Icon: UsersRound },
+  { id: "all", label: "Home", Icon: House },
+  { id: "boards", label: "Whiteboards", Icon: SquareDashedMousePointer },
+  { id: "projects", label: "Projects", Icon: Folders },
+  { id: "shared", label: "Shared with me", Icon: Handshake },
 ];
 
 export type SidebarProps = {
@@ -331,11 +331,11 @@ function EditorsCard({ onConnectAi, collapsed }: { onConnectAi: () => void; coll
             </li>
           ))}
           {tools.length > 4 && (
-            <li className="font-mono text-3xs text-muted-foreground">+{tools.length - 4} more</li>
+            <li className="font-mono text-2xs text-muted-foreground">+{tools.length - 4} more</li>
           )}
         </ul>
       ) : (
-        <span className="mt-1 block font-mono text-3xs text-muted-foreground">
+        <span className="mt-1 block font-mono text-2xs text-muted-foreground">
           Claude Code, Codex or any MCP client
         </span>
       )}

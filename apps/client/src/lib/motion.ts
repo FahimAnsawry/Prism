@@ -1,5 +1,3 @@
-import { MotionGlobalConfig } from "motion/react";
-
 export type Bezier = [number, number, number, number];
 
 /** Tailwind's default transition curve (the old `ease-standard` / `--ease-standard`). */
@@ -17,22 +15,12 @@ export const HOVER_SECONDS = 0.15;
 
 const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
 
+/**
+ * For code outside React and imperative `animate()` calls, which `<MotionConfig
+ * reducedMotion="user">` (main.tsx) doesn't reach: those skip their movement themselves.
+ */
 export function prefersReducedMotion() {
   return window.matchMedia(REDUCED_QUERY).matches;
-}
-
-/**
- * Reduced motion turns every Motion animation (components and `animate()` alike) into a jump to
- * its final state, the way the old global `prefers-reduced-motion` rule shortened every CSS
- * animation and transition to nothing. Call once at startup.
- */
-export function installMotionPreferences() {
-  const query = window.matchMedia(REDUCED_QUERY);
-  const sync = () => {
-    MotionGlobalConfig.skipAnimations = query.matches;
-  };
-  sync();
-  query.addEventListener("change", sync);
 }
 
 /** CSS's default `ease` (what `animate-in` and an unstyled transition use). */

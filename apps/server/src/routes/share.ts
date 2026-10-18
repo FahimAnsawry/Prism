@@ -18,7 +18,7 @@ import { badRequest, HttpError, notFound, parseBody } from "../errors.js";
 import { acceptInvite } from "../invites.js";
 import { notifyAccessChanged, revokeBoardTabs } from "../realtime.js";
 import { requireUser } from "../session.js";
-import { toElement } from "./elements.js";
+import { elementChanges, sinceParam, toElement } from "./elements.js";
 import {
   accessibleBoardWhere,
   BOARD_NOT_FOUND,
@@ -156,10 +156,9 @@ for (const kind of ["board", "project"] as const) {
     const { email, role } = parseBody(inviteMemberSchema, req.body);
     const target = kind === "board" ? { boardId: id } : { projectId: id };
 
-    const user = await prisma.user.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
-      select: { id: true },
-    });
+    // Better Auth stores emails lowercased and `email` is too (inviteMemberSchema), so an exact
+    // match finds the user through the unique index.
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (user?.id === userId) throw badRequest("That's your own email: you already own this.");
 
     let result: Pick<InviteResult, "status" | "url">;
@@ -360,7 +359,7 @@ const publicBoardSelect = {
   name: true,
   description: true,
   editedAt: true,
-  _count: { select: { elements: { where: { deletedAt: null } } } },
+  elementCount: true,
 } as const;
 
 function toPublicBoard(row: {
@@ -368,13 +367,13 @@ function toPublicBoard(row: {
   name: string;
   description: string | null;
   editedAt: Date;
-  _count: { elements: number };
+  elementCount: number;
 }): PublicBoard {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
-    itemCount: row._count.elements,
+    itemCount: row.elementCount,
     editedAt: row.editedAt.toISOString(),
   };
 }
@@ -423,10 +422,20 @@ shareRouter.get("/share/:token", async (req, res) => {
   } satisfies PublicShare);
 });
 
-/** One board behind a public link, with its elements. */
+/**
+ * One board behind a public link, with its elements. With `?since=<editedAt>` (the board's
+ * `editedAt` from an earlier reply), only what changed since then (ElementChangesReply).
+ */
 shareRouter.get("/share/:token/boards/:boardId", async (req, res) => {
+  const since = sinceParam(req.query["since"]);
+  // Read before the elements, like the signed-in route (elementsReplyBody).
   const board = await boardForShareToken(req.params.token, req.params.boardId);
   if (!board) throw notFound(LINK_GONE);
+  if (since !== undefined) {
+    noStore(res);
+    res.json(await elementChanges(board.id, board.editedAt.getTime(), since));
+    return;
+  }
   const rows = await prisma.element.findMany({
     where: { boardId: board.id, deletedAt: null },
     orderBy: { z: "asc" },

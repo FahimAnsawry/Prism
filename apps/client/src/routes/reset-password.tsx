@@ -21,7 +21,7 @@ export const Route = createFileRoute("/reset-password")({
 function ResetPasswordPage() {
   const { token, error } = Route.useSearch();
   return (
-    <AuthLayout panel={false}>
+    <AuthLayout crystal>
       <ResetPasswordForm token={token} tokenError={error} />
     </AuthLayout>
   );

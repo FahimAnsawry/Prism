@@ -746,7 +746,7 @@ function Shape({
           corners={corners}
           style={{
             fill: outline || gradientId ? fill : el.fill ? displayColor(el.fill) : "var(--card)",
-            stroke: "var(--chrome)",
+            stroke: "var(--frame-edge)",
           }}
         />
       );

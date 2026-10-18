@@ -12,19 +12,52 @@ const FADE_MS = 0;
  * Startup splash: covers the app with the loader for 0.5s on the first load, then lifts.
  * The router renders underneath meanwhile, so the page is ready when the splash lifts. The
  * wrapper is opaque from the first frame, so only the mark itself fades in. Client
- * navigation never remounts it, so it plays once per page load. `skip` drops it entirely.
+ * navigation never remounts it, so it plays once per page load.
+ *
+ * With `skip` (app pages and the docs) there's no 0.5s splash: the cover stays only until
+ * `ready` settles (the router's first page has loaded), so the window is never blank while the
+ * page's session check and code load. A page that loads at once is barely covered at all.
  * When it is gone it calls `finishSplash`, which starts entrances that wait for it (the hero).
  *
  * It spans the full window (100vw, scrollbar included) and locks page scroll while shown, so a
  * long page's scrollbar can neither shift the logo off-center nor scroll the app underneath.
  */
-export function AppSplash({ skip = false }: { skip?: boolean }) {
-  const [phase, setPhase] = useState<"show" | "fade" | "done">(skip ? "done" : "show");
+/**
+ * How far index.html's boot loader has faded in when React takes over (0-1), read before the first
+ * render replaces it: the cover's mark carries on from there instead of fading in again.
+ */
+const bootFade = (() => {
+  const mark = document.querySelector(".boot-loader svg");
+  const opacity = mark ? Number(getComputedStyle(mark).opacity) : 0;
+  return Number.isFinite(opacity) ? opacity : 0;
+})();
+
+export function AppSplash({
+  skip = false,
+  ready,
+}: {
+  skip?: boolean;
+  /** With `skip`: settles once the first page is on screen. */
+  ready?: Promise<unknown>;
+}) {
+  const [phase, setPhase] = useState<"show" | "fade" | "done">(skip && !ready ? "done" : "show");
 
   useEffect(() => {
     if (skip) {
-      finishSplash();
-      return;
+      if (!ready) {
+        finishSplash();
+        return;
+      }
+      let live = true;
+      const lift = () => {
+        if (!live) return;
+        setPhase("done");
+        finishSplash();
+      };
+      void ready.then(lift, lift);
+      return () => {
+        live = false;
+      };
     }
     const fade = setTimeout(() => setPhase("fade"), SPLASH_MS);
     const done = setTimeout(() => {
@@ -35,7 +68,7 @@ export function AppSplash({ skip = false }: { skip?: boolean }) {
       clearTimeout(fade);
       clearTimeout(done);
     };
-  }, [skip]);
+  }, [skip, ready]);
 
   // Before paint, so the scrollbar never shows. Released as the fade starts: the page reflows
   // under a still-opaque overlay, and the overlay's 100vw width doesn't move.
@@ -61,7 +94,7 @@ export function AppSplash({ skip = false }: { skip?: boolean }) {
       animate={{ opacity: phase === "fade" ? 0 : 1 }}
       transition={{ duration: 0.3, ease: EASE_STANDARD }}
     >
-      <PrismLoader fullScreen />
+      <PrismLoader fullScreen fadeIn={bootFade} />
     </motion.div>
   );
 }

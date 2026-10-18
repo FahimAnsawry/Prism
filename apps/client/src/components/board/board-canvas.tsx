@@ -149,6 +149,14 @@ export function BoardCanvas({
   const svg = useRef<SVGSVGElement>(null);
   const pan = useRef<{ x: number; y: number; camera: Camera } | null>(null);
   const gesture = useRef<Gesture | null>(null);
+  /** The board as the running gesture found it, to put back if a second finger cancels it. */
+  const gestureStart = useRef<{
+    elements: BoardElement[];
+    selectedIds: string[];
+    past: BoardElement[][];
+  } | null>(null);
+  /** The touch pointers that are down, by id. Two of them pan and pinch the camera. */
+  const touches = useRef(new Map<number, Point>());
   /**
    * Set when a press opens the text editor. The editor focuses its textarea during pointerdown,
    * and the browser's default mousedown action that follows would move focus back to the page,
@@ -310,7 +318,41 @@ export function BoardCanvas({
     event.button === 2 ||
     (event.button === 0 && (tool === "hand" || spaceHeld));
 
+  /** The first two touches' midpoint and distance apart, in client pixels. */
+  const pinchOf = () => {
+    const [a, b] = [...touches.current.values()];
+    if (!a || !b) return null;
+    return {
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      gap: Math.hypot(a.x - b.x, a.y - b.y),
+    };
+  };
+
+  /** A second finger takes over from the first: its drag, draw or pan stops, as if never started. */
+  const cancelGesture = () => {
+    const start = gestureStart.current;
+    // A gesture that already made a history step (the eraser does) keeps it; the rest was a preview.
+    if (gesture.current && start && start.past === state.past) {
+      dispatch({ type: "preview", elements: start.elements, select: start.selectedIds });
+    }
+    gesture.current = null;
+    gestureStart.current = null;
+    pan.current = null;
+    setPanning(false);
+    setOverlay(null);
+  };
+
   const onPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "touch") {
+      touches.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touches.current.size === 2) {
+        cancelGesture();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        return;
+      }
+      // A third finger does nothing.
+      if (touches.current.size > 2) return;
+    }
     if (pansWith(event)) {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -330,10 +372,35 @@ export function BoardCanvas({
     if (next) {
       event.currentTarget.setPointerCapture(event.pointerId);
       gesture.current = next;
+      gestureStart.current = { elements, selectedIds, past: state.past };
     }
   };
 
   const onPointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "touch" && touches.current.has(event.pointerId)) {
+      const before = pinchOf();
+      touches.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const after = pinchOf();
+      if (after) {
+        // Two fingers: zoom by how far they spread around where they were, and follow their middle.
+        if (before && before.gap > 0 && svg.current) {
+          const rect = svg.current.getBoundingClientRect();
+          const current = latest.current.camera;
+          const zoomed = zoomAt(current, current.zoom * (after.gap / before.gap), {
+            x: before.mid.x - rect.left - rect.width / 2,
+            y: before.mid.y - rect.top - rect.height / 2,
+          });
+          const next = {
+            ...zoomed,
+            x: zoomed.x + after.mid.x - before.mid.x,
+            y: zoomed.y + after.mid.y - before.mid.y,
+          };
+          latest.current.camera = next;
+          onCameraChange(next);
+        }
+        return;
+      }
+    }
     const start = pan.current;
     if (start) {
       onCameraChange({
@@ -370,6 +437,12 @@ export function BoardCanvas({
   };
 
   const endPointer = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "touch") {
+      const pinching = touches.current.size >= 2;
+      touches.current.delete(event.pointerId);
+      // Lifting a finger from a pinch ends it; the finger left down doesn't start anything.
+      if (pinching) return;
+    }
     if (pan.current) {
       pan.current = null;
       setPanning(false);
@@ -438,6 +511,9 @@ export function BoardCanvas({
       onPointerMove={onPointerMove}
       onPointerUp={endPointer}
       onPointerCancel={endPointer}
+      onLostPointerCapture={(event) => {
+        if (event.pointerType === "touch") touches.current.delete(event.pointerId);
+      }}
       onPointerLeave={() => {
         setHoverMindId(null);
         setHoverHitId(null);

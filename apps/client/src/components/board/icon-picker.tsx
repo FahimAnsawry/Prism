@@ -50,7 +50,7 @@ export function IconGrid({
       <label htmlFor={inputId} className="sr-only">
         Search icons
       </label>
-      <div className="flex items-center gap-2 border-b border-divider px-3">
+      <div className="flex items-center gap-2 border-b border-divider px-3 focus-within:border-foreground">
         <Search aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
         <input
           id={inputId}
@@ -112,7 +112,7 @@ export function IconPicker({
       // Not a dialog: the board's keys keep working, and the board stays clickable.
       role="group"
       aria-label="Icon picker"
-      className="absolute top-6 left-20 z-10 flex w-[316px] flex-col border border-chrome bg-card shadow-sm"
+      className="absolute top-6 left-20 z-10 flex w-[316px] max-w-[calc(100vw-6rem)] flex-col border border-chrome bg-card shadow-sm"
     >
       <IconGrid value={value} onPick={onPick} />
       <p className="border-t border-divider px-3 py-2 text-xs text-muted-foreground">

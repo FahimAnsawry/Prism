@@ -58,10 +58,11 @@ export function ModeMenu({
     <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
       <Menu.Trigger
         aria-label={`Mode: ${current.label}`}
-        className="flex h-9 items-center gap-2 border border-chrome bg-card px-3 text-xs font-medium text-foreground select-none transition-colors duration-150 ease-standard hover:bg-hover data-popup-open:bg-hover"
+        className="flex h-9 items-center gap-1.5 border border-chrome bg-card px-2 text-xs font-medium text-foreground select-none transition-colors duration-150 ease-standard hover:bg-hover data-popup-open:bg-hover sm:gap-2 sm:px-3"
       >
         <current.Icon aria-hidden="true" className="size-3.5" />
-        {current.label}
+        {/* Phones show the icon alone, leaving room for the board name. */}
+        <span className="hidden sm:inline">{current.label}</span>
         <TurningChevron turned={menuOpen} className="size-3.5" />
       </Menu.Trigger>
       <AnimatePresence>
@@ -83,7 +84,7 @@ export function ModeMenu({
                       <Icon aria-hidden="true" className="size-3.5" />
                       <span className="min-w-0">
                         <span className="block leading-4">{label}</span>
-                        <span className="block text-3xs leading-4 font-normal text-muted-foreground">
+                        <span className="block text-2xs leading-4 font-normal text-muted-foreground">
                           {hint}
                         </span>
                       </span>
@@ -155,7 +156,7 @@ export function BoardTopBar({
   const viewing = mode === "view";
   const canvasControls = !viewing || viewTool !== undefined;
   return (
-    <header className="relative z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-divider bg-card pr-4 pl-4 md:pr-6">
+    <header className="relative z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-divider bg-card pr-4 pl-4 sm:gap-3 md:pr-6">
       <div className="flex min-w-0 items-center">
         <Link
           to="/dashboard"
@@ -167,7 +168,7 @@ export function BoardTopBar({
         <BoardTitle board={board} />
         {!viewing && (
           <>
-            <div className="ml-6 flex shrink-0 gap-1">
+            <div className="ml-1 flex shrink-0 gap-1 sm:ml-6">
               <button
                 type="button"
                 aria-label="Undo (Ctrl+Z)"
@@ -192,8 +193,8 @@ export function BoardTopBar({
             <p
               role="status"
               className={cn(
-                "ml-3 hidden font-mono text-3xs whitespace-nowrap uppercase lg:block",
-                saveStatus === "error" ? "text-coral" : "text-muted-foreground",
+                "ml-3 hidden font-mono text-2xs whitespace-nowrap uppercase lg:block",
+                saveStatus === "error" ? "text-danger dark:text-coral" : "text-muted-foreground",
               )}
             >
               {SAVE_LABELS[saveStatus]}
@@ -202,7 +203,7 @@ export function BoardTopBar({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <ModeMenu mode={mode} onChange={onModeChange} />
 
         {viewing && viewTool && (
@@ -301,11 +302,12 @@ export function BoardTopBar({
         {!viewing && (
           <button
             type="button"
+            aria-label="AI"
             title="Ask Claude about the selection"
-            className="flex h-9 w-16 items-center justify-center gap-1.5 bg-seafoam font-mono text-xs font-bold text-slate transition-colors duration-150 ease-standard hover:bg-sage"
+            className="flex h-9 w-9 items-center justify-center gap-1.5 bg-seafoam font-mono text-xs font-bold text-slate transition-colors duration-150 ease-standard hover:bg-sage sm:w-16"
           >
             <Sparkles aria-hidden="true" className="size-4" />
-            AI
+            <span className="hidden sm:inline">AI</span>
           </button>
         )}
 

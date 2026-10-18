@@ -1,3 +1,4 @@
+import { EDITED_AT_HEADER } from "@prism/shared";
 import compression from "compression";
 import cors from "cors";
 import express from "express";
@@ -11,6 +12,7 @@ import { aiRouter } from "./routes/ai.js";
 import { elementsRouter } from "./routes/elements.js";
 import { shareRouter } from "./routes/share.js";
 import { tokensRouter } from "./routes/tokens.js";
+import { startPurges } from "./tombstones.js";
 import { fileRouter, uploadRouter } from "./routes/uploads.js";
 import { workspaceRouter } from "./routes/workspace.js";
 
@@ -22,8 +24,9 @@ const port = Number(process.env["PORT"] ?? 4000);
 
 const app = express();
 
-// credentials: the client sends the session cookie cross-origin (Vite :5173 → server :4000)
-app.use(cors({ origin: clientUrl, credentials: true }));
+// credentials: the client sends the session cookie cross-origin (Vite :5173 → server :4000).
+// A board's elements reply says in a header which `editedAt` it was read at.
+app.use(cors({ origin: clientUrl, credentials: true, exposedHeaders: [EDITED_AT_HEADER] }));
 
 // Better Auth reads the raw request body, so it must be mounted before express.json().
 // `auth` is read per request: it's replaced if its startup failed (src/auth.ts).
@@ -78,3 +81,7 @@ const server = app.listen(port, () => {
 
 // Socket.IO shares the HTTP server: live element updates for open board tabs.
 attachRealtime(server, clientUrl);
+
+// Every hour: deleted elements and finished edit requests older than 30 days, and OAuth tokens
+// that can no longer be used, are removed for good (src/tombstones.ts).
+startPurges();

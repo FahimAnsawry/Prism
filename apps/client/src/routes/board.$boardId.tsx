@@ -36,9 +36,8 @@ import {
   newElement,
 } from "@/components/board/board-model";
 import {
+  boardCatchUpSource,
   boardElementsQuery,
-  fetchBoardElements,
-  fetchBoardElementsAhead,
   reportCursor,
   reportSelection,
   useBoardRealtime,
@@ -80,7 +79,7 @@ import { ExportMenu } from "@/components/board/export-menu";
 import { inView } from "@/components/board/camera";
 import { revealOps } from "@/components/board/remote-reveal";
 import { IconPicker } from "@/components/board/icon-picker";
-import { googleFontId, loadFont, loadFonts } from "@/components/board/fonts";
+import { googleFontId, loadFont } from "@/components/board/fonts";
 import type { Point } from "@/components/board/geometry";
 import { isTextual } from "@/components/board/gestures";
 import { selectionParent } from "@/components/board/selection";
@@ -88,12 +87,7 @@ import { applicableChanges, PropertiesPanel } from "@/components/board/propertie
 import { ShortcutsDialog } from "@/components/board/shortcuts-dialog";
 import { TableDetails } from "@/components/board/table-details";
 import { TextEditor } from "@/components/board/text-editor";
-import {
-  boardFontsReady,
-  fitTextBox,
-  loadBoardFontsToOpen,
-  preloadBoardFonts,
-} from "@/components/board/text-layout";
+import { boardFontsReady, fitTextBox, loadBoardFontsToOpen } from "@/components/board/text-layout";
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
 import { useElementSize } from "@/components/board/use-element-size";
 import { ShareDialog } from "@/components/share/share-dialog";
@@ -112,19 +106,32 @@ export const Route = createFileRoute("/board/$boardId")({
   beforeLoad: requireSession,
   // The board starts loading alongside the page's code instead of after it. A hover over its link
   // already fetches the elements (and the code), so a click usually opens it at once.
-  loader: ({ context: { queryClient }, params: { boardId }, preload }) => {
+  loader: async ({ context: { queryClient }, params: { boardId }, preload }) => {
+    // The board's engine (board-sync, text-layout and the board-font CSS) is imported here, not at
+    // the top, to keep it out of the entry bundle.
+    const [sync, layout, fonts] = await Promise.all([
+      import("@/components/board/board-sync"),
+      import("@/components/board/text-layout"),
+      import("@/components/board/fonts"),
+    ]);
     // The fonts the board used last time load alongside its elements.
-    preloadBoardFonts(boardId);
+    layout.preloadBoardFonts(boardId);
     if (preload) {
-      fetchBoardElementsAhead(boardId);
-      void loadFonts(["sans", "caveat", "mono"]);
+      sync.fetchBoardElementsAhead(boardId);
+      void fonts.loadFonts(["sans", "caveat", "mono"]);
       return;
     }
     const summary = boardQuery(boardId);
     // Cached data shows at once and the page refreshes it itself.
-    if (!queryClient.getQueryData(summary.queryKey)) void queryClient.prefetchQuery(summary);
-    void queryClient.prefetchQuery(boardElementsQuery(boardId));
-    void loadFonts(["sans", "caveat", "mono"]);
+    const cached = queryClient.getQueryData(summary.queryKey);
+    if (!cached) void queryClient.prefetchQuery(summary);
+    void queryClient.prefetchQuery(sync.boardElementsQuery(boardId));
+    // The "Ask AI" statuses load alongside, fresh on every visit (the socket keeps them current
+    // while the board is open, not while it's closed). A viewer's board has no Ask AI box.
+    if (cached?.access !== "viewer") {
+      void queryClient.prefetchQuery({ ...boardEditsQuery(boardId), staleTime: 0 });
+    }
+    void fonts.loadFonts(["sans", "caveat", "mono"]);
   },
   component: BoardPage,
 });
@@ -195,7 +202,8 @@ function BoardPage() {
         key={`${boardId}:view`}
         boardId={boardId}
         initial={elements.data.elements}
-        fetchElements={() => fetchBoardElements(boardId)}
+        initialEditedAt={elements.data.editedAt}
+        catchUpSource={boardCatchUpSource(boardId)}
         title={board.data.name}
         context={`Shared by ${board.data.ownerName}`}
         leading={
@@ -218,6 +226,7 @@ function BoardPage() {
       boardId={boardId}
       board={board.data}
       initial={elements.data.elements}
+      initialEditedAt={elements.data.editedAt}
       onAccessChanged={reloadAccess}
     />
   );
@@ -232,11 +241,14 @@ function BoardEditor({
   boardId,
   board,
   initial,
+  initialEditedAt,
   onAccessChanged,
 }: {
   boardId: string;
   board: BoardSummary | undefined;
   initial: BoardElement[];
+  /** The board's `editedAt` (ms) when `initial` was read. */
+  initialEditedAt: number | null;
   /** Removed from the board, or given another role. */
   onAccessChanged: () => void;
 }) {
@@ -261,7 +273,11 @@ function BoardEditor({
   const size = useElementSize(viewport);
   const pointer = useRef<Point | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const { status: saveStatus, receive, resync } = useBoardSaver(boardId, initial, state.elements);
+  const {
+    status: saveStatus,
+    receive,
+    catchUp,
+  } = useBoardSaver(boardId, initial, state.elements, { editedAt: initialEditedAt });
   const updateStyle = useUpdateBoardStyle(boardId);
   const customFonts = board?.customFonts;
   // Memoized with the callbacks below: the editor renders on every pan and zoom frame, and the
@@ -291,9 +307,9 @@ function BoardEditor({
   // ── Live sync and AI editors ─────────────────────────────────────────────
 
   // Event handlers attached once read the latest values from here.
-  const latest = useRef({ state, camera, size, editing, viewing });
+  const latest = useRef({ state, camera, size, editing, viewing, tool, hasTables });
   useEffect(() => {
-    latest.current = { state, camera, size, editing, viewing };
+    latest.current = { state, camera, size, editing, viewing, tool, hasTables };
   });
 
   /** Applies ops saved elsewhere (another tab, an AI editor) as one undo step. */
@@ -347,14 +363,16 @@ function BoardEditor({
 
   /** The selection as last reported, re-sent after a reconnect. */
   const selection = useRef(state.selectedIds);
+  /** The first join follows the loader's fresh fetch of the requests; a rejoin may have missed some. */
+  const joinedBefore = useRef(false);
   useBoardRealtime(boardId, {
     onOps: applyRemote,
-    onJoined: () => {
+    onJoined: (editedAt) => {
       reportSelection(boardId, selection.current);
-      void edits.refetch();
-      fetchBoardElements(boardId).then(
-        (server) => {
-          const fresh = resync(server);
+      if (joinedBefore.current) void edits.refetch();
+      joinedBefore.current = true;
+      catchUp(boardCatchUpSource(boardId), editedAt).then(
+        (fresh) => {
           if (fresh.length > 0) dispatch({ type: "remote", ops: fresh });
         },
         (error: unknown) => console.warn("[Prism] Couldn't catch up with the board:", error),
@@ -674,15 +692,19 @@ function BoardEditor({
 
   // ── Keyboard (tools.md §1, §4 and §5) ────────────────────────────────────
 
+  // Attached once: the handler reads the board from `latest`, so edits don't re-attach it.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       // While text is being edited every key belongs to the editor, wherever focus is.
       if (isTyping(event.target) || latest.current.editing) return;
       // A dialog (the shortcut list, a board dialog) takes the keys while it's open.
       if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      const { state, size, tool, viewing, hasTables } = latest.current;
       const key = event.key.toLowerCase();
       const mod = event.ctrlKey || event.metaKey;
       const ids = state.selectedIds;
+      const only = ids.length === 1 ? state.elements.find((el) => el.id === ids[0]) : undefined;
+      const selectedTable = only?.type === "table" ? only : undefined;
 
       // View mode: look around only. Every other key is left alone.
       if (viewing) {
@@ -782,17 +804,7 @@ function BoardEditor({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    state.selectedIds,
-    state.elements,
-    tool,
-    size,
-    chooseTool,
-    startEditing,
-    selectedTable,
-    viewing,
-    hasTables,
-  ]);
+  }, [chooseTool, startEditing]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
@@ -910,12 +922,13 @@ function BoardEditor({
           </>
         )}
 
-        {/* Beside the properties panel, which is open whenever a table is selected. While the
-            table's focus view is open its details show there instead. */}
+        {/* Beside the properties panel, which is open whenever a table is selected (below it on
+            phones, above the Ask AI box). While the table's focus view is open its details show
+            there instead. */}
         {selectedTable && !viewing && !editing && !focusTable && (
           <aside
             aria-label={`${selectedTable.table?.name ?? "Table"} details`}
-            className="absolute top-6 right-[18rem] z-20 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-lg md:right-[18.5rem]"
+            className="absolute top-1/2 right-4 left-20 z-20 max-h-[calc(50%-6.5rem)] overflow-y-auto border border-chrome bg-card shadow-lg md:top-6 md:right-[18.5rem] md:left-auto md:max-h-[calc(100%-2.5rem)] md:w-64"
           >
             <TableDetails
               table={selectedTable}

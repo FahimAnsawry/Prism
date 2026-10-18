@@ -344,13 +344,20 @@ export const showBoardReplySchema = z.enum(["opened", "asked"]);
 
 export type ShowBoardReply = z.infer<typeof showBoardReplySchema>;
 
+/** A join's answer: whether it worked, and the board's `editedAt` (ms) read after joining. */
+export type JoinAck = (ok: boolean, editedAt?: number | null) => void;
+
 export interface ClientToServerEvents {
   /** The user focused this tab, so it's the one board:show picks first. */
   "tab:active": () => void;
-  /** Start receiving a board's updates. The ack says whether the board is the user's. */
-  "board:join": (boardId: string, ack: (ok: boolean) => void) => void;
+  /**
+   * Start receiving a board's updates. The ack says whether the board is the user's and, once
+   * joined, the board's `editedAt` (ms): a tab whose elements were read at the same one missed
+   * nothing before joining.
+   */
+  "board:join": (boardId: string, ack: JoinAck) => void;
   /** A public link's viewer (no account) joins a board the link shows, read-only. */
-  "share:join": (token: string, boardId: string, ack: (ok: boolean) => void) => void;
+  "share:join": (token: string, boardId: string, ack: JoinAck) => void;
   "board:leave": (boardId: string) => void;
   /** The tab's current selection, so AI editors can read it (and other tabs can outline it). */
   "selection:set": (payload: { boardId: string; elementIds: string[] }) => void;

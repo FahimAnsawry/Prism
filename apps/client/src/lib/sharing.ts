@@ -7,12 +7,14 @@ import {
   publicShareSchema,
   shareSettingsSchema,
   type InviteMemberInput,
+  type PublicBoardData,
   type ShareKind,
   type ShareRole,
   type ShareSettings,
 } from "@prism/shared";
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./api";
+import { elementChangesReply, isElementList, UNEXPECTED_ELEMENTS } from "./element-replies";
 import { workspaceQuery } from "./workspace";
 
 // Sharing a board or project: the owner's Share dialog, invite links and public links.
@@ -160,22 +162,39 @@ export const publicShareQuery = (token: string) =>
     retry: false,
   });
 
+const publicBoardPath = (token: string, boardId: string) =>
+  `${publicPath(token)}/boards/${encodeURIComponent(boardId)}`;
+
+/** The board and project name checked in full, the elements by shape only (see isElementList). */
+const publicBoardMeta = publicBoardDataSchema.omit({ elements: true });
+const publicBoardReply = {
+  parse(data: unknown): PublicBoardData {
+    const meta = publicBoardMeta.parse(data);
+    const elements = (data as { elements?: unknown }).elements;
+    if (!isElementList(elements)) throw new Error(UNEXPECTED_ELEMENTS);
+    return { ...meta, elements };
+  },
+};
+
 export const publicBoardQuery = (token: string, boardId: string) =>
   queryOptions({
     queryKey: ["public-board", token, boardId],
-    queryFn: () =>
-      apiFetch(`${publicPath(token)}/boards/${encodeURIComponent(boardId)}`, publicBoardDataSchema),
+    queryFn: () => apiFetch(publicBoardPath(token, boardId), publicBoardReply),
     retry: false,
-    // The viewer owns the elements once loaded; live updates arrive over the socket.
+    // The viewer owns the elements once loaded; live updates arrive over the socket. Kept a
+    // moment after closing, so the loader's fetch is still there when the page mounts.
     staleTime: Infinity,
-    gcTime: 0,
+    gcTime: 30_000,
     refetchOnWindowFocus: false,
   });
 
-/** The board's elements behind a public link now (for a resync after reconnecting). */
-export function fetchPublicBoardElements(token: string, boardId: string) {
-  return apiFetch(
-    `${publicPath(token)}/boards/${encodeURIComponent(boardId)}`,
-    publicBoardDataSchema,
-  ).then((data) => data.elements);
-}
+/** Where a public link's board tab catches up from after (re)joining (see useBoardSaver). */
+export const publicCatchUpSource = (token: string, boardId: string) => ({
+  changes: (since: number) =>
+    apiFetch(`${publicBoardPath(token, boardId)}?since=${since}`, elementChangesReply),
+  all: () =>
+    apiFetch(publicBoardPath(token, boardId), publicBoardReply).then((data) => ({
+      elements: data.elements,
+      editedAt: Date.parse(data.board.editedAt),
+    })),
+});

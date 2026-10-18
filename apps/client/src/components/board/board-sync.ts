@@ -5,7 +5,9 @@
 
 import {
   type BoardElement,
+  EDITED_AT_HEADER,
   type EditRequest,
+  type ElementChangesReply,
   type ElementOp,
   type CompareReferenceReply,
   type CompareReferenceRequest,
@@ -26,11 +28,13 @@ import {
 import { queryOptions } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { elementChangesReply, isElementList, UNEXPECTED_ELEMENTS } from "@/lib/element-replies";
 import { getSocket } from "@/lib/realtime";
 import { applyOps } from "./board-model";
 
 // What an AI editor asks an open tab to do (draw, measure, lay out) loads on its first request:
-// the dashboard (previews load elements from here) and a board's first paint don't need it.
+// a hover that fetches a board ahead (fetchBoardElementsAhead) and a board's first paint don't
+// need it.
 const compareReference = (request: CompareReferenceRequest) =>
   import("./compare-reference").then((m) => m.compareReference(request));
 const exportBoardImage = (request: ExportImageRequest) =>
@@ -48,34 +52,37 @@ const layoutErOnTab = (request: LayoutErRequest) =>
 
 const elementsPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}/elements`;
 
-type BoardElementsReply = { elements: BoardElement[] };
-
 /**
- * Checks an elements reply's shape only. The server checked every element when it was saved,
- * and running boardElementsSchema over a big board again took up to half a second of opening it
- * (3,500 elements). Read replies carry no fields the schema would strip.
+ * A board's live elements and the board's `editedAt` (ms) they were read at, to ask for what
+ * changed since (null when unknown).
  */
+export type BoardElementsData = { elements: BoardElement[]; editedAt: number | null };
+
+/** Checks an elements reply's shape only (see isElementList). */
 const elementsReply = {
-  parse(data: unknown): BoardElementsReply {
-    const elements = (data as { elements?: unknown } | null)?.elements;
-    const valid =
-      Array.isArray(elements) &&
-      elements.every(
-        (el: unknown) =>
-          typeof el === "object" &&
-          el !== null &&
-          typeof (el as { id?: unknown }).id === "string" &&
-          typeof (el as { type?: unknown }).type === "string",
-      );
-    if (!valid) throw new Error("The board's elements came back in an unexpected shape.");
-    return data as BoardElementsReply;
+  parse(data: unknown): { elements: BoardElement[] } {
+    if (!isElementList((data as { elements?: unknown } | null)?.elements)) {
+      throw new Error(UNEXPECTED_ELEMENTS);
+    }
+    return data as { elements: BoardElement[] };
   },
 };
+
+/** A board's live elements now, with the `editedAt` they were read at. */
+function fetchElementsData(boardId: string): Promise<BoardElementsData> {
+  let editedAt: number | null = null;
+  return apiFetch(elementsPath(boardId), elementsReply, {
+    onHeaders: (headers) => {
+      const stamp = Number(headers.get(EDITED_AT_HEADER));
+      editedAt = headers.has(EDITED_AT_HEADER) && Number.isFinite(stamp) ? stamp : null;
+    },
+  }).then(({ elements }) => ({ elements, editedAt }));
+}
 
 /** How long elements fetched ahead (on a hover) may open the board. */
 const AHEAD_FRESH_MS = 15_000;
 /** Elements fetched ahead of opening a board, each used once by the board's query. */
-const ahead = new Map<string, { at: number; reply: Promise<BoardElementsReply> }>();
+const ahead = new Map<string, { at: number; reply: Promise<BoardElementsData> }>();
 /** Boards with a save on its way: elements read now could miss it. */
 const saving = new Set<string>();
 
@@ -87,14 +94,14 @@ const saving = new Set<string>();
 export function fetchBoardElementsAhead(boardId: string) {
   const current = ahead.get(boardId);
   if (saving.has(boardId) || (current && Date.now() - current.at < AHEAD_FRESH_MS)) return;
-  const reply = apiFetch(elementsPath(boardId), elementsReply);
+  const reply = fetchElementsData(boardId);
   reply.catch(() => ahead.delete(boardId));
   ahead.set(boardId, { at: Date.now(), reply });
 }
 
-/** A board just made: it opens with no elements, without asking the server. */
-export function seedNewBoardElements(boardId: string) {
-  ahead.set(boardId, { at: Date.now(), reply: Promise.resolve({ elements: [] }) });
+/** A board just made (at `editedAt`, ms): it opens with no elements, without asking the server. */
+export function seedNewBoardElements(boardId: string, editedAt: number | null) {
+  ahead.set(boardId, { at: Date.now(), reply: Promise.resolve({ elements: [], editedAt }) });
 }
 
 /** The elements fetched ahead, if still fresh (once: the editor owns them from then on). */
@@ -108,8 +115,7 @@ export const boardElementsQuery = (boardId: string) =>
   queryOptions({
     queryKey: ["board-elements", boardId],
     queryFn: async () =>
-      (await takeAhead(boardId)?.catch(() => null)) ??
-      apiFetch(elementsPath(boardId), elementsReply),
+      (await takeAhead(boardId)?.catch(() => null)) ?? fetchElementsData(boardId),
     // The editor owns the elements once loaded; a background refetch must not replace them.
     staleTime: Infinity,
     gcTime: 0,
@@ -182,21 +188,31 @@ function diff(
   return ops;
 }
 
+/** Where a board tab catches up from after (re)joining: see useBoardSaver's `catchUp`. */
+export interface CatchUpSource {
+  /** What changed since the board's `editedAt` was `since`. */
+  changes: (since: number) => Promise<ElementChangesReply>;
+  /** Every live element, for when the changes can't be had. */
+  all: () => Promise<BoardElementsData>;
+}
+
 /**
  * Keeps the server in step with `elements`. Returns the save status for the top bar, and
- * `receive` / `resync` for ops saved elsewhere: they record those ops as saved and return the
+ * `receive` / `catchUp` for ops saved elsewhere: they record those ops as saved and return the
  * ones that are new, for the editor to apply. A read-only board (a viewer, a public link) never
- * saves; it only uses `receive` and `resync`.
+ * saves; it only uses `receive` and `catchUp`. `editedAt` is the board's when `initial` was read.
  */
 export function useBoardSaver(
   boardId: string,
   initial: BoardElement[],
   elements: BoardElement[],
-  { readOnly = false } = {},
+  { readOnly = false, editedAt = null }: { readOnly?: boolean; editedAt?: number | null } = {},
 ) {
   const saved = useRef(new Map(initial.map((el) => [el.id, el])));
   /** The highest version the server has for each id, deleted ones included. */
   const versions = useRef(new Map(initial.map((el) => [el.id, el.version])));
+  /** The board's `editedAt` this tab has every change up to (null: unknown). */
+  const syncedAt = useRef(editedAt);
   const latest = useRef(elements);
   const inFlight = useRef<Promise<void> | null>(null);
   const again = useRef(false);
@@ -267,11 +283,13 @@ export function useBoardSaver(
 
   useEffect(() => {
     latest.current = elements;
-    // Nothing to do for the board as it loaded, or one this tab can't change.
-    if (elements === initial || readOnly) return;
+    // Nothing to do for a board this tab can't change. The board as it loaded is checked too: an
+    // undo back to it (the same array) still has the changes since to take back. A flush with
+    // nothing to send sends nothing.
+    if (readOnly) return;
     const timer = setTimeout(() => void flush(), SAVE_DELAY);
     return () => clearTimeout(timer);
-  }, [elements, initial, flush, readOnly]);
+  }, [elements, flush, readOnly]);
 
   // Leaving the board (another route) saves what's pending; closing the tab asks first.
   useEffect(() => {
@@ -300,8 +318,8 @@ export function useBoardSaver(
   }, []);
 
   /**
-   * Catches up with the server's elements after (re)joining the board, when ops may have been
-   * missed: newer elements come in whole, and elements the server no longer has are deleted.
+   * Catches up with all of the server's elements: newer elements come in whole, and elements the
+   * server no longer has are deleted.
    */
   const resync = useCallback(
     (server: BoardElement[]) => {
@@ -323,6 +341,49 @@ export function useBoardSaver(
     [receive],
   );
 
+  /** Catches up with what changed on the server: newer elements come in whole, deletions by id. */
+  const applyChanges = useCallback(
+    (reply: ElementChangesReply) => {
+      if (reply.full) return resync(reply.elements);
+      const ops: ElementOp[] = [];
+      for (const el of reply.elements) {
+        if (el.version > (versions.current.get(el.id) ?? 0))
+          ops.push({ op: "create", element: el });
+      }
+      for (const { id, version } of reply.deleted) {
+        if (version > (versions.current.get(id) ?? 0)) ops.push({ op: "delete", id, version });
+      }
+      return receive(ops);
+    },
+    [receive, resync],
+  );
+
+  /**
+   * Catches up after (re)joining the board, when ops may have been missed, and returns the new
+   * ones. `joinedAt` is the board's `editedAt` the join answered with: the same as this tab's
+   * means nothing changed. Otherwise only what changed since is fetched, or everything when that
+   * can't be had.
+   */
+  const catchUp = useCallback(
+    async (source: CatchUpSource, joinedAt?: number | null): Promise<ElementOp[]> => {
+      const since = syncedAt.current;
+      if (since !== null && joinedAt != null && joinedAt === since) return [];
+      if (since !== null) {
+        try {
+          const reply = await source.changes(since);
+          syncedAt.current = reply.editedAt;
+          return applyChanges(reply);
+        } catch (error) {
+          console.warn("[Prism] Couldn't fetch the board's changes; fetching all of it:", error);
+        }
+      }
+      const all = await source.all();
+      syncedAt.current = all.editedAt;
+      return resync(all.elements);
+    },
+    [applyChanges, resync],
+  );
+
   const status: SaveStatus =
     request === "error"
       ? "error"
@@ -331,7 +392,7 @@ export function useBoardSaver(
         : elements === savedElements
           ? "saved"
           : "unsaved";
-  return { status, receive, resync };
+  return { status, receive, catchUp };
 }
 
 export interface RealtimeHandlers {
@@ -340,8 +401,11 @@ export interface RealtimeHandlers {
    * big batch: show it being built (remote-reveal.ts).
    */
   onOps: (ops: ElementOp[], staged?: Peer) => void;
-  /** Joined (or rejoined after a disconnect): time to catch up on missed changes. */
-  onJoined: () => void;
+  /**
+   * Joined (or rejoined after a disconnect): time to catch up on missed changes. `editedAt` is
+   * the board's once joined (see useBoardSaver's `catchUp`).
+   */
+  onJoined: (editedAt: number | null) => void;
   /** An "Ask AI" request on this board was created or changed status. */
   onEdit?: (request: EditRequest) => void;
   /** An "Ask AI" request was deleted. */
@@ -369,8 +433,8 @@ export function useBoardRealtime(
   useEffect(() => {
     const socket = getSocket();
     const join = () => {
-      const joined = (ok: boolean) => {
-        if (ok) latest.current.onJoined();
+      const joined = (ok: boolean, editedAt?: number | null) => {
+        if (ok) latest.current.onJoined(typeof editedAt === "number" ? editedAt : null);
         else latest.current.onRevoked?.();
       };
       if (shareToken) socket.emit("share:join", shareToken, boardId, joined);
@@ -494,7 +558,8 @@ export function reportCursor(boardId: string, point: { x: number; y: number }) {
   }
 }
 
-/** The board's elements as the server has them now (for a resync). */
-export function fetchBoardElements(boardId: string) {
-  return apiFetch(elementsPath(boardId), elementsReply).then((data) => data.elements);
-}
+/** A signed-in board tab's catch-up source (useBoardSaver's `catchUp`). */
+export const boardCatchUpSource = (boardId: string): CatchUpSource => ({
+  changes: (since) => apiFetch(`${elementsPath(boardId)}?since=${since}`, elementChangesReply),
+  all: () => fetchElementsData(boardId),
+});

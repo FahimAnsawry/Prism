@@ -150,7 +150,7 @@ function ExportCard({
           </motion.p>
         </AnimatePresence>
         {!failed && (
-          <span className="font-mono text-3xs text-muted-foreground tabular-nums">
+          <span className="font-mono text-2xs text-muted-foreground tabular-nums">
             {elapsed.toFixed(1)}s
           </span>
         )}

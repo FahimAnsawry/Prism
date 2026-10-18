@@ -23,19 +23,20 @@ const RAYS: { y: number; from: [number, number]; stroke: string; art: ArtCompone
 
 /**
  * The dark right half of the login and signup screens (800×900 on the board): one beam enters
- * the prism and splits into five views. Fitted whole (never cropped) and centered, so the
- * cards keep their margins at any window size; the dots and
- * the beam run past the art to fill the rest. `button` is the label in the code card.
+ * the prism and splits into five views. The whole picture, a dark block, sits 10% in from every
+ * edge of the panel, on the page background. Inside it the art is fitted whole (never cropped) and centered, so the cards keep their
+ * margins at any window size; the dots and the beam run past the art to fill the rest of the
+ * picture. `button` is the label in the code card.
  */
 export function PrismPanel({ button }: { button: string }) {
   return (
-    <aside className="sticky top-0 hidden h-screen overflow-hidden bg-inverse lg:block">
+    <aside className="sticky top-0 hidden h-screen overflow-hidden bg-background lg:block">
       <svg
         viewBox="0 0 800 900"
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="A beam of light enters the Prism mark and splits into a wireframe, a flowchart, a database diagram, a mind map and code."
-        className="absolute inset-0 size-full"
+        className="absolute top-[10%] left-[10%] size-4/5 bg-inverse"
       >
         <defs>
           <pattern id="prism-panel-dots" width="24" height="24" patternUnits="userSpaceOnUse">

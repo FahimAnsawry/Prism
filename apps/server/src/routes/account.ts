@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PHOTO_MAX_BYTES, PHOTO_TYPES, type ConnectedEditor } from "@prism/shared";
 import express, { Router } from "express";
 import { prisma } from "../db/client.js";
+import { refuseDemoUser } from "../demo.js";
 import { badRequest, notFound } from "../errors.js";
 import { requireUser } from "../session.js";
 import { getObject, putObject } from "../storage.js";
@@ -35,6 +36,7 @@ photoRouter.post(
   requireUser,
   express.raw({ type: [...PHOTO_TYPES], limit: PHOTO_MAX_BYTES }),
   async (req, res) => {
+    await refuseDemoUser(res.locals.userId);
     const type = req.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
     const extension = EXTENSIONS[type];
     if (!extension || !(req.body instanceof Buffer) || req.body.length === 0) {
@@ -56,6 +58,7 @@ accountRouter.use("/account", requireUser);
 
 /** Back to the sign-in provider's photo (or none). */
 accountRouter.delete("/account/photo", async (_req, res) => {
+  await refuseDemoUser(res.locals.userId);
   await prisma.user.update({ where: { id: res.locals.userId }, data: { imageKey: null } });
   res.json({ imageKey: null });
 });

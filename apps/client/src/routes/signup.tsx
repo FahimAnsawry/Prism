@@ -14,6 +14,7 @@ export const Route = createFileRoute("/signup")({
 function SignupPage() {
   return (
     <AuthLayout
+      crystal
       panelButton="Create account"
       footer="By creating an account you agree to Prism's Terms and Privacy Policy."
     >

@@ -223,12 +223,12 @@ export function ColorPicker({
           }}
           className={cn(
             "h-7 min-w-0 flex-1 border bg-card px-2 font-mono text-xs text-foreground uppercase outline-none",
-            invalid ? "border-coral" : "border-divider focus:border-foreground",
+            invalid ? "border-danger dark:border-coral" : "border-divider focus:border-foreground",
           )}
         />
       </div>
       {invalid && (
-        <p id={errorId} className="-mt-1.5 text-3xs text-coral">
+        <p id={errorId} className="-mt-1.5 text-2xs text-danger dark:text-coral">
           Use a hex color like #5882FF.
         </p>
       )}

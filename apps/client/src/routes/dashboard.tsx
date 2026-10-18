@@ -34,7 +34,7 @@ import { ShareDialog } from "@/components/share/share-dialog";
 import { apiErrorMessage } from "@/lib/api";
 import { requireSession } from "@/lib/auth-client";
 import { claimPendingInvite } from "@/lib/sharing";
-import { allProjects, workspaceQuery } from "@/lib/workspace";
+import { allProjects, fetchWorkspace, workspaceQuery } from "@/lib/workspace";
 
 type DashboardSearch = {
   view?: Exclude<Section, "all">;
@@ -50,15 +50,23 @@ export const Route = createFileRoute("/dashboard")({
     const q = typeof search.q === "string" && search.q ? search.q : undefined;
     return { ...(view && view !== "all" && { view }), ...(q && { q }) };
   },
-  beforeLoad: async ({ preload }) => {
+  beforeLoad: async ({ preload, context: { queryClient } }) => {
+    // The workspace starts loading alongside the session check. It joins the query cache only
+    // once the user is known to be signed in: a signed-out visit's 401 is expected, not an error
+    // to report.
+    const early = queryClient.getQueryData(workspaceQuery.queryKey) ? null : fetchWorkspace();
+    early?.catch(() => {});
     const session = await requireSession();
+    // No retries of this one request: the page's own query retries with fresh ones.
+    if (early)
+      void queryClient.prefetchQuery({ ...workspaceQuery, queryFn: () => early, retry: false });
     // Signed in from an invite link: finish accepting it (on the visit itself, not a hover).
     const invite = preload ? null : claimPendingInvite();
     if (invite) throw redirect({ to: "/invite/$token", params: { token: invite } });
     return session;
   },
-  // The workspace loads alongside the page's code instead of after it. Cached data shows at
-  // once, and the page refreshes it itself.
+  // The workspace loads alongside the page's code instead of after it (if beforeLoad didn't
+  // start it). Cached data shows at once, and the page refreshes it itself.
   loader: ({ context: { queryClient } }) => {
     if (!queryClient.getQueryData(workspaceQuery.queryKey)) {
       void queryClient.prefetchQuery(workspaceQuery);

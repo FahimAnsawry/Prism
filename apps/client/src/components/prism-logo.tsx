@@ -31,8 +31,12 @@ const plainFacet: FacetRenderer = ({ d, className }) => <path d={d} className={c
  * The prism mark: one triangle cut into four facets. The corner facets take the svg's fill,
  * which defaults to ink so the mark holds up on the light canvas; the center facet is always
  * brand green. The loader and the status screen animate the facets in their order: top, left,
- * right, center, by drawing them with `renderFacet`. With `fadeIn` the whole mark fades in.
+ * right, center, by drawing them with `renderFacet`. With `fadeIn` the whole mark fades in; a
+ * number is how far that fade already is (0-1), to carry on one that started elsewhere.
  */
+/** How long the mark takes to fade in (s); index.html's boot loader fades in the same way. */
+const MARK_FADE_S = 0.6;
+
 export function PrismMark({
   className,
   renderFacet = plainFacet,
@@ -40,16 +44,17 @@ export function PrismMark({
 }: {
   className?: string;
   renderFacet?: FacetRenderer;
-  fadeIn?: boolean;
+  fadeIn?: boolean | number;
 }) {
+  const fadedIn = fadeIn === true ? 0 : fadeIn === false ? 1 : Math.min(1, Math.max(0, fadeIn));
   return (
     <motion.svg
       viewBox="1.24 2.47 33.53 33.53"
       aria-hidden="true"
       className={cn("size-9 fill-ink", className)}
-      initial={fadeIn ? { opacity: 0 } : false}
+      initial={fadedIn < 1 ? { opacity: fadedIn } : false}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.6, ease: "easeInOut" }}
+      transition={{ duration: MARK_FADE_S * (1 - fadedIn), ease: "easeInOut" }}
     >
       {CORNER_FACETS.map((d, index) => (
         <Fragment key={d}>{renderFacet({ d, index })}</Fragment>

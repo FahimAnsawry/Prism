@@ -337,9 +337,15 @@ function describeTheme(theme: Theme) {
   };
 }
 
-/** Saves AI-made ops (one undo step for the user) and sends them to open board tabs. */
-async function save(userId: string, id: string, ops: ElementOp[]) {
-  const board = await boardFor(id, userId, "edit");
+/**
+ * Saves AI-made ops (one undo step for the user) and sends them to open board tabs. `board` is one
+ * the tool already checked the user may edit (boardFor with "edit").
+ */
+async function save(
+  userId: string,
+  board: { id: string; projectId: string | null },
+  ops: ElementOp[],
+) {
   const result = await applyOps(board, ops);
   // A big batch of new elements is revealed in steps by the tabs; the rest just applies and
   // the editor's cursor goes to what changed.
@@ -381,8 +387,11 @@ async function createHtmlScreen(
   mode: ThemeMode,
 ) {
   const board = await boardFor(boardIdInput, userId, "edit");
-  const [theme, components] = await Promise.all([boardTheme(board), boardComponents(board)]);
-  const existing = await loadElements(board.id);
+  const [theme, components, existing] = await Promise.all([
+    boardTheme(board),
+    boardComponents(board),
+    loadElements(board),
+  ]);
   const content = boundsOf(existing);
   const width = frame?.width ?? place.width ?? 390;
   const options: LayoutOptions = {
@@ -455,7 +464,7 @@ async function createHtmlScreen(
   );
   await save(
     userId,
-    board.id,
+    board,
     elements.map((element) => ({ op: "create", element })),
   );
   const layers = new Map<string, string>();
@@ -911,9 +920,9 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     ({ boardId: id, frameId }) =>
       run(async () => {
         const board = await boardFor(id, userId, "view");
-        const theme = await boardTheme(board);
+        const [theme, all] = await Promise.all([boardTheme(board), loadElements(board)]);
         // Frames, sections and cards without a stored name read with the one they would get.
-        let elements = withNames(await loadElements(board.id));
+        let elements = withNames(all);
         if (frameId) {
           const frame = elements.find((el) => el.id === frameId);
           if (!frame) throw new HttpError(404, "No element with that frameId on this board.");
@@ -967,8 +976,8 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     ({ boardId: id, frameId }) =>
       run(async () => {
         const board = await boardFor(id, userId, "view");
-        const theme = await boardTheme(board);
-        const elements = withNames(await loadElements(board.id));
+        const [theme, all] = await Promise.all([boardTheme(board), loadElements(board)]);
+        const elements = withNames(all);
         const frames = elements.filter(
           (el) => el.type === "frame" && (frameId === undefined || el.id === frameId),
         );
@@ -1033,7 +1042,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     ({ boardId: id, format, ids }) =>
       run(async () => {
         const board = await boardFor(id, userId, "view");
-        const elements = await loadElements(board.id);
+        const elements = await loadElements(board);
         const schema = erSchemaOf(elements, ids);
         if (schema.tables.length === 0) {
           throw new HttpError(
@@ -1098,7 +1107,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     ({ boardId: id, frameId, ids, scale }) =>
       run(async () => {
         const board = await boardFor(id, userId, "view");
-        const elements = await loadElements(board.id);
+        const elements = await loadElements(board);
         const image = await requestBoardImage(userId, {
           boardId: board.id,
           elements,
@@ -1148,7 +1157,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     ({ boardId: id, frameId, referenceId }) =>
       run(async () => {
         const board = await boardFor(id, userId, "view");
-        const elements = await loadElements(board.id);
+        const elements = await loadElements(board);
         const { ok: _, ...report } = await requestReferenceComparison(userId, {
           boardId: board.id,
           elements,
@@ -1198,11 +1207,11 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
         const resolved = stored.map((input) =>
           themed({ ...themedDefaults(input), ...input }, theme, mode ?? "light"),
         );
-        const existing = await loadElements(board.id);
+        const existing = await loadElements(board);
         const elements = named(buildElements(resolved, existing), existing);
         await save(
           userId,
-          board.id,
+          board,
           elements.map((element) => ({ op: "create", element })),
         );
         return json({
@@ -1349,7 +1358,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
         );
         if (unknown.length > 0) throw new HttpError(400, unknownTokensMessage(unknown));
         if (violations.length > 0) throw new HttpError(400, strictMessage(violations));
-        const existing = await loadElements(board.id);
+        const existing = await loadElements(board);
         const content = boundsOf(existing);
         const width = input.frame?.width ?? input.width ?? 390;
         const options = {
@@ -1379,7 +1388,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
         );
         await save(
           userId,
-          board.id,
+          board,
           elements.map((element) => ({ op: "create", element })),
         );
         // Overlay layers (not stored) by element id; parts follow the frame, if any.
@@ -1474,7 +1483,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
           );
         }
         const board = await boardFor(input.boardId, userId, "edit");
-        const existing = await loadElements(board.id);
+        const existing = await loadElements(board);
         const content = boundsOf(existing);
 
         let under;
@@ -1549,7 +1558,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
             changes: { x: to.x, y: to.y, updatedBy: "ai_agent" },
           });
         }
-        await save(userId, board.id, ops);
+        await save(userId, board, ops);
         return json({
           rootId,
           measured: measured ? "browser" : "estimated (no board tab open; node sizes may be off)",
@@ -1611,7 +1620,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
           throw new HttpError(400, problems.slice(0, 20).join("\n"));
         }
         const board = await boardFor(input.boardId, userId, "edit");
-        const existing = await loadElements(board.id);
+        const existing = await loadElements(board);
         const content = boundsOf(existing);
         const options = {
           x: input.x ?? (content ? content.x + content.width + 160 : 0),
@@ -1636,7 +1645,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
         );
         await save(
           userId,
-          board.id,
+          board,
           created.map((element) => ({ op: "create", element })),
         );
         const texts = relationTexts([...existing, ...created]);
@@ -1673,8 +1682,8 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     ({ boardId: id, updates, mode }) =>
       run(async () => {
         const board = await boardFor(id, userId, "edit");
-        const theme = await boardTheme(board);
-        const current = new Map((await loadElements(board.id)).map((el) => [el.id, el]));
+        const [theme, all] = await Promise.all([boardTheme(board), loadElements(board)]);
+        const current = new Map(all.map((el) => [el.id, el]));
         const missing = updates.filter((u) => !current.has(u.id)).map((u) => u.id);
         if (missing.length > 0) {
           throw new HttpError(404, `Not on this board: ${missing.join(", ")}`);
@@ -1720,7 +1729,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
             updatedBy: "ai_agent",
           }),
         }));
-        const result = await save(userId, board.id, ops);
+        const result = await save(userId, board, ops);
         return json({
           updated: result.applied.length,
           conflicts: result.stale,
@@ -1740,7 +1749,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     ({ boardId: id, ids }) =>
       run(async () => {
         const board = await boardFor(id, userId, "edit");
-        const elements = await loadElements(board.id);
+        const elements = await loadElements(board);
         const doomed = new Set(
           ids.filter((elementId) => elements.some((el) => el.id === elementId)),
         );
@@ -1756,7 +1765,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
         const versions = new Map(elements.map((el) => [el.id, el.version]));
         const result = await save(
           userId,
-          board.id,
+          board,
           [...doomed].map((elementId) => ({
             op: "delete",
             id: elementId,
@@ -1920,17 +1929,15 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     ({ boardId: id }) =>
       run(async () => {
         const selection = await selectionFor(userId, id);
-        const theme =
+        const board =
           selection.elements.length > 0 && selection.boardId
-            ? await boardTheme(await boardFor(selection.boardId, userId, "view"))
-            : undefined;
+            ? await boardFor(selection.boardId, userId, "view")
+            : null;
+        const [theme, all] = board
+          ? await Promise.all([boardTheme(board), loadElements(board)])
+          : [undefined, []];
         // Names come from the whole board: a card is named after what is around it.
-        const byId = new Map(
-          (selection.elements.length > 0 && selection.boardId
-            ? withNames(await loadElements(selection.boardId))
-            : []
-          ).map((el) => [el.id, el]),
-        );
+        const byId = new Map(withNames(all).map((el) => [el.id, el]));
         return json({
           boardId: selection.boardId,
           elements: selection.elements.map((el) => view(byId.get(el.id) ?? el, theme)),
@@ -1972,12 +1979,14 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
             hint: "No requests yet. Call wait_for_edits again to keep watching.",
           });
         }
-        const themes = new Map<string, Theme>();
-        for (const r of requests) {
-          if (!themes.has(r.boardId)) {
-            themes.set(r.boardId, await boardTheme(await boardFor(r.boardId, userId, "view")));
-          }
-        }
+        const boardIds = [...new Set(requests.map((r) => r.boardId))];
+        const themes = new Map<string, Theme>(
+          await Promise.all(
+            boardIds.map(
+              async (id) => [id, await boardTheme(await boardFor(id, userId, "view"))] as const,
+            ),
+          ),
+        );
         return json({
           requests: requests.map((r) => ({
             requestId: r.id,

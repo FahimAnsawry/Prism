@@ -147,7 +147,7 @@ function RenameInput({
         if (!cancelled.current) onDone(draft);
       }}
       onPointerDown={(event) => event.stopPropagation()}
-      className="h-5 w-full rounded-[3px] border border-[#5882ff] bg-card px-[6px] text-[11px] font-medium text-foreground outline-none select-text"
+      className="h-5 w-full rounded-[3px] border border-blue bg-card px-[6px] text-[11px] font-medium text-foreground outline-none select-text"
     />
   );
 }

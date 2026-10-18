@@ -11,6 +11,7 @@ import { LinkGoneScreen, PublicBoard } from "@/components/share/public-board";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ApiError } from "@/lib/api";
 import { publicShareQuery } from "@/lib/sharing";
+import { BOARD_PRELOAD_DELAY } from "@/lib/workspace";
 
 // A public view-only link: no account needed. It opens one board, or a project's list of boards.
 export const Route = createFileRoute("/s/$token/")({
@@ -91,6 +92,7 @@ function SharedProject({
                 <Link
                   to="/s/$token/$boardId"
                   params={{ token, boardId: board.id }}
+                  preloadDelay={BOARD_PRELOAD_DELAY}
                   className="flex h-[260px] flex-col border border-divider bg-card shadow-sm transition-colors duration-150 ease-standard hover:border-input"
                 >
                   <BoardPreview

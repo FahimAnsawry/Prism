@@ -23,6 +23,7 @@ import { prisma } from "../db/client.js";
 import { HttpError, notFound, orNotFound, parseBody } from "../errors.js";
 import { requireUser } from "../session.js";
 import {
+  accessibleBoardsWhere,
   accessibleBoardWhere,
   accessOf,
   boardAccessSelect,
@@ -34,6 +35,7 @@ import {
   projectFor,
   sharedBoardWhere,
   sharedProjectWhere,
+  sharesOf,
   uuidParam,
 } from "./board-access.js";
 
@@ -56,9 +58,10 @@ const boardSelect = (userId: string) =>
     customFonts: true,
     createdAt: true,
     editedAt: true,
-    _count: { select: { elements: { where: { deletedAt: null } } } },
+    elementCount: true,
     ...ownerName,
     ...boardAccessSelect(userId),
+    project: { select: { name: true, ...boardAccessSelect(userId).project.select } },
   }) as const;
 
 const projectSelect = (userId: string) =>
@@ -77,7 +80,7 @@ const projectSelect = (userId: string) =>
         id: true,
         name: true,
         editedAt: true,
-        _count: { select: { elements: { where: { deletedAt: null } } } },
+        elementCount: true,
       },
     },
     ...ownerName,
@@ -96,11 +99,11 @@ type BoardRow = {
   customFonts: string[];
   createdAt: Date;
   editedAt: Date;
-  _count: { elements: number };
+  elementCount: number;
   owner: { name: string };
   ownerId: string;
   members: { role: Role }[];
-  project: { members: { role: Role }[] } | null;
+  project: { name: string; members: { role: Role }[] } | null;
 };
 
 type ProjectRow = {
@@ -114,7 +117,7 @@ type ProjectRow = {
     id: string;
     name: string;
     editedAt: Date;
-    _count: { elements: number };
+    elementCount: number;
   }[];
   owner: { name: string };
   ownerId: string;
@@ -123,18 +126,21 @@ type ProjectRow = {
 
 function toBoardSummary(row: BoardRow, userId: string): BoardSummary {
   const {
-    _count,
+    elementCount,
     createdAt,
     editedAt,
     owner,
     ownerId: _o,
     members: _m,
-    project: _p,
+    project,
     ...board
   } = row;
   return {
     ...board,
-    itemCount: _count.elements,
+    // Only a project the user can open: one they own or are a member of, not just this board's.
+    projectName:
+      project && (row.ownerId === userId || project.members.length > 0) ? project.name : null,
+    itemCount: elementCount,
     access: accessOf(row, userId),
     ownerName: owner.name,
     createdAt: createdAt.toISOString(),
@@ -150,7 +156,7 @@ function toProjectSummary(row: ProjectRow, userId: string): ProjectSummary {
     boards: boards.map((board) => ({
       id: board.id,
       name: board.name,
-      itemCount: board._count.elements,
+      itemCount: board.elementCount,
       editedAt: board.editedAt.toISOString(),
     })),
     access: accessOf(row, userId),
@@ -174,9 +180,33 @@ export const workspaceRouter = Router();
 
 workspaceRouter.use(requireUser);
 
+/** The live projects and boards shared with the user, most recently edited first. */
+async function loadShared(userId: string) {
+  const shares = await sharesOf(userId);
+  // Most users have nothing shared with them, and then nothing more to read.
+  const anyBoards = shares.boardIds.length > 0 || shares.projectIds.length > 0;
+  const [projects, boards] = await Promise.all([
+    shares.projectIds.length > 0
+      ? prisma.project.findMany({
+          where: sharedProjectWhere(userId, shares),
+          orderBy: { editedAt: "desc" },
+          select: projectSelect(userId),
+        })
+      : [],
+    anyBoards
+      ? prisma.board.findMany({
+          where: sharedBoardWhere(userId, shares),
+          orderBy: { editedAt: "desc" },
+          select: boardSelect(userId),
+        })
+      : [],
+  ]);
+  return { projects, boards };
+}
+
 /** Everything the dashboard shows: the user's live projects and boards, and what's shared with them. */
 export async function loadWorkspace(userId: string): Promise<Workspace> {
-  const [projects, boards, sharedProjects, sharedBoards] = await Promise.all([
+  const [projects, boards, shared] = await Promise.all([
     prisma.project.findMany({
       where: liveProjectWhere(userId),
       orderBy: { editedAt: "desc" },
@@ -187,23 +217,14 @@ export async function loadWorkspace(userId: string): Promise<Workspace> {
       orderBy: { editedAt: "desc" },
       select: boardSelect(userId),
     }),
-    prisma.project.findMany({
-      where: sharedProjectWhere(userId),
-      orderBy: { editedAt: "desc" },
-      select: projectSelect(userId),
-    }),
-    prisma.board.findMany({
-      where: sharedBoardWhere(userId),
-      orderBy: { editedAt: "desc" },
-      select: boardSelect(userId),
-    }),
+    loadShared(userId),
   ]);
   return {
     projects: projects.map((p) => toProjectSummary(p, userId)),
     boards: boards.map((b) => toBoardSummary(b, userId)),
     shared: {
-      projects: sharedProjects.map((p) => toProjectSummary(p, userId)),
-      boards: sharedBoards.map((b) => toBoardSummary(b, userId)),
+      projects: shared.projects.map((p) => toProjectSummary(p, userId)),
+      boards: shared.boards.map((b) => toBoardSummary(b, userId)),
     },
   };
 }
@@ -269,12 +290,8 @@ const projectTheme = (projectId: string, stored: Theme | null): ProjectTheme => 
 
 /** A live project's theme (one the user may see): its own, or the default while it has none. */
 export async function getProjectTheme(userId: string, projectIdParam: string | undefined) {
-  const { id } = await projectFor(projectIdParam, userId, "view");
-  const project = await prisma.project.findUniqueOrThrow({
-    where: { id },
-    select: { theme: true },
-  });
-  return projectTheme(id, storedTheme(project.theme));
+  const { id, theme } = await projectFor(projectIdParam, userId, "view", { with: "theme" });
+  return projectTheme(id, storedTheme(theme));
 }
 
 /** Replaces the project's theme. Not a content edit, so editedAt stays. */
@@ -301,12 +318,10 @@ function storedComponents(value: unknown): Components {
 
 /** A live project's components (one the user may see), by name. */
 export async function getProjectComponents(userId: string, projectIdParam: string | undefined) {
-  const { id } = await projectFor(projectIdParam, userId, "view");
-  const project = await prisma.project.findUniqueOrThrow({
-    where: { id },
-    select: { components: true },
+  const { id, components } = await projectFor(projectIdParam, userId, "view", {
+    with: "components",
   });
-  return { projectId: id, components: storedComponents(project.components) };
+  return { projectId: id, components: storedComponents(components) };
 }
 
 /** Replaces the project's components. Not a content edit, so editedAt stays. */
@@ -332,9 +347,16 @@ export async function boardComponents(board: { projectId: string | null }): Prom
   return storedComponents(project?.components);
 }
 
-/** The theme a board draws with: its project's, else the default. */
-export async function boardTheme(board: { projectId: string | null }): Promise<Theme> {
+/**
+ * The theme a board draws with: its project's, else the default. A board from boardFor carries its
+ * project's stored theme (`projectTheme`); any other is looked up.
+ */
+export async function boardTheme(board: {
+  projectId: string | null;
+  projectTheme?: unknown;
+}): Promise<Theme> {
   if (!board.projectId) return DEFAULT_THEME;
+  if (board.projectTheme !== undefined) return storedTheme(board.projectTheme) ?? DEFAULT_THEME;
   const project = await prisma.project.findUnique({
     where: { id: board.projectId },
     select: { theme: true },
@@ -373,32 +395,61 @@ export type DesignSite = {
 /** How many recently edited boards to look through for the user's other sites. */
 const RECENT_BOARDS = 40;
 
+/** How long designSites answers from its last reading of the same user's board. */
+const SITES_FRESH_MS = 30_000;
+const SITES_CACHE_MAX = 100;
+/** Recent designSites readings (and ones in progress) by user and board, oldest first. */
+const sitesCache = new Map<string, { at: number; sites: ReturnType<typeof readDesignSites> }>();
+
 /**
  * The site a board belongs to and the user's other recent sites, for the design guide: one site
- * stays consistent, different sites stay different.
+ * stays consistent, different sites stay different. An AI editor asks for it on most screens it
+ * draws (get_design_guide, search_images), so a reading is reused for SITES_FRESH_MS.
  */
-export async function designSites(userId: string, boardIdParam: string) {
+export function designSites(userId: string, boardIdParam: string) {
+  const key = `${userId}:${boardIdParam}`;
+  const cached = sitesCache.get(key);
+  if (cached && Date.now() - cached.at < SITES_FRESH_MS) return cached.sites;
+  sitesCache.delete(key);
+  const sites = readDesignSites(userId, boardIdParam);
+  sitesCache.set(key, { at: Date.now(), sites });
+  // A failed reading (no access, a database error) isn't kept.
+  sites.catch(() => {
+    if (sitesCache.get(key)?.sites === sites) sitesCache.delete(key);
+  });
+  for (const [old, entry] of sitesCache) {
+    if (sitesCache.size <= SITES_CACHE_MAX && Date.now() - entry.at < SITES_FRESH_MS) break;
+    sitesCache.delete(old);
+  }
+  return sites;
+}
+
+async function readDesignSites(userId: string, boardIdParam: string) {
   const boardId = uuidParam(boardIdParam);
   const siteBoard = { id: true, name: true, projectId: true } as const;
   const projectInfo = { select: { name: true, theme: true } } as const;
-  const board = boardId
-    ? await prisma.board.findFirst({
-        where: { id: boardId, ...accessibleBoardWhere(userId) },
-        select: { ...siteBoard, project: projectInfo },
-      })
-    : null;
+  // The user's shares are read alongside the board, for the lists below.
+  const [board, shares] = await Promise.all([
+    boardId
+      ? prisma.board.findFirst({
+          where: { id: boardId, ...accessibleBoardWhere(userId) },
+          select: { ...siteBoard, project: projectInfo },
+        })
+      : null,
+    sharesOf(userId),
+  ]);
   if (!board) throw notFound(BOARD_NOT_FOUND);
 
   const [siteBoards, latest] = await Promise.all([
     board.projectId
       ? prisma.board.findMany({
-          where: { projectId: board.projectId, ...accessibleBoardWhere(userId) },
+          where: { projectId: board.projectId, ...accessibleBoardsWhere(userId, shares) },
           orderBy: { createdAt: "asc" },
           select: siteBoard,
         })
       : [board],
     prisma.board.findMany({
-      where: accessibleBoardWhere(userId),
+      where: accessibleBoardsWhere(userId, shares),
       orderBy: { editedAt: "desc" },
       take: RECENT_BOARDS,
       select: { ...siteBoard, project: projectInfo },

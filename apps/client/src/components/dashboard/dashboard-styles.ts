@@ -37,7 +37,7 @@ import { createContext } from "react";
  * description ("Apon Health" → a heart), and a color from a fixed set in the order the projects
  * were made. The same project looks the same in the sidebar, on its boards and in lists.
  */
-/** A board cover's colors: a diagonal wash and the three dots under the icon. */
+/** A board cover's colors: `to` tints the canvas and `dots[0]` is the accent in its sketch. */
 export type Cover = { from: string; to: string; dots: readonly [string, string, string] };
 
 const INK = "#2b2b38";
@@ -88,7 +88,7 @@ const COLORS = [
 /** Covers for boards outside any project, picked from the board id. */
 export const LOOSE_COVERS: readonly Cover[] = [
   { from: "#86f0c8", to: "#c9f7e2", dots: ["#1fd69a", "#cdf5e6", "#3d3b4f"] },
-  { from: "#b9cdfb", to: "#fbd0ea", dots: ["#b9cdfb", "#f6a9d0", "#e3ee8a"] },
+  { from: "#b9cdfb", to: "#fbd0ea", dots: ["#5882ff", "#f6a9d0", "#e3ee8a"] },
   { from: "#c3b8f5", to: "#f3d9f2", dots: ["#8f7be0", "#ecd9f4", INK] },
 ] as const;
 

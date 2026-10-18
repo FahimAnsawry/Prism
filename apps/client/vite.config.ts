@@ -25,6 +25,12 @@ export default defineConfig({
     // them on every page load. Served unbundled, its icons load only when a board shows one.
     exclude: ["lucide-react/dynamic"],
   },
+  build: {
+    // Fonts are never inlined. Small ones would otherwise land in the board's font stylesheet as
+    // data URIs (36 files, ~87 kB gzipped), downloaded whether or not the board uses them; as
+    // files, each @font-face fetches its own only when text on the board needs it.
+    assetsInlineLimit: (filePath) => (/\.woff2?$/.test(filePath) ? false : undefined),
+  },
   server: {
     port: 5173,
     strictPort: true,

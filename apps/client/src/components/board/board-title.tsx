@@ -101,13 +101,14 @@ function BoardName({ board }: { board: BoardSummary | undefined }) {
 
 /**
  * The project's name, opening a menu of every board in it (each with edit and delete) plus
- * "New board".
+ * "New board". The name comes with the board; the boards (the whole workspace) load when the menu
+ * first opens, unless the dashboard already has them.
  */
 function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { actionsRef, onExitComplete } = usePopupExit(menuOpen);
   const navigate = useNavigate();
-  const workspace = useQuery(workspaceQuery);
+  const workspace = useQuery({ ...workspaceQuery, enabled: menuOpen });
   // Targets stay set while their dialog animates closed.
   const [itemDialog, setItemDialog] = useState<{ open: boolean; target: ItemDialogTarget }>({
     open: false,
@@ -119,31 +120,38 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
   });
 
   const project = workspace.data && allProjects(workspace.data).find((p) => p.id === projectId);
-  if (!workspace.data || !project) return null;
+  const projectName = project?.name ?? board.projectName;
+  // Gone from a freshly loaded workspace (deleted, or no longer shared): nothing to switch
+  // between. A cached one may just be older than the project.
+  const gone = workspace.data && !project && workspace.isFetchedAfterMount && !workspace.isFetching;
+  if (!projectName || gone) return null;
 
-  const boards = allBoards(workspace.data)
-    .filter((b) => b.projectId === projectId)
-    .toSorted((a, b) => a.name.localeCompare(b.name));
+  const boards = workspace.data
+    ? allBoards(workspace.data)
+        .filter((b) => b.projectId === projectId)
+        .toSorted((a, b) => a.name.localeCompare(b.name))
+    : [];
   // Only the owner moves boards between projects; members of a shared project don't get the choice.
-  const owned = project.access === "owner";
-  const projects = owned ? workspace.data.projects.map(({ id, name }) => ({ id, name })) : [];
+  const owned = project?.access === "owner";
+  const projects =
+    owned && workspace.data ? workspace.data.projects.map(({ id, name }) => ({ id, name })) : [];
   const itemFor = (b: BoardSummary) => ({
     kind: "board" as const,
     ...b,
-    projectName: project.name,
+    projectName,
   });
 
   return (
     <>
       <Menu.Root open={menuOpen} onOpenChange={setMenuOpen} actionsRef={actionsRef}>
         <Menu.Trigger
-          aria-label={`Project ${project.name}: switch board`}
+          aria-label={`Project ${projectName}: switch board`}
           className={cn(
             titleText,
             "flex h-8 max-w-24 min-w-0 shrink items-center gap-1 px-1.5 text-muted-foreground transition-colors duration-150 ease-standard hover:bg-hover hover:text-ink data-popup-open:bg-hover data-popup-open:text-ink sm:max-w-48",
           )}
         >
-          <span className="truncate">{project.name}</span>
+          <span className="truncate">{projectName}</span>
           <ChevronDown aria-hidden="true" className="size-3.5 shrink-0" />
         </Menu.Trigger>
         <AnimatePresence>
@@ -161,7 +169,7 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
                 >
                   <Menu.Group>
                     <Menu.GroupLabel className="truncate px-2.5 pt-1.5 pb-2 font-mono text-3xs font-bold text-muted-foreground uppercase">
-                      {project.name}
+                      {projectName}
                     </Menu.GroupLabel>
                     <Menu.RadioGroup
                       value={board.id}
@@ -217,8 +225,16 @@ function ProjectSwitcher({ board, projectId }: { board: BoardSummary; projectId:
                         </div>
                       ))}
                     </Menu.RadioGroup>
+                    {!project && (
+                      <p
+                        role="status"
+                        className="flex h-9 items-center px-2.5 text-[13px] text-muted-foreground"
+                      >
+                        {workspace.isError ? "Couldn't load the boards." : "Loading boards…"}
+                      </p>
+                    )}
                   </Menu.Group>
-                  {project.access !== "viewer" && (
+                  {project && project.access !== "viewer" && (
                     <>
                       <Menu.Separator className="my-1 h-px bg-divider" />
                       <Menu.Item

@@ -187,7 +187,7 @@ function People({ kind, id, settings }: { kind: ShareKind; id: string; settings:
             image={settings.owner.image}
           />
           <PersonText name={settings.owner.name} email={settings.owner.email} />
-          <span className="shrink-0 font-mono text-3xs text-muted-foreground uppercase">Owner</span>
+          <span className="shrink-0 font-mono text-2xs text-muted-foreground uppercase">Owner</span>
         </li>
         {settings.members.map((member) => (
           <MemberRow key={member.userId} kind={kind} id={id} member={member} />

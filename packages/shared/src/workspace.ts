@@ -73,6 +73,8 @@ export const boardSummarySchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   projectId: z.uuid().nullable(),
+  /** The project's name, if the user can open the project (null otherwise, or standalone). */
+  projectName: z.string().nullable(),
   /** Live (non-deleted) elements on the board. */
   itemCount: z.number().int(),
   ...boardStyleSchema.shape,

@@ -234,7 +234,7 @@ function ItemForm({
       } else {
         const board = await createBoard.mutateAsync({ name, description, projectId });
         // It's empty: the board page needn't ask the server (its summary is cached already).
-        seedNewBoardElements(board.id);
+        seedNewBoardElements(board.id, Date.parse(board.editedAt));
         // Don't close first: the dialog stays up (still "Creating…") until the board page
         // replaces the dashboard, so the dashboard never flashes in between.
         await navigate({ to: "/board/$boardId", params: { boardId: board.id } });
@@ -250,7 +250,7 @@ function ItemForm({
   };
 
   const sortedProjects = projects.toSorted((a, b) => a.name.localeCompare(b.name));
-  const optional = <span className="font-mono text-3xs text-muted-foreground">OPTIONAL</span>;
+  const optional = <span className="font-mono text-2xs text-muted-foreground">OPTIONAL</span>;
 
   return (
     <>

@@ -27,10 +27,6 @@ export function findPage(slug: string): DocPage | undefined {
   return BY_SLUG.get(slug.replace(/^\/+|\/+$/g, ""));
 }
 
-export function pagePath(page: DocPage): string {
-  return page.slug ? `/docs/${page.slug}` : "/docs";
-}
-
 /** The page's neighbours in reading order. */
 export function neighbours(page: DocPage): { previous?: DocPage; next?: DocPage } {
   const index = PAGES.indexOf(page);
