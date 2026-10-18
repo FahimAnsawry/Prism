@@ -12,6 +12,19 @@ import { AuthHeading } from "./auth-heading";
 import { FormError, FormField, PasswordToggle } from "./form-field";
 import { OrDivider, SocialSignIn } from "./social-sign-in";
 
+/**
+ * The public demo account (VITE_DEMO_EMAIL and VITE_DEMO_PASSWORD, matching the server's
+ * DEMO_*), filled in so visitors can look around without signing up. Public on purpose: the
+ * server keeps the account's own settings locked.
+ */
+const DEMO: LoginInput | undefined =
+  import.meta.env.VITE_DEMO_EMAIL && import.meta.env.VITE_DEMO_PASSWORD
+    ? {
+        email: String(import.meta.env.VITE_DEMO_EMAIL),
+        password: String(import.meta.env.VITE_DEMO_PASSWORD),
+      }
+    : undefined;
+
 /** `oauthError` is the `?error=` code Better Auth adds when a Google/GitHub sign-in fails. */
 export function LoginForm({ oauthError }: { oauthError?: string }) {
   const navigate = useNavigate();
@@ -25,7 +38,7 @@ export function LoginForm({ oauthError }: { oauthError?: string }) {
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: DEMO ?? { email: "", password: "" },
   });
 
   const onSubmit = async ({ email, password }: LoginInput) => {

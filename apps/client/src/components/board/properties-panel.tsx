@@ -300,7 +300,9 @@ function PropertiesPanelView({
   return (
     <aside
       aria-label={`${title} properties`}
-      className="absolute top-6 right-4 z-10 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-sm md:right-6"
+      // Phones: beside the tool rail, in the top half, so the canvas and the Ask AI box stay
+      // reachable below. md and up: the 16rem column on the right.
+      className="absolute top-6 right-4 left-20 z-10 max-h-[calc(50%-2rem)] overflow-y-auto border border-chrome bg-card shadow-sm md:right-6 md:left-auto md:max-h-[calc(100%-2.5rem)] md:w-64"
     >
       <h2 className="flex h-12 items-center border-b border-divider px-4 text-sm font-bold text-ink">
         {title}
@@ -654,9 +656,7 @@ function PropertiesPanelView({
 
         {iconEl && (
           <section className="flex flex-col border-b border-divider pt-4.5">
-            <p className="mb-3 px-4 font-mono text-3xs leading-[14px] text-muted-foreground uppercase">
-              Icon
-            </p>
+            <p className="mb-3 px-4 font-mono text-2xs text-muted-foreground uppercase">Icon</p>
             <IconGrid
               value={iconEl.icon ?? null}
               onPick={(icon) => onChange({ icon })}
@@ -1023,7 +1023,7 @@ function WeightPicker({
           )}
         >
           Aa
-          <span className="block pt-0.5 font-mono text-[9px] font-normal opacity-70">{w}</span>
+          <span className="block pt-0.5 font-mono text-3xs leading-none font-normal">{w}</span>
         </button>
       ))}
     </div>
@@ -1145,7 +1145,7 @@ function ChartEditor({
       <Row label="Data">
         <table className="w-full table-fixed border-collapse">
           <thead>
-            <tr className="text-left font-mono text-3xs text-muted-foreground">
+            <tr className="text-left font-mono text-2xs text-muted-foreground">
               <th className="pb-1 font-normal">LABEL</th>
               <th className="w-20 pb-1 pl-1 font-normal">VALUE</th>
               <th className="w-8 pb-1">
@@ -1555,9 +1555,7 @@ export function Row({
 }) {
   return (
     <div className={className}>
-      <p className="mb-3 font-mono text-3xs leading-[14px] text-muted-foreground uppercase">
-        {label}
-      </p>
+      <p className="mb-3 font-mono text-2xs text-muted-foreground uppercase">{label}</p>
       {children}
     </div>
   );

@@ -7,6 +7,7 @@ import { Reveal } from "@/components/landing/reveal";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteHeader } from "@/components/landing/site-header";
 import { Sticky } from "@/components/landing/sticky";
+import { SkipLink } from "@/components/skip-link";
 import { cn } from "@/lib/utils";
 
 const mono = "font-mono text-xs font-bold tracking-[0.1em] uppercase";
@@ -313,8 +314,9 @@ function Founder() {
 export function AboutPage() {
   return (
     <>
+      <SkipLink />
       <SiteHeader />
-      <main>
+      <main id="main" tabIndex={-1} className="outline-none">
         <Intro />
         <Rules />
         <HowItsMade />

@@ -136,6 +136,7 @@ export function ResetPasswordForm({ token, tokenError }: { token?: string; token
         <FormField
           id="reset-new-password"
           label="New password"
+          variant="plain"
           type={showPassword ? "text" : "password"}
           autoComplete="new-password"
           aria-describedby="reset-password-strength"
@@ -158,6 +159,7 @@ export function ResetPasswordForm({ token, tokenError }: { token?: string; token
         <FormField
           id="reset-confirm-password"
           label="Confirm password"
+          variant="plain"
           type={showConfirmPassword ? "text" : "password"}
           autoComplete="new-password"
           className="mt-4"
@@ -179,7 +181,7 @@ export function ResetPasswordForm({ token, tokenError }: { token?: string; token
         <Button
           type="submit"
           disabled={isSubmitting}
-          className={ctaVariants({ size: "block", className: "mt-7" })}
+          className={ctaVariants({ size: "lg", className: "mt-7 w-full" })}
         >
           {isSubmitting ? "Resetting password…" : "Reset password"}
           <ArrowRight aria-hidden="true" />

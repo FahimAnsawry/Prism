@@ -1,5 +1,6 @@
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { MotionConfig } from "motion/react";
 import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { AppErrorBoundary } from "./components/feedback/app-error-boundary";
@@ -9,12 +10,10 @@ import { NotFoundPage } from "./components/feedback/not-found-page";
 import { PrismLoader } from "./components/feedback/prism-loader";
 import { ThemeProvider } from "./components/theme-provider";
 import { installGlobalErrorHandlers, reportError } from "./lib/errors";
-import { installMotionPreferences } from "./lib/motion";
 import { routeTree } from "./routeTree.gen";
 import "./index.css";
 
 installGlobalErrorHandlers();
-installMotionPreferences();
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -83,18 +82,22 @@ createRoot(rootElement, {
 }).render(
   <StrictMode>
     <AppErrorBoundary>
-      <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          <Suspense fallback={<PrismLoader fullScreen />}>
-            <RouterProvider router={router} />
-          </Suspense>
-          {/* Only the landing page opens behind the loader. */}
-          <AppSplash
-            skip={!SPLASH_PATH.test(router.state.location.pathname)}
-            ready={firstPageReady}
-          />
-        </QueryClientProvider>
-      </ThemeProvider>
+      {/* Reduced motion drops movement (transforms, layout) from every motion component but keeps
+          fades and color changes, so state changes still show. */}
+      <MotionConfig reducedMotion="user">
+        <ThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            <Suspense fallback={<PrismLoader fullScreen />}>
+              <RouterProvider router={router} />
+            </Suspense>
+            {/* Only the landing page opens behind the loader. */}
+            <AppSplash
+              skip={!SPLASH_PATH.test(router.state.location.pathname)}
+              ready={firstPageReady}
+            />
+          </QueryClientProvider>
+        </ThemeProvider>
+      </MotionConfig>
     </AppErrorBoundary>
   </StrictMode>,
 );

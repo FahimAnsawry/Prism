@@ -511,7 +511,7 @@ function IdeaNote({
         </span>
       </p>
       <motion.p
-        className="mt-4 flex items-center gap-3 font-mono text-[10px] text-graphite"
+        className="mt-4 flex items-center gap-3 font-mono text-2xs text-graphite"
         {...enter("fade", { on: play, skip: finished, delay: timeline.bylineIn })}
       >
         <img
@@ -634,7 +634,12 @@ export function Hero() {
     };
     window.addEventListener("scroll", onMove, { passive: true });
     window.addEventListener("resize", onMove);
+    // The layout can still move without a scroll: on a cold dev start the hero's styles (and the
+    // fonts) land after it mounts, so the prism only reaches the screen once they apply.
+    const layout = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onMove);
+    layout?.observe(document.body);
     return () => {
+      layout?.disconnect();
       window.clearTimeout(timer);
       window.removeEventListener("scroll", onMove);
       window.removeEventListener("resize", onMove);

@@ -94,6 +94,7 @@ export function ForgotPasswordForm() {
         <FormField
           id="forgot-email"
           label="Email"
+          variant="plain"
           type="email"
           autoComplete="email"
           inputMode="email"
@@ -105,7 +106,7 @@ export function ForgotPasswordForm() {
         <Button
           type="submit"
           disabled={isSubmitting}
-          className={ctaVariants({ size: "block", className: "mt-7" })}
+          className={ctaVariants({ size: "lg", className: "mt-7 w-full" })}
         >
           {isSubmitting ? "Sending reset link…" : "Send reset link"}
           <ArrowRight aria-hidden="true" />

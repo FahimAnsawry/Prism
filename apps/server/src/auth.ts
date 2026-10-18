@@ -3,10 +3,11 @@ import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { mcp } from "@better-auth/mcp";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { jwt } from "better-auth/plugins";
 import { authPrisma } from "./db/auth-prisma.js";
 import { prisma } from "./db/client.js";
+import { DEMO_EMAIL, DEMO_LOCKED_AUTH_PATHS, DEMO_LOCKED_MESSAGE, isDemoEmail } from "./demo.js";
 import { sendEmail } from "./email/send.js";
 import {
   passwordChangedEmail,
@@ -126,6 +127,16 @@ const createAuth = () =>
       // leave out application_type, which then defaults to "web", and web clients must use https.
       // A client whose redirects are all loopback is a native app (RFC 8252), so say so.
       before: createAuthMiddleware(async (ctx) => {
+        // The demo account's sign-in is public, so its own settings stay as seeded (demo.ts).
+        if (DEMO_EMAIL && DEMO_LOCKED_AUTH_PATHS.has(ctx.path)) {
+          const body = ctx.body as Record<string, unknown> | undefined;
+          const email =
+            typeof body?.["email"] === "string"
+              ? body["email"]
+              : (await getSessionFromCtx(ctx))?.user.email;
+          if (isDemoEmail(email)) throw new APIError("FORBIDDEN", { message: DEMO_LOCKED_MESSAGE });
+          return;
+        }
         if (ctx.path !== "/oauth2/register") return;
         const body = ctx.body as Record<string, unknown> | undefined;
         if (!body || body["application_type"] !== undefined) return;

@@ -76,7 +76,7 @@ export function PasswordMeter({ password, id }: { password: string; id: string }
 
   return (
     <div id={id} className="mt-2 flex items-center justify-between gap-3">
-      <div className="grid w-[314px] max-w-[65%] grid-cols-4 gap-1" aria-hidden="true">
+      <div className="grid w-[314px] max-w-[45%] grid-cols-4 gap-1" aria-hidden="true">
         {RULES.map((rule, i) => (
           <span key={rule.label} className={cn("h-1", i < score ? barColor : "bg-divider")} />
         ))}

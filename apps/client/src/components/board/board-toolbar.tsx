@@ -76,6 +76,9 @@ function BoardToolbarView({
   onSelect: (tool: ToolId) => void;
 }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  // Reduced motion: the rail folds and the highlight moves at once; the fades stay.
+  const reduced = useReducedMotion();
+  const fold = reduced ? { duration: 0 } : FOLD;
   const highlightY = useMotionValue(0);
   const highlightPlaced = useRef(false);
   // Each tool's slot in the list. Its offsetTop ignores the slot's own fold-in transform.
@@ -109,14 +112,14 @@ function BoardToolbarView({
   useLayoutEffect(() => {
     const slot = slots.current.get(active);
     if (!slot) return;
-    if (!highlightPlaced.current) {
+    if (!highlightPlaced.current || reduced) {
       highlightPlaced.current = true;
       highlightY.set(slot.offsetTop);
       return;
     }
     const slide = animate(highlightY, slot.offsetTop, { duration: 0.2, ease: EASE_STANDARD });
     return () => slide.stop();
-  }, [active, highlightY]);
+  }, [active, highlightY, reduced]);
 
   const toggleLabel = collapsed ? "Show all tools" : "Collapse tools";
   let index = 0;
@@ -133,7 +136,7 @@ function BoardToolbarView({
         className="grid min-h-0"
         initial={false}
         animate={rows(collapsed)}
-        transition={FOLD}
+        transition={fold}
       >
         <div className="min-h-0 overflow-hidden" inert={!collapsed}>
           {activeTool && (
@@ -159,7 +162,7 @@ function BoardToolbarView({
         className="grid min-h-0"
         initial={false}
         animate={rows(!collapsed)}
-        transition={FOLD}
+        transition={fold}
       >
         <div
           inert={collapsed}
@@ -209,7 +212,7 @@ function BoardToolbarView({
                       aria-pressed={isActive}
                       onClick={() => onSelect(tool.id)}
                       className={cn(
-                        "relative flex size-10 items-center justify-center transition-colors duration-200 ease-standard motion-reduce:transition-none",
+                        "relative flex size-10 items-center justify-center transition-colors duration-200 ease-standard",
                         isActive ? "text-onyx" : "text-foreground hover:bg-hover",
                       )}
                       whileHover="hover"

@@ -1,5 +1,6 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { pageContainer } from "@/components/landing/page-container";
+import { SkipLink } from "@/components/skip-link";
 import { cn } from "@/lib/utils";
 import { DocsHeader } from "./docs-header";
 import { DocsNav } from "./docs-nav";
@@ -17,6 +18,7 @@ export function DocsShell() {
 
   return (
     <>
+      <SkipLink target="docs-main" />
       <DocsHeader current={page} />
       <div
         className={cn(
@@ -29,7 +31,7 @@ export function DocsShell() {
             <DocsNav current={page} />
           </div>
         </div>
-        <main id="docs-main" className="min-w-0">
+        <main id="docs-main" tabIndex={-1} className="min-w-0 outline-none">
           <Outlet />
         </main>
         <div className="max-xl:hidden">

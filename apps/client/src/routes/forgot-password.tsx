@@ -11,7 +11,7 @@ export const Route = createFileRoute("/forgot-password")({
 
 function ForgotPasswordPage() {
   return (
-    <AuthLayout panel={false}>
+    <AuthLayout crystal>
       <ForgotPasswordForm />
     </AuthLayout>
   );

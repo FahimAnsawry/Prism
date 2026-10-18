@@ -922,12 +922,13 @@ function BoardEditor({
           </>
         )}
 
-        {/* Beside the properties panel, which is open whenever a table is selected. While the
-            table's focus view is open its details show there instead. */}
+        {/* Beside the properties panel, which is open whenever a table is selected (below it on
+            phones, above the Ask AI box). While the table's focus view is open its details show
+            there instead. */}
         {selectedTable && !viewing && !editing && !focusTable && (
           <aside
             aria-label={`${selectedTable.table?.name ?? "Table"} details`}
-            className="absolute top-6 right-[18rem] z-20 max-h-[calc(100%-2.5rem)] w-64 overflow-y-auto border border-chrome bg-card shadow-lg md:right-[18.5rem]"
+            className="absolute top-1/2 right-4 left-20 z-20 max-h-[calc(50%-6.5rem)] overflow-y-auto border border-chrome bg-card shadow-lg md:top-6 md:right-[18.5rem] md:left-auto md:max-h-[calc(100%-2.5rem)] md:w-64"
           >
             <TableDetails
               table={selectedTable}

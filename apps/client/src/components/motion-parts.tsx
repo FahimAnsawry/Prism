@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, LoaderCircle } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { EASE_STANDARD, type Bezier } from "@/lib/motion";
 
 const MotionChevronDown = motion.create(ChevronDown);
@@ -33,14 +33,22 @@ export function TurningChevron({
   );
 }
 
-/** The busy spinner: a loader circle turning once a second (Tailwind's old `animate-spin`). */
+/**
+ * The busy spinner: a loader circle turning once a second (Tailwind's old `animate-spin`).
+ * Reduced motion keeps the circle still and pulses it instead, so it still reads as busy.
+ */
 export function Spinner({ className }: { className?: string }) {
+  const reduced = useReducedMotion();
   return (
     <MotionLoader
       aria-hidden="true"
       className={className}
-      animate={{ rotate: 360 }}
-      transition={{ duration: 1, ease: "linear", repeat: Infinity }}
+      animate={reduced ? { opacity: [1, 0.4, 1] } : { rotate: 360 }}
+      transition={
+        reduced
+          ? { duration: 1.6, ease: EASE_STANDARD, repeat: Infinity }
+          : { duration: 1, ease: "linear", repeat: Infinity }
+      }
     />
   );
 }

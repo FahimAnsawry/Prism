@@ -6,6 +6,7 @@ import { SharingSection } from "@/components/landing/sharing-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteHeader } from "@/components/landing/site-header";
 import { SpecSection } from "@/components/landing/spec-section";
+import { SkipLink } from "@/components/skip-link";
 import { redirectIfSignedIn } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/")({
@@ -17,8 +18,9 @@ export const Route = createFileRoute("/")({
 function LandingPage() {
   return (
     <>
+      <SkipLink />
       <SiteHeader flight />
-      <main>
+      <main id="main" tabIndex={-1} className="outline-none">
         <Hero />
         <EditorsSection />
         <SpecSection />
