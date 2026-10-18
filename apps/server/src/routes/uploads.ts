@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { IMAGE_TYPES, SVG_TYPE, UPLOAD_MAX_BYTES } from "@prism/shared";
 import express, { Router } from "express";
 import { badRequest, notFound } from "../errors.js";
+import { LIMITS, limitPerUser } from "../rate-limit.js";
 import { requireUser } from "../session.js";
 import { getObject, putObject } from "../storage.js";
 import { sanitizeSvg } from "../svg-sanitize.js";
@@ -41,6 +42,7 @@ export const uploadRouter = Router();
 uploadRouter.post(
   "/boards/:boardId/uploads",
   requireUser,
+  limitPerUser(LIMITS.uploadsPerHour, LIMITS.uploadsPerDay),
   express.raw({ type: [...IMAGE_TYPES, SVG_TYPE], limit: UPLOAD_MAX_BYTES }),
   async (req, res) => {
     const board = await boardFor(req.params.boardId, res.locals.userId, "edit");

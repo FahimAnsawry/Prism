@@ -16,6 +16,7 @@ import {
   welcomeEmail,
 } from "./email/templates.js";
 import { claimInvites } from "./invites.js";
+import { sweepEndedSessions } from "./realtime.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -43,6 +44,17 @@ function onlyLoopbackRedirects(uris: unknown) {
     }
   });
 }
+
+/** Better Auth endpoints that can end sessions: open tabs of those sessions are disconnected. */
+const SESSION_ENDING_PATHS = new Set([
+  "/sign-out",
+  "/revoke-session",
+  "/revoke-sessions",
+  "/revoke-other-sessions",
+  "/change-password",
+  "/reset-password",
+  "/delete-user",
+]);
 
 /** How long to wait before starting Better Auth again after its startup failed. */
 const RESTART_DELAY_MS = 5_000;
@@ -128,13 +140,15 @@ const createAuth = () =>
       // A client whose redirects are all loopback is a native app (RFC 8252), so say so.
       before: createAuthMiddleware(async (ctx) => {
         // The demo account's sign-in is public, so its own settings stay as seeded (demo.ts).
+        // The signed-in user is checked as well as any email in the body: a body email alone
+        // could name someone else while the session is the demo's.
         if (DEMO_EMAIL && DEMO_LOCKED_AUTH_PATHS.has(ctx.path)) {
           const body = ctx.body as Record<string, unknown> | undefined;
-          const email =
-            typeof body?.["email"] === "string"
-              ? body["email"]
-              : (await getSessionFromCtx(ctx))?.user.email;
-          if (isDemoEmail(email)) throw new APIError("FORBIDDEN", { message: DEMO_LOCKED_MESSAGE });
+          const bodyEmail = typeof body?.["email"] === "string" ? body["email"] : undefined;
+          const sessionEmail = (await getSessionFromCtx(ctx).catch(() => null))?.user.email;
+          if (isDemoEmail(bodyEmail) || isDemoEmail(sessionEmail)) {
+            throw new APIError("FORBIDDEN", { message: DEMO_LOCKED_MESSAGE });
+          }
           return;
         }
         if (ctx.path !== "/oauth2/register") return;
@@ -142,6 +156,10 @@ const createAuth = () =>
         if (!body || body["application_type"] !== undefined) return;
         if (!onlyLoopbackRedirects(body["redirect_uris"])) return;
         return { context: { ...ctx, body: { ...body, application_type: "native" } } };
+      }),
+      // A socket checks its session only when it connects (realtime.ts).
+      after: createAuthMiddleware(async (ctx) => {
+        if (SESSION_ENDING_PATHS.has(ctx.path)) void sweepEndedSessions();
       }),
     },
 
@@ -204,9 +222,10 @@ const createAuth = () =>
       },
       account: {
         create: {
-          // Someone may have signed up with this email and a password without owning the
-          // mailbox. When a provider proves ownership of an unverified user's email, drop that
-          // unproven password and its sessions so they can't be used to reach the linked account.
+          // Someone may have signed up with this email without owning the mailbox: with a
+          // password, or through a provider that didn't verify the address. When a provider
+          // proves ownership of an unverified user's email, drop those unproven sign-ins and
+          // their sessions so they can't be used to reach the linked account.
           before: async (account) => {
             if (account.providerId === "credential") return;
             const user = await prisma.user.findUnique({
@@ -215,7 +234,7 @@ const createAuth = () =>
             });
             if (!user || user.emailVerified) return;
             const { count } = await prisma.account.deleteMany({
-              where: { userId: account.userId, providerId: "credential" },
+              where: { userId: account.userId, providerId: { not: account.providerId } },
             });
             if (count > 0) await prisma.session.deleteMany({ where: { userId: account.userId } });
           },

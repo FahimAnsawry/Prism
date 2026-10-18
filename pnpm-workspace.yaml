@@ -7,3 +7,10 @@ allowBuilds:
   "@prisma/engines": true
   esbuild: true
   prisma: true
+
+# Security fixes for transitive dependencies (pnpm audit). Both arrive through prisma and
+# better-auth; neither is reachable from Prism's own code (Postgres only, no user data merged),
+# but the patched versions keep the audit clean. Drop an entry once upstream requires the fix.
+overrides:
+  deepmerge-ts: ">=8.0.0"
+  mysql2: ">=3.23.1"

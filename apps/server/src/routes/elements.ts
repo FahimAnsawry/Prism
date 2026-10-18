@@ -11,7 +11,8 @@ import {
 import express, { Router } from "express";
 import { Prisma } from "../db/generated/client.js";
 import { prisma } from "../db/client.js";
-import { badRequest, parseBody } from "../errors.js";
+import { badRequest, HttpError, parseBody } from "../errors.js";
+import { LIMITS, limitPerUser } from "../rate-limit.js";
 import { broadcastOps } from "../realtime.js";
 import { requireUser } from "../session.js";
 import { boardFor } from "./board-access.js";
@@ -273,6 +274,9 @@ function touchStatement(boardId: string, now: Date, added: number) {
  */
 const SAVE_TIMEOUT_MS = 30_000;
 
+/** Live elements one board may hold, so one user can't fill the database. */
+export const BOARD_ELEMENTS_MAX = 25_000;
+
 /**
  * Applies a batch of create/update/delete ops in one transaction. Each op carries the element's
  * next version; an op whose version isn't higher than the stored one is stale and skipped.
@@ -293,7 +297,8 @@ export async function applyOps(board: { id: string }, ops: ElementOp[]) {
     opsPerId.set(id, (opsPerId.get(id) ?? 0) + 1);
   }
   const several = ids.filter((id) => opsPerId.get(id)! > 1);
-  const [rows, propRows] = await Promise.all([
+  const creates = ops.some((op) => op.op === "create");
+  const [rows, propRows, counted] = await Promise.all([
     prisma.element.findMany({
       where: { boardId: board.id, id: { in: ids } },
       select: { id: true, version: true, deletedAt: true },
@@ -304,6 +309,9 @@ export async function applyOps(board: { id: string }, ops: ElementOp[]) {
           select: { id: true, props: true },
         })
       : [],
+    creates
+      ? prisma.board.findUnique({ where: { id: board.id }, select: { elementCount: true } })
+      : null,
   ]);
   const storedProps = new Map(propRows.map((row) => [row.id, row.props]));
   const existing = new Map<string, Existing>(
@@ -350,6 +358,13 @@ export async function applyOps(board: { id: string }, ops: ElementOp[]) {
           ? createData(board.id, op).props
           : before?.props;
     existing.set(id, { id, version, deletedAt: op.op === "delete" ? now : null, props });
+  }
+
+  if (added > 0 && (counted?.elementCount ?? 0) + added > BOARD_ELEMENTS_MAX) {
+    throw new HttpError(
+      413,
+      `A board holds up to ${BOARD_ELEMENTS_MAX.toLocaleString("en")} elements. Delete some, or start a new board.`,
+    );
   }
 
   if (inserts.length > 0 || updates.length > 0 || writes.length > 0) {
@@ -500,6 +515,7 @@ elementsRouter.get("/boards/:boardId/elements", requireUser, async (req, res) =>
 elementsRouter.post(
   "/boards/:boardId/elements",
   requireUser,
+  limitPerUser(LIMITS.savesPerMinute),
   // Freehand strokes and big batches outgrow express.json()'s 100 KB default.
   express.json({ limit: "8mb" }),
   async (req, res) => {

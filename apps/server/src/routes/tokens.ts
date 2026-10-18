@@ -6,6 +6,7 @@ import {
 } from "@prism/shared";
 import { Router } from "express";
 import { prisma } from "../db/client.js";
+import { refuseDemoUser } from "../demo.js";
 import { badRequest, notFound, parseBody } from "../errors.js";
 import { hashToken, newToken, requireUser } from "../session.js";
 import { uuidParam } from "./board-access.js";
@@ -19,6 +20,7 @@ const tokenSelect = {
   start: true,
   createdAt: true,
   lastUsedAt: true,
+  expiresAt: true,
 } as const;
 
 type TokenRow = {
@@ -27,13 +29,17 @@ type TokenRow = {
   start: string;
   createdAt: Date;
   lastUsedAt: Date | null;
+  expiresAt: Date | null;
 };
 
 const toApiToken = (row: TokenRow): ApiToken => ({
   ...row,
   createdAt: row.createdAt.toISOString(),
   lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+  expiresAt: row.expiresAt?.toISOString() ?? null,
 });
+
+const DAY_MS = 24 * 60 * 60_000;
 
 /**
  * Personal access tokens: an alternative to OAuth sign-in for the MCP endpoint (clients that
@@ -54,14 +60,25 @@ tokensRouter.get("/tokens", async (_req, res) => {
 
 tokensRouter.post("/tokens", async (req, res) => {
   const userId = res.locals.userId;
-  const { name } = parseBody(createApiTokenSchema, req.body);
+  // The demo account is shared by every visitor: a token would outlive their visit.
+  await refuseDemoUser(
+    userId,
+    "The demo account can't create access tokens. Sign up for your own.",
+  );
+  const { name, expiresInDays } = parseBody(createApiTokenSchema, req.body);
   const count = await prisma.apiToken.count({ where: { userId } });
   if (count >= API_TOKENS_MAX) {
     throw badRequest(`You can have up to ${API_TOKENS_MAX} tokens. Revoke one you don't use.`);
   }
   const token = newToken();
   const row = await prisma.apiToken.create({
-    data: { userId, name, tokenHash: hashToken(token), start: token.slice(0, START_LENGTH) },
+    data: {
+      userId,
+      name,
+      tokenHash: hashToken(token),
+      start: token.slice(0, START_LENGTH),
+      expiresAt: expiresInDays ? new Date(Date.now() + expiresInDays * DAY_MS) : null,
+    },
     select: tokenSelect,
   });
   const created: CreatedApiToken = { ...toApiToken(row), token };

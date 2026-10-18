@@ -1,11 +1,19 @@
+import { lookup as dnsLookup, type LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
-import { BlockList, isIP } from "node:net";
+import { request as httpRequest, type IncomingMessage } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { BlockList, isIP, type LookupFunction } from "node:net";
 import { UPLOAD_MAX_BYTES } from "@prism/shared";
-import { badRequest } from "./errors.js";
+import { badRequest, HttpError } from "./errors.js";
+import { LIMITS, spend } from "./rate-limit.js";
 
 // Downloads an image from a URL an AI editor gives (e.g. a Mobbin screen) so it can be stored in
 // the board's object storage. The server fetches it, so private and local addresses are refused:
 // a URL must not be a way to reach the server's own network.
+//
+// The address is checked where the connection is made (safeLookup), not only beforehand: a host
+// that resolves to a public address for a check and a private one a moment later (DNS rebinding)
+// would otherwise get through.
 
 const MAX_REDIRECTS = 3;
 const TIMEOUT_MS = 15_000;
@@ -31,6 +39,10 @@ for (const [net, prefix] of [
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
+  // NAT64 and discard-only prefixes: an IPv4 address can hide inside these.
+  ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
+  ["100::", 64],
 ] as const) {
   blocked.addSubnet(net, prefix, "ipv6");
 }
@@ -39,6 +51,28 @@ const isBlocked = (address: string) =>
   blocked.check(address, isIP(address) === 6 ? "ipv6" : "ipv4");
 
 const NOT_ALLOWED = "That address can't be used. Give a public http(s) image URL.";
+
+/** Thrown by safeLookup; the request's error handler turns it into NOT_ALLOWED. */
+class BlockedAddress extends Error {}
+
+/**
+ * dns.lookup for outgoing image requests that refuses private and local addresses. The socket
+ * connects only to the addresses checked here, so a second, different DNS answer can't slip in.
+ */
+const safeLookup: LookupFunction = (hostname, options, callback) => {
+  dnsLookup(hostname, { ...options, all: true }, (error, addresses: LookupAddress[]) => {
+    if (error) {
+      callback(error, "", 0);
+      return;
+    }
+    if (addresses.length === 0 || addresses.some((a) => isBlocked(a.address))) {
+      callback(new BlockedAddress(NOT_ALLOWED), "", 0);
+      return;
+    }
+    if (options.all) callback(null, addresses);
+    else callback(null, addresses[0]!.address, addresses[0]!.family);
+  });
+};
 
 /** Refuses URLs that aren't http(s) or whose host resolves to a private or local address. */
 async function checkPublicUrl(url: URL) {
@@ -56,41 +90,78 @@ async function checkPublicUrl(url: URL) {
 }
 
 /** Reads a response body, refusing anything over the upload limit. */
-async function readLimited(response: Response) {
-  const length = Number(response.headers.get("content-length") ?? 0);
-  if (length > UPLOAD_MAX_BYTES) throw badRequest("That image is larger than 10 MB.");
-  if (!response.body) throw badRequest("That URL returned no image.");
-  const chunks: Uint8Array[] = [];
+async function readLimited(response: IncomingMessage) {
+  const length = Number(response.headers["content-length"] ?? 0);
+  if (length > UPLOAD_MAX_BYTES) {
+    response.destroy();
+    throw badRequest("That image is larger than 10 MB.");
+  }
+  const chunks: Buffer[] = [];
   let total = 0;
-  for await (const chunk of response.body) {
-    total += chunk.byteLength;
-    if (total > UPLOAD_MAX_BYTES) throw badRequest("That image is larger than 10 MB.");
-    chunks.push(chunk);
+  try {
+    for await (const chunk of response as AsyncIterable<Buffer>) {
+      total += chunk.byteLength;
+      if (total > UPLOAD_MAX_BYTES) {
+        response.destroy();
+        throw badRequest("That image is larger than 10 MB.");
+      }
+      chunks.push(chunk);
+    }
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw badRequest("Couldn't download that image.");
   }
   return Buffer.concat(chunks);
 }
 
-/** Fetches `input`, following up to 3 redirects and checking each hop's address. */
-export async function downloadImage(input: string) {
+/** One GET through safeLookup; resolves once the response headers arrive. */
+function get(url: URL, signal: AbortSignal) {
+  const send = url.protocol === "https:" ? httpsRequest : httpRequest;
+  return new Promise<IncomingMessage>((resolve, reject) => {
+    const request = send(
+      url,
+      {
+        method: "GET",
+        lookup: safeLookup,
+        signal,
+        headers: { Accept: "image/png,image/jpeg,image/webp,image/gif;q=0.9,*/*;q=0.1" },
+      },
+      resolve,
+    );
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+/**
+ * Fetches `input`, following up to 3 redirects and checking each hop's address. `limitKey` (a user
+ * or board id) counts toward the image download limit (rate-limit.ts).
+ */
+export async function downloadImage(input: string, limitKey: string) {
+  spend(LIMITS.imageDownloadsPerHour, limitKey);
   let url = new URL(input);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     await checkPublicUrl(url);
-    let response: Response;
+    let response: IncomingMessage;
     try {
-      response = await fetch(url, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { Accept: "image/png,image/jpeg,image/webp,image/gif;q=0.9,*/*;q=0.1" },
-      });
-    } catch {
+      response = await get(url, AbortSignal.timeout(TIMEOUT_MS));
+    } catch (error) {
+      if (error instanceof BlockedAddress) throw badRequest(NOT_ALLOWED);
       throw badRequest("Couldn't download that image.");
     }
-    const location = response.headers.get("location");
-    if (response.status >= 300 && response.status < 400 && location) {
+    const status = response.statusCode ?? 0;
+    const location = response.headers.location;
+    if (status >= 300 && status < 400 && location) {
+      response.resume();
+      if (!URL.canParse(location, url.href))
+        throw badRequest("That URL redirects to an invalid address.");
       url = new URL(location, url);
       continue;
     }
-    if (!response.ok) throw badRequest(`Downloading the image failed (HTTP ${response.status}).`);
+    if (status < 200 || status >= 300) {
+      response.resume();
+      throw badRequest(`Downloading the image failed (HTTP ${status}).`);
+    }
     const bytes = await readLimited(response);
     const image = sniffImage(bytes);
     if (!image) throw badRequest("That URL isn't a PNG, JPEG, GIF or WebP image.");

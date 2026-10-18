@@ -16,8 +16,15 @@ import type { Theme, ThemeMode } from "./theme.js";
 export const API_TOKEN_PREFIX = "prism_";
 export const API_TOKENS_MAX = 20;
 
+/** How long a new token works, in days; null = until revoked. */
+export const API_TOKEN_LIFETIMES = [30, 90, 365, null] as const;
+
 export const createApiTokenSchema = z.object({
   name: z.string().trim().min(1, "Give it a name.").max(60, "Use 60 characters or fewer."),
+  expiresInDays: z
+    .union([z.literal(30), z.literal(90), z.literal(365), z.null()])
+    .optional()
+    .default(90),
 });
 
 export const apiTokenSchema = z.object({
@@ -27,6 +34,8 @@ export const apiTokenSchema = z.object({
   start: z.string(),
   createdAt: z.iso.datetime(),
   lastUsedAt: z.iso.datetime().nullable(),
+  /** Null: works until revoked. */
+  expiresAt: z.iso.datetime().nullable(),
 });
 
 export const apiTokensSchema = z.object({ tokens: z.array(apiTokenSchema) });
@@ -368,7 +377,7 @@ export interface ClientToServerEvents {
 /** The header a tab sends with its own saves, so the server doesn't echo them back to it. */
 export const SOCKET_ID_HEADER = "x-prism-socket";
 
-export type CreateApiTokenInput = z.infer<typeof createApiTokenSchema>;
+export type CreateApiTokenInput = z.input<typeof createApiTokenSchema>;
 export type ApiToken = z.infer<typeof apiTokenSchema>;
 export type CreatedApiToken = z.infer<typeof createdApiTokenSchema>;
 export type ConnectedEditor = z.infer<typeof connectedEditorSchema>;

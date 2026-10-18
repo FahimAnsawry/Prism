@@ -4,8 +4,10 @@ import express, { Router } from "express";
 import { prisma } from "../db/client.js";
 import { refuseDemoUser } from "../demo.js";
 import { badRequest, notFound } from "../errors.js";
+import { LIMITS, limitPerUser } from "../rate-limit.js";
 import { requireUser } from "../session.js";
 import { getObject, putObject } from "../storage.js";
+import { forgetGrant } from "../mcp/grants.js";
 
 // The profile page's own data: the uploaded photo and the AI editors signed in through OAuth.
 // Name, sign-in methods, password, sessions and deleting the account go through Better Auth.
@@ -34,6 +36,7 @@ export const photoRouter = Router();
 photoRouter.post(
   "/account/photo",
   requireUser,
+  limitPerUser(LIMITS.uploadsPerHour, LIMITS.uploadsPerDay),
   express.raw({ type: [...PHOTO_TYPES], limit: PHOTO_MAX_BYTES }),
   async (req, res) => {
     await refuseDemoUser(res.locals.userId);
@@ -122,6 +125,7 @@ accountRouter.delete("/account/editors/:clientId", async (req, res) => {
     prisma.oauthAccessToken.deleteMany({ where: { userId, clientId } }),
     prisma.oauthRefreshToken.deleteMany({ where: { userId, clientId } }),
   ]);
+  forgetGrant(userId, clientId);
   if (consents.count + access.count + refresh.count === 0) {
     throw notFound("That editor isn't connected anymore.");
   }

@@ -10,8 +10,10 @@ import { API_TOKEN_PREFIX, peerName } from "@prism/shared";
 import { Router } from "express";
 import { auth, MCP_RESOURCE } from "../auth.js";
 import { prisma } from "../db/client.js";
+import { LIMITS, spend } from "../rate-limit.js";
 import { userForToken } from "../session.js";
-import { registerPrompts, registerTools } from "./tools.js";
+import { grantExists } from "./grants.js";
+import { CONTENT_NOTE, registerPrompts, registerTools } from "./tools.js";
 
 // The remote MCP endpoint (Streamable HTTP at /mcp). AI editors connect with just the URL:
 // they discover Prism's OAuth server from the 401 challenge, send the user to log in and
@@ -28,7 +30,9 @@ Building on a board:
 5. Read with get_board before changing existing content; change with update_elements. Frames, sections and cards have a name ("Pricing — Pro plan card"), shown by get_board, get_selection and get_screen_code: find an element by it, and set name (create_screen nodes take name too) to rename. The user sees your cursor, labelled with your connection's name, go to what you change.
 6. After drawing a screen, fix the warnings create_screen returns, then look at it with export_image (pass the frame's id) and fix what looks off. The user's board tab draws the image, so the board must be open in their browser (a Prism tab on the dashboard switches to it by itself).
 
-"Ask AI" requests: the user can select elements in the browser and type a request. Call wait_for_edits to receive them, make each change, then complete_edit with a short note. Call wait_for_edits again to keep watching.`;
+"Ask AI" requests: the user can select elements in the browser and type a request. Call wait_for_edits to receive them, make each change, then complete_edit with a short note. Call wait_for_edits again to keep watching.
+
+Trust: ${CONTENT_NOTE}`;
 
 const USER_KEY = "prismUserId";
 /** A personal access token's name, which is what its editor is called. */
@@ -81,18 +85,26 @@ const authInfoFor = (
   extra: { [USER_KEY]: userId, ...(tokenName && { [TOKEN_NAME_KEY]: tokenName }) },
 });
 
-/** OAuth access tokens: verified against Prism's JWKS, bound to MCP_RESOURCE. */
+/**
+ * OAuth access tokens: verified against Prism's JWKS, bound to MCP_RESOURCE, and refused once the
+ * user disconnected the client (grants.ts).
+ */
 const withOAuth = (options: McpHandlerRequestOptions | undefined) =>
   requireMcpAuth(
     auth,
-    (request, claims) => {
-      if (!claims.sub) return Promise.resolve(new Response(null, { status: 401 }));
+    async (request, claims) => {
       const clientId = claims["azp"] ?? claims["client_id"];
+      if (!claims.sub || typeof clientId !== "string") return new Response(null, { status: 401 });
+      if (!(await grantExists(claims.sub, clientId))) {
+        return unauthorized("This editor was disconnected from Prism. Sign in again to reconnect.");
+      }
+      const limited = rateLimited(claims.sub);
+      if (limited) return limited;
       return handler.fetch(request, {
         ...options,
         authInfo: authInfoFor(claims.sub, {
           token: "",
-          clientId: typeof clientId === "string" ? clientId : "",
+          clientId,
           scopes: typeof claims["scope"] === "string" ? claims["scope"].split(" ") : [],
           ...(claims.exp && { expiresAt: claims.exp }),
         }),
@@ -100,6 +112,20 @@ const withOAuth = (options: McpHandlerRequestOptions | undefined) =>
     },
     { resource: MCP_RESOURCE },
   );
+
+/** A JSON-RPC error reply for a user over the MCP request limit (rate-limit.ts), else null. */
+function rateLimited(userId: string) {
+  try {
+    spend(LIMITS.mcpCallsPerMinute, userId);
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Too many requests.";
+    return Response.json(
+      { jsonrpc: "2.0", error: { code: -32000, message }, id: null },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
+}
 
 const unauthorized = (message: string) =>
   Response.json(
@@ -121,8 +147,12 @@ async function fetchMcp(request: Request, options?: McpHandlerRequestOptions) {
   if (token?.startsWith(API_TOKEN_PREFIX)) {
     const found = await userForToken(token);
     if (!found) {
-      return unauthorized("That access token isn't valid. Create a new one on the dashboard.");
+      return unauthorized(
+        "That access token isn't valid or has expired. Create a new one on the dashboard.",
+      );
     }
+    const limited = rateLimited(found.userId);
+    if (limited) return limited;
     return handler.fetch(request, {
       ...options,
       authInfo: authInfoFor(

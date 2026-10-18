@@ -65,6 +65,35 @@ const DATA_IMAGE = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]*$/i;
 const EXTERNAL_URL = /url\s*\(\s*['"]?\s*(?!#)/i;
 const SCRIPTY =
   /javascript:|vbscript:|data:text|expression\s*\(|@import|behavior\s*:|-moz-binding/i;
+/** CSS functions that load a file from a string, without url(). */
+const LOADS_FILE = /(?:-webkit-)?image-set\s*\(|\bsrc\s*\(/i;
+
+/**
+ * CSS with its escapes decoded (`\75 rl(` is `url(`) and comments dropped, so the checks below
+ * see what the browser will read.
+ */
+function decodeCss(css: string) {
+  return css
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(
+      /\x5c([0-9a-fA-F]{1,6})\s?|\x5c([^\n0-9a-fA-F])/g,
+      (_, hex?: string, char?: string) => {
+        if (char !== undefined) return char;
+        const code = Number.parseInt(hex ?? "", 16);
+        return String.fromCodePoint(code > 0 && code <= 0x10ffff ? code : 0xfffd);
+      },
+    );
+}
+
+/** Whether CSS (a <style> or a style attribute's text) could run script or load a file. */
+function isUnsafeCss(css: string) {
+  const decoded = decodeCss(css);
+  return (
+    SCRIPTY.test(decoded.replace(/\s/g, "")) ||
+    EXTERNAL_URL.test(decoded) ||
+    LOADS_FILE.test(decoded)
+  );
+}
 
 /** Whether an attribute may stay on an element. `value` is the raw attribute text. */
 export function isSafeSvgAttribute(element: string, name: string, value: string) {
@@ -79,7 +108,8 @@ export function isSafeSvgAttribute(element: string, name: string, value: string)
     return element === "image" && DATA_IMAGE.test(value.trim());
   }
   if (SCRIPTY.test(compact)) return false;
-  if (EXTERNAL_URL.test(value)) return false;
+  // Presentation attributes and `style` hold CSS too.
+  if (isUnsafeCss(value)) return false;
   // Animation targets could rewrite href; there are no animation elements, but be explicit.
   if (lower === "attributename") return false;
   return true;
@@ -87,5 +117,5 @@ export function isSafeSvgAttribute(element: string, name: string, value: string)
 
 /** Whether a <style> element's text is safe to keep. */
 export function isSafeSvgStyle(css: string) {
-  return !SCRIPTY.test(css.replace(/\s/g, "")) && !EXTERNAL_URL.test(css);
+  return !isUnsafeCss(css);
 }

@@ -1,12 +1,28 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { AnimatePresence, motion } from "motion/react";
 import { backdropMotion, dialogPopup, usePopupExit } from "@/components/popup-motion";
-import type { ApiToken, CreatedApiToken } from "@prism/shared";
+import { API_TOKEN_LIFETIMES, type ApiToken, type CreatedApiToken } from "@prism/shared";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Check, ChevronLeft, Circle, Copy, PlugZap, Plus, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  Circle,
+  Copy,
+  PlugZap,
+  Plus,
+  X,
+} from "lucide-react";
 import { type FormEvent, useState } from "react";
-import { FormError, FormField } from "@/components/auth/form-field";
+import {
+  fieldInputClass,
+  fieldLabelClass,
+  FormError,
+  FormField,
+} from "@/components/auth/form-field";
 import { ctaVariants } from "@/components/cta";
+import { Label } from "@/components/ui/label";
 import { TurningChevron } from "@/components/motion-parts";
 import { editorsQuery } from "@/lib/account";
 import { apiTokensQuery, MCP_URL, useCreateApiToken, useRevokeApiToken } from "@/lib/ai";
@@ -22,6 +38,10 @@ const claudeTokenCommand = (token: string) =>
   `claude mcp add --transport http --scope user prism ${MCP_URL} --header "Authorization: Bearer ${token}"`;
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+
+type Lifetime = (typeof API_TOKEN_LIFETIMES)[number];
+
+const lifetimeLabel = (days: Lifetime) => (days === null ? "No expiry" : `${days} days`);
 
 /**
  * How to connect an AI tool (Claude Code, Codex, Antigravity, Cursor, GitHub Copilot, any MCP
@@ -314,11 +334,12 @@ function AccessTokens() {
   const tokens = useQuery(apiTokensQuery);
   const create = useCreateApiToken();
   const [name, setName] = useState("My AI editor");
+  const [lifetime, setLifetime] = useState<Lifetime>(90);
   const [created, setCreated] = useState<CreatedApiToken | null>(null);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    create.mutate({ name }, { onSuccess: setCreated });
+    create.mutate({ name, expiresInDays: lifetime }, { onSuccess: setCreated });
   };
 
   return (
@@ -361,6 +382,35 @@ function AccessTokens() {
               onChange={(event) => setName(event.target.value)}
               className="min-w-0 flex-1"
             />
+            <div>
+              <Label htmlFor="token-lifetime" className={fieldLabelClass}>
+                Expires
+              </Label>
+              <div className="relative mt-1">
+                <select
+                  id="token-lifetime"
+                  value={String(lifetime)}
+                  onChange={(event) =>
+                    setLifetime(
+                      event.target.value === "null"
+                        ? null
+                        : (Number(event.target.value) as Lifetime),
+                    )
+                  }
+                  className={cn(fieldInputClass, "w-full appearance-none border pr-11")}
+                >
+                  {API_TOKEN_LIFETIMES.map((days) => (
+                    <option key={String(days)} value={String(days)}>
+                      {lifetimeLabel(days)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 right-4 size-4 -translate-y-1/2 text-muted-foreground"
+                />
+              </div>
+            </div>
             <button
               type="submit"
               disabled={create.isPending || !name.trim()}
@@ -395,16 +445,24 @@ function AccessTokens() {
 function TokenRow({ token }: { token: ApiToken }) {
   const revoke = useRevokeApiToken();
   const [confirm, setConfirm] = useState(false);
+  // When the row was first drawn: whether the token has expired is read against it.
+  const [shownAt] = useState(() => Date.now());
   const used = token.lastUsedAt
     ? `last used ${dateFormat.format(new Date(token.lastUsedAt))}`
     : "never used";
+  const expires = token.expiresAt
+    ? new Date(token.expiresAt).getTime() <= shownAt
+      ? "expired"
+      : `expires ${dateFormat.format(new Date(token.expiresAt))}`
+    : "no expiry";
 
   return (
     <li className="flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-ink">{token.name}</p>
         <p className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">
-          {token.start}… · created {dateFormat.format(new Date(token.createdAt))} · {used}
+          {token.start}… · created {dateFormat.format(new Date(token.createdAt))} · {used} ·{" "}
+          {expires}
         </p>
       </div>
       <button

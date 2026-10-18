@@ -95,7 +95,7 @@ export const REFERENCE_PAGES: DocPage[] = [
       { type: "h2", title: "Create a token" },
       {
         type: "p",
-        text: "On your dashboard, open Connect AI and choose New token. Name it after the machine or job that will use it, then copy it right away: it starts with `prism_` and is shown only once.",
+        text: "On your dashboard, open Connect AI and choose New token. Name it after the machine or job that will use it, pick how long it works (30, 90 or 365 days, or no expiry), then copy it right away: it starts with `prism_` and is shown only once.",
       },
       { type: "figure", name: "tokenManager" },
       { type: "h2", title: "Use it" },
@@ -118,7 +118,7 @@ export const REFERENCE_PAGES: DocPage[] = [
           },
           {
             icon: "layers",
-            text: "Up to 20 tokens per account. Revoke the ones you no longer use.",
+            text: "Up to 20 tokens per account. Revoke the ones you no longer use. An expired token is refused like a revoked one.",
           },
           {
             icon: "link",

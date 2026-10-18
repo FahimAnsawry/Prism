@@ -28,13 +28,16 @@ export function newToken() {
 /** How often lastUsedAt is refreshed, so a busy bridge doesn't write on every request. */
 const LAST_USED_STEP = 60_000;
 
-/** The user a personal access token belongs to (and its name), or null if no such token exists. */
+/**
+ * The user a personal access token belongs to (and its name), or null if no such token exists or
+ * it has expired.
+ */
 export async function userForToken(token: string) {
   const row = await prisma.apiToken.findUnique({
     where: { tokenHash: hashToken(token) },
-    select: { id: true, userId: true, name: true, lastUsedAt: true },
+    select: { id: true, userId: true, name: true, lastUsedAt: true, expiresAt: true },
   });
-  if (!row) return null;
+  if (!row || (row.expiresAt && row.expiresAt.getTime() <= Date.now())) return null;
   const now = Date.now();
   if (!row.lastUsedAt || now - row.lastUsedAt.getTime() > LAST_USED_STEP) {
     prisma.apiToken

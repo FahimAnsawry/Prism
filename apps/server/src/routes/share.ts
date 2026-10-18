@@ -12,10 +12,12 @@ import {
 } from "@prism/shared";
 import { Router, type Response } from "express";
 import { prisma } from "../db/client.js";
+import { refuseDemoUser } from "../demo.js";
 import { sendEmail } from "../email/send.js";
 import { shareInviteEmail } from "../email/templates.js";
 import { badRequest, HttpError, notFound, parseBody } from "../errors.js";
 import { acceptInvite } from "../invites.js";
+import { LIMITS, spend } from "../rate-limit.js";
 import { notifyAccessChanged, revokeBoardTabs } from "../realtime.js";
 import { requireUser } from "../session.js";
 import { elementChanges, sinceParam, toElement } from "./elements.js";
@@ -45,6 +47,9 @@ const LINK_GONE = "This link doesn't work anymore. Ask the person who shared it 
 const INVITE_GONE = "This invite was cancelled or already used. Ask for a new one.";
 
 const person = { select: { id: true, name: true, email: true, image: true } } as const;
+
+/** The demo account is shared by every visitor, so it can't let anyone else in. */
+const DEMO_SHARE_MESSAGE = "The demo account can't share. Sign up for your own to share boards.";
 
 // Every route checks the session itself where it needs one: the public ones must work without.
 export const shareRouter = Router();
@@ -154,6 +159,11 @@ for (const kind of ["board", "project"] as const) {
     const userId = res.locals.userId;
     const id = await ownedTarget(kind, param(req.params, "id"), userId);
     const { email, role } = parseBody(inviteMemberSchema, req.body);
+    await refuseDemoUser(userId, DEMO_SHARE_MESSAGE);
+    // Every add counts, not only emailed invites: the reply tells whether an address has an
+    // account, so the limit also caps how many addresses one user can test.
+    spend(LIMITS.sharesPerHour, userId);
+    spend(LIMITS.sharesPerDay, userId);
     const target = kind === "board" ? { boardId: id } : { projectId: id };
 
     // Better Auth stores emails lowercased and `email` is too (inviteMemberSchema), so an exact
@@ -196,6 +206,7 @@ for (const kind of ["board", "project"] as const) {
         shareInviteEmail({
           to: email,
           inviterName: settings.owner.name,
+          inviterEmail: settings.owner.email,
           kind,
           itemName: settings.name,
           role,
@@ -264,6 +275,7 @@ for (const kind of ["board", "project"] as const) {
   /** Turns the public link on, or replaces it so the old one stops working. */
   shareRouter.post(`${base}/link`, requireUser, async (req, res) => {
     const id = await ownedTarget(kind, param(req.params, "id"), res.locals.userId);
+    await refuseDemoUser(res.locals.userId, DEMO_SHARE_MESSAGE);
     const { action } = parseBody(shareLinkSchema, req.body);
     const old = await currentToken(kind, id);
     if (action === "regenerate" || !old) {
@@ -340,8 +352,11 @@ shareRouter.post("/invites/:token/accept", requireUser, async (req, res) => {
   const { invite, kind } = await findInvite(req.params.token);
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: res.locals.userId },
-    select: { id: true, email: true },
+    select: { id: true, email: true, emailVerified: true },
   });
+  if (!user.emailVerified) {
+    throw new HttpError(403, "Confirm your email address first, then open the invite again.");
+  }
   if (user.email.toLowerCase() !== invite.email) {
     throw new HttpError(
       403,

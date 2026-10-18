@@ -1,5 +1,6 @@
 import type { Prisma } from "./db/generated/client.js";
 import { prisma } from "./db/client.js";
+import { expireDemoAccess } from "./demo.js";
 import { TOMBSTONE_KEEP_MS } from "./routes/elements.js";
 
 // Hourly housekeeping: rows nothing needs any more are deleted for good.
@@ -14,6 +15,8 @@ import { TOMBSTONE_KEEP_MS } from "./routes/elements.js";
 // revoked, a refresh token when it expires. A revoked refresh token is kept until then: Better
 // Auth revokes one when it's rotated, and a later replay of it revokes the whole token family
 // (theft detection), which needs the row. An expired one is refused before that check.
+//
+// AI editors connected to the public demo account are signed out after a day (demo.ts).
 
 /** How often the purge runs. */
 const PURGE_EVERY_MS = 60 * 60_000;
@@ -113,6 +116,7 @@ async function runPurge() {
       const { refresh, access } = await purgeOauthTokens();
       return refresh + access;
     });
+    await attempt("demo account editor sign-ins older than a day", expireDemoAccess);
   } finally {
     running = false;
   }

@@ -42,6 +42,8 @@ import { accessibleBoardWhere, boardForShareToken } from "./routes/board-access.
 interface SocketData {
   /** Null for a public link's viewer (no session). */
   userId: string | null;
+  /** The Better Auth session the tab signed in with (null when signed out). */
+  sessionId: string | null;
   /** The account's name, shown on this tab's cursor. */
   userName: string;
   /** Boards this tab joined through a public link, and the link's token. */
@@ -57,6 +59,15 @@ type SelectionEmit = (
 let io: PrismServer | null = null;
 
 const room = (boardId: string) => `board:${boardId}`;
+/**
+ * The board's tabs that joined through a public link (and aren't also members). They see the
+ * board and its cursors, but not who is behind them or what members ask their AI editors.
+ */
+const guestRoom = (boardId: string) => `guests:${boardId}`;
+
+/** A peer as a public link's viewers see it: an account's name is left out. */
+const anonymous = (peer: Peer): Peer =>
+  peer.kind === "user" ? { ...peer, name: "Someone" } : peer;
 
 /**
  * The board's `editedAt` (ms) for a join's ack, read once the socket is in the room: a save that
@@ -102,9 +113,19 @@ const selectionPayload = z.object({
   elementIds: z.array(z.uuid()).max(5_000),
 });
 
+/** How often open tabs are checked against the sessions table (sweepEndedSessions). */
+const SESSION_SWEEP_MS = 60_000;
+
 export function attachRealtime(server: HttpServer, clientUrl: string) {
+  const allowedOrigin = new URL(clientUrl).origin;
   io = new Server(server, {
     cors: { origin: clientUrl, credentials: true },
+    // `cors` only covers long-polling; a WebSocket handshake is checked here, so another site
+    // can't open a socket with the user's cookies. Clients outside a browser send no Origin.
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      callback(null, !origin || origin === allowedOrigin);
+    },
     // Big element batches (freehand strokes) can exceed the 1 MB default.
     maxHttpBufferSize: 8e6,
   });
@@ -116,6 +137,7 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
       .getSession({ headers: fromNodeHeaders(socket.handshake.headers) })
       .then((session) => {
         socket.data.userId = session?.user.id ?? null;
+        socket.data.sessionId = session?.session.id ?? null;
         socket.data.userName = peerName(session?.user.name, "Someone");
         socket.data.shareRooms = new Map();
         next();
@@ -150,6 +172,8 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
             return;
           }
           await socket.join(room(boardId));
+          // A member who had the board open through its link sees it as a member from now on.
+          await socket.leave(guestRoom(boardId));
           // In as the user now, not through a link.
           socket.data.shareRooms.delete(boardId);
           reply(true, await editedAtNow(boardId));
@@ -174,7 +198,10 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
             return;
           }
           // A member's own join takes precedence over a link.
-          if (!socket.rooms.has(room(board.id))) socket.data.shareRooms.set(board.id, token);
+          if (!socket.rooms.has(room(board.id))) {
+            socket.data.shareRooms.set(board.id, token);
+            await socket.join(guestRoom(board.id));
+          }
           await socket.join(room(board.id));
           reply(true, await editedAtNow(board.id));
         })
@@ -187,6 +214,7 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
     socket.on("board:leave", (boardId) => {
       if (typeof boardId !== "string") return;
       void socket.leave(room(boardId));
+      void socket.leave(guestRoom(boardId));
       socket.data.shareRooms.delete(boardId);
       if (selections.get(socket.id)?.boardId === boardId) selections.delete(socket.id);
       if (userId) socket.to(room(boardId)).emit("presence:leave", { boardId, peerId: socket.id });
@@ -196,11 +224,12 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
       const parsed = selectionPayload.safeParse(payload);
       if (!userId || !parsed.success || !socket.rooms.has(room(parsed.data.boardId))) return;
       selections.set(socket.id, { userId, ...parsed.data, at: Date.now() });
-      socket.to(room(parsed.data.boardId)).emit("presence:selection", {
-        boardId: parsed.data.boardId,
-        peer: peerOf(socket),
-        elementIds: parsed.data.elementIds,
-      });
+      const { boardId } = parsed.data;
+      const update = { boardId, peer: peerOf(socket), elementIds: parsed.data.elementIds };
+      socket.to(room(boardId)).except(guestRoom(boardId)).emit("presence:selection", update);
+      socket
+        .to(guestRoom(boardId))
+        .emit("presence:selection", { ...update, peer: anonymous(update.peer) });
     });
 
     // Pointer positions go to the others and are never stored. A public link's viewer has no
@@ -211,10 +240,15 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
       const now = Date.now();
       if (now - (lastCursor.get(socket.id) ?? 0) < CURSOR_MIN_GAP_MS) return;
       lastCursor.set(socket.id, now);
-      socket.volatile.to(room(parsed.data.boardId)).emit("presence:cursor", {
-        ...parsed.data,
-        peer: peerOf(socket),
-      });
+      const { boardId } = parsed.data;
+      const peer = peerOf(socket);
+      socket.volatile
+        .to(room(boardId))
+        .except(guestRoom(boardId))
+        .emit("presence:cursor", { ...parsed.data, peer });
+      socket.volatile
+        .to(guestRoom(boardId))
+        .emit("presence:cursor", { ...parsed.data, peer: anonymous(peer) });
     });
 
     socket.on("disconnecting", () => {
@@ -233,6 +267,32 @@ export function attachRealtime(server: HttpServer, clientUrl: string) {
       lastCursor.delete(socket.id);
     });
   });
+
+  setInterval(() => void sweepEndedSessions(), SESSION_SWEEP_MS).unref();
+}
+
+/**
+ * Disconnects tabs whose session ended (signed out, revoked, a password reset, the account
+ * deleted): a socket checks the session only when it connects. Runs every SESSION_SWEEP_MS and
+ * right after Better Auth ends sessions (auth.ts). The tab reconnects signed out, or not at all.
+ */
+export async function sweepEndedSessions() {
+  if (!io) return;
+  const sockets = [...io.sockets.sockets.values()].filter((socket) => socket.data.sessionId);
+  if (sockets.length === 0) return;
+  const ids = [...new Set(sockets.map((socket) => socket.data.sessionId!))];
+  try {
+    const live = await prisma.session.findMany({
+      where: { id: { in: ids }, expiresAt: { gt: new Date() } },
+      select: { id: true },
+    });
+    const kept = new Set(live.map((session) => session.id));
+    for (const socket of sockets) {
+      if (!kept.has(socket.data.sessionId!)) socket.disconnect(true);
+    }
+  } catch (error) {
+    console.warn("[Prism] Couldn't check open tabs' sessions:", error);
+  }
 }
 
 /** Tells a tab that just joined what the others on the board have selected. */
@@ -269,6 +329,7 @@ export function revokeBoardTabs(
           : viaLink === who.shareToken;
       if (!matches) continue;
       void socket.leave(room(boardId));
+      void socket.leave(guestRoom(boardId));
       socket.data.shareRooms.delete(boardId);
       socket.emit("board:revoked", { boardId });
     }
@@ -305,12 +366,13 @@ export function broadcastOps(
   });
 }
 
+/** Ask AI requests go to the board's members only: a public link doesn't show what they asked. */
 export function broadcastEdit(request: EditRequest) {
-  io?.to(room(request.boardId)).emit("edit:update", request);
+  io?.to(room(request.boardId)).except(guestRoom(request.boardId)).emit("edit:update", request);
 }
 
 export function broadcastEditDeleted(boardId: string, id: string) {
-  io?.to(room(boardId)).emit("edit:delete", { boardId, id });
+  io?.to(room(boardId)).except(guestRoom(boardId)).emit("edit:delete", { boardId, id });
 }
 
 /**

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { type BoardElement, type EditRequest, SVG_TYPE, UPLOAD_MAX_BYTES } from "@prism/shared";
 import type { EditStatus } from "./db/generated/client.js";
 import { prisma } from "./db/client.js";
@@ -85,11 +85,15 @@ export async function selectionFor(userId: string, boardId?: string) {
 type DownloadedImage = Awaited<ReturnType<typeof downloadImage>>;
 
 /**
- * The file name (without extension) a downloaded image gets: a hash of its source URL, so the same
- * photo has the same name on every board and search_images can tell which ones a site already uses.
+ * The file name (without extension) a downloaded image gets: a keyed hash of its source URL, so the
+ * same photo has the same name on every board and search_images can tell which ones a site already
+ * uses. Keyed with the server's secret, so nobody can work out a file's URL from a photo's URL.
  */
 export const sourceFileStem = (url: string) =>
-  createHash("sha256").update(url).digest("hex").slice(0, 32);
+  createHmac("sha256", process.env["BETTER_AUTH_SECRET"] ?? "")
+    .update(url)
+    .digest("hex")
+    .slice(0, 32);
 
 /** Saves an image downloaded from `url` with the board's files and returns its asset key. */
 async function storeImage(boardId: string, url: string, image: DownloadedImage) {
@@ -106,7 +110,7 @@ export async function imageFillAsset(board: string, url: string) {
   const path = URL.canParse(url) ? new URL(url).pathname : "";
   const own = /^\/uploads\/([^/]+)\/([^/]+)$/.exec(path);
   if (own?.[1] === board && own[2]) return `${board}/${own[2]}`;
-  return storeImage(board, url, await downloadImage(url));
+  return storeImage(board, url, await downloadImage(url, board));
 }
 
 /** Display width for an imported image: phone screenshots narrower than desktop ones. */
@@ -182,7 +186,7 @@ export async function importImage(
   input: Placement & { url: string },
 ) {
   const board = await boardFor(boardId, userId, "edit");
-  const image = await downloadImage(input.url);
+  const image = await downloadImage(input.url, userId);
   const assetKey = await storeImage(board.id, input.url, image);
   const width = input.width ?? displayWidth(image);
   const height = Math.round((width * image.height) / image.width);

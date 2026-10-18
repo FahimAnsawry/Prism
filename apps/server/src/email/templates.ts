@@ -155,24 +155,38 @@ export function passwordChangedEmail(user: { email: string; name: string }): Ema
   };
 }
 
+/**
+ * A name someone typed, as it may appear in an email someone else receives: one line, and short
+ * enough that it can't pass for a message of its own.
+ */
+const shown = (value: string, max = 40) => {
+  const line = value.replace(/\s+/g, " ").trim();
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+};
+
 export function shareInviteEmail(opts: {
   to: string;
   inviterName: string;
+  inviterEmail: string;
   kind: "board" | "project";
   itemName: string;
   role: string;
   url: string;
 }): Email {
-  const { to, inviterName, kind, itemName, role, url } = opts;
+  const { to, kind, role, url } = opts;
+  // The subject stays fixed: what a user typed only appears in the body, next to their address,
+  // so an invite can't be made to read like a message from Prism itself.
+  const inviterName = `${shown(opts.inviterName)} (${opts.inviterEmail})`;
+  const itemName = shown(opts.itemName, 60);
   const access = role === "editor" ? "edit" : "view";
   return {
     to,
     ...render({
-      subject: `${inviterName} invited you to a ${kind} on Prism`,
+      subject: `You're invited to a ${kind} on Prism`,
       preview: `Open "${itemName}" on Prism.`,
-      heading: `${inviterName} invited you to ${kind === "board" ? "a board" : "a project"}`,
+      heading: `You're invited to ${kind === "board" ? "a board" : "a project"}`,
       body: [
-        `You can ${access} "${itemName}" on Prism.`,
+        `${inviterName} shared "${itemName}" with you. You can ${access} it on Prism.`,
         "Sign in, or create an account, with this email address to accept the invite.",
       ],
       button: { label: `Open ${kind}`, url },

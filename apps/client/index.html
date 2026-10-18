@@ -8,6 +8,9 @@
       content="Prism: one idea broken into many views. Real-time boards for teams and agents."
     />
     <meta name="theme-color" content="#fcfcfd" />
+    <!-- Share links (/s/…) and invite links (/invite/…) carry a secret in the path: never send
+         it to other sites as the Referer. -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <!-- Apply the saved or system theme before first paint (keep in step with src/lib/theme.ts). -->
     <script>
       (function () {

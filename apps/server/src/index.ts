@@ -2,6 +2,7 @@ import { EDITED_AT_HEADER } from "@prism/shared";
 import compression from "compression";
 import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
 import { catchProcessErrors, errorHandler, notFoundHandler } from "./errors.js";
@@ -23,6 +24,25 @@ if (!clientUrl) throw new Error("CLIENT_URL is not set");
 const port = Number(process.env["PORT"] ?? 4000);
 
 const app = express();
+
+// Security headers. The server answers with JSON, images and a few redirects, never pages, so
+// its CSP allows nothing to load and no site to frame it. Routes that serve files set their own
+// CSP and Cross-Origin-Resource-Policy (routes/uploads.ts, routes/account.ts).
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'none'"],
+        styleSrc: ["'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        baseUri: ["'none'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+  }),
+);
 
 // credentials: the client sends the session cookie cross-origin (Vite :5173 → server :4000).
 // A board's elements reply says in a header which `editedAt` it was read at.

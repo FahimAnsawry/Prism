@@ -11,6 +11,7 @@ import {
 import { prisma } from "../db/client.js";
 import { notFound, parseBody } from "../errors.js";
 import { broadcastEdit } from "../realtime.js";
+import { LIMITS, limitPerUser } from "../rate-limit.js";
 import { requireUser } from "../session.js";
 import { boardFor, uuidParam } from "./board-access.js";
 
@@ -60,16 +61,21 @@ aiRouter.delete("/boards/:boardId/edits/:editId", requireUser, async (req, res) 
   res.json({ id });
 });
 
-aiRouter.post("/boards/:boardId/edits", requireUser, async (req, res) => {
-  const userId = res.locals.userId;
-  const board = await boardFor(req.params.boardId, userId, "edit");
-  const { prompt, elementIds } = parseBody(createEditRequestSchema, req.body);
-  const row = await prisma.editRequest.create({
-    data: { boardId: board.id, userId, prompt, elementIds: [...new Set(elementIds)] },
-    select: editSelect,
-  });
-  const request = toEditRequest(row);
-  broadcastEdit(request);
-  wakeEditWaiters(userId);
-  res.status(201).json(request);
-});
+aiRouter.post(
+  "/boards/:boardId/edits",
+  requireUser,
+  limitPerUser(LIMITS.editRequestsPerHour),
+  async (req, res) => {
+    const userId = res.locals.userId;
+    const board = await boardFor(req.params.boardId, userId, "edit");
+    const { prompt, elementIds } = parseBody(createEditRequestSchema, req.body);
+    const row = await prisma.editRequest.create({
+      data: { boardId: board.id, userId, prompt, elementIds: [...new Set(elementIds)] },
+      select: editSelect,
+    });
+    const request = toEditRequest(row);
+    broadcastEdit(request);
+    wakeEditWaiters(userId);
+    res.status(201).json(request);
+  },
+);
