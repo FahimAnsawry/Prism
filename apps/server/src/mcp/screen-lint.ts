@@ -15,7 +15,7 @@ const WARNINGS_MAX = 20;
 const TOLERANCE = 1;
 const PRESET_PX = { S: 16, M: 22, L: 30, XL: 40 } as const;
 const MIN_TEXT_PX = 12;
-const TEXT_SIZES_MAX = 8;
+export const TEXT_SIZES_MAX = 8;
 const ACCENT_FAMILIES_MAX = 3;
 /** Status chips and badges: short shapes whose colors (and their text's) mean state, not brand. */
 const STATUS_HEIGHT_MAX = 32;

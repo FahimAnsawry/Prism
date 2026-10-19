@@ -4,6 +4,8 @@
 // Only licenses that allow commercial use and changes, with at most a credit line, are returned:
 // CC0, public domain and CC BY (no share-alike, no non-commercial).
 
+import { USER_AGENT } from "./image-import.js";
+
 export type Orientation = "landscape" | "portrait" | "square";
 
 export interface FoundImage {
@@ -38,8 +40,6 @@ export interface ImageSource {
 }
 
 const TIMEOUT_MS = 10_000;
-// Wikimedia asks API clients to say who they are.
-const USER_AGENT = "Prism/0.1 (design whiteboard; https://github.com/FahimAnsawry/Prism)";
 
 async function getJson(url: URL): Promise<unknown> {
   const response = await fetch(url, {
@@ -93,10 +93,14 @@ const ASPECT: Record<Orientation, string> = {
 };
 /** Openverse's stock photo sites: polished photos of anonymous models, searched first. */
 const STOCK_SOURCES = "stocksnap,rawpixel,wordpress,nappy";
+// Wikimedia only serves thumbnails at its standard widths (1600 and 160 answer 400; 1920, 1280,
+// 960 and 120 work).
 /** Screen-size copies of Wikimedia originals, which can be far over the upload limit. */
-const SCREEN_WIDTH = 1600;
+const SCREEN_WIDTH = 1920;
+/** The small copy the color check reads. */
+const THUMB_WIDTH = 120;
 
-/** A Wikimedia Commons original as its 1600px thumbnail; other URLs as they are. */
+/** A Wikimedia Commons original as its screen-size thumbnail; other URLs as they are. */
 function screenSize(url: string, width: number | null) {
   const original =
     /^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\/([0-9a-f])\/([0-9a-f]{2})\/([^/?#]+)/.exec(
@@ -188,7 +192,7 @@ export const wikimedia: ImageSource = {
       prop: "imageinfo",
       iiprop: "url|size|mime|extmetadata",
       // A thumbnail at screen size: originals can be far over the upload limit.
-      iiurlwidth: "1600",
+      iiurlwidth: String(SCREEN_WIDTH),
       iiextmetadatafilter: "LicenseShortName|LicenseUrl|Artist|ObjectName",
     })) {
       url.searchParams.set(key, value);
@@ -214,7 +218,7 @@ export const wikimedia: ImageSource = {
         page: info.descriptionurl ?? null,
       };
       // A small copy for the color check.
-      const thumb = info.thumburl.replace(/\/\d+px-([^/]+)$/, "/160px-$1");
+      const thumb = info.thumburl.replace(/\/\d+px-([^/]+)$/, `/${THUMB_WIDTH}px-$1`);
       return [{ ...image, credit: creditLine(image), thumb }];
     });
   },

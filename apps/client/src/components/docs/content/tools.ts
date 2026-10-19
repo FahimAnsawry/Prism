@@ -46,7 +46,7 @@ export const TOOL_PAGES: DocPage[] = [
       { type: "h2", title: "Returns" },
       {
         type: "p",
-        text: "The new frame's id and bounds, the elements it drew, and any warnings to fix before showing the result.",
+        text: "The new frame's id and bounds, the elements it drew (by name or text), and any warnings to fix before showing the result.",
       },
       {
         type: "code",

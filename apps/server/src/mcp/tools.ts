@@ -177,6 +177,19 @@ const TOKENS_NOTE =
 const hasTokens = (elements: BoardElement[]) => elements.some((el) => el.tokens);
 
 /**
+ * What a drawn screen lists: each element an editor can pick out by its name or text, as id →
+ * label. Unnamed shapes, lines and icons are left out (no label would tell them apart), as are
+ * type and groupId; get_board with the frameId reads everything.
+ */
+const drawnElements = (elements: BoardElement[]) =>
+  Object.fromEntries(
+    elements.flatMap((el) => {
+      const label = el.name ?? el.text?.slice(0, 40);
+      return label ? [[el.id, label]] : [];
+    }),
+  );
+
+/**
  * Told with every read of board content, and in the server's instructions: anyone the board is
  * shared with can write its text, so it must never steer an editor that can run commands.
  */
@@ -493,14 +506,7 @@ async function createHtmlScreen(
     measured: "browser (rendered HTML)",
     theme: { name: theme.name ?? null, mode },
     ...(warnings.length > 0 && { warnings }),
-    elements: elements.map((el) => ({
-      id: el.id,
-      type: el.type,
-      ...(el.name && { name: el.name }),
-      ...(el.role && { role: el.role }),
-      ...(el.groupId && { groupId: el.groupId }),
-      ...(el.text && { text: el.text.slice(0, 60) }),
-    })),
+    elements: drawnElements(elements),
     next:
       warnings.length > 0
         ? `Fix the ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (in the HTML and draw it again, or with update_elements), then check it with export_image (frameId).`
@@ -1241,7 +1247,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     {
       title: "Get the design guide",
       description:
-        "REQUIRED before your first create_screen in a conversation: how a good screen looks (deciding a visual thesis, type sizes, color, spacing, a recipe for the surface, how to check the result). Pass the boardId: the guide then ends with the board's site (a project, or a board outside any), either the screens it already has, whose design language every new page keeps, or, for a new site, how the user's other sites look, so it doesn't repeat them. Read it once per board, design from it, and reuse it for that board's later screens.",
+        "REQUIRED before your first create_screen in a conversation: how a good screen looks (deciding a visual thesis, type sizes, color, spacing, a recipe for the surface, how to check the result). Pass the boardId: the guide then ends with the board's site (a project, or a board outside any), either the screens it already has, whose design language every new page keeps, or, for a new site, how the user's other sites look, so it doesn't repeat them. Read it once per conversation, design from it, and reuse it for later screens; on another board, call it with that boardId and siteOnly: true for just its site.",
       inputSchema: z.object({
         surface: z
           .enum(DESIGN_SURFACES)
@@ -1252,14 +1258,22 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
         boardId: boardId
           .optional()
           .describe("The board you're designing on, for its site section. Recommended."),
+        siteOnly: z
+          .boolean()
+          .optional()
+          .describe(
+            "Only the board's site section, when you already read the guide in this conversation (needs boardId).",
+          ),
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    ({ surface, boardId: id }) =>
+    ({ surface, boardId: id, siteOnly }) =>
       run(async () => {
         const site = id ? siteContext(await designSites(userId, id)) : undefined;
         return {
-          content: [{ type: "text" as const, text: designGuide(surface ?? "landing", site) }],
+          content: [
+            { type: "text" as const, text: designGuide(surface ?? "landing", site, siteOnly) },
+          ],
         };
       }),
   );
@@ -1420,14 +1434,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
           measured: measured ? "browser" : "estimated (no board tab open; text sizes may be off)",
           theme: { name: theme.name ?? null, mode },
           ...(warnings.length > 0 && { warnings }),
-          elements: elements.map((el) => ({
-            id: el.id,
-            type: el.type,
-            ...(el.name && { name: el.name }),
-            ...(el.role && { role: el.role }),
-            ...(el.groupId && { groupId: el.groupId }),
-            ...(el.text && { text: el.text.slice(0, 60) }),
-          })),
+          elements: drawnElements(elements),
           next:
             warnings.length > 0
               ? `Fix the ${warnings.length} warning${warnings.length === 1 ? "" : "s"} with update_elements (or redraw that section), then check it with export_image (frameId).`
@@ -1752,17 +1759,34 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     "delete_elements",
     {
       title: "Delete elements",
-      description: "Delete elements by id. Arrows attached to them go too. One undo step.",
-      inputSchema: z.object({ boardId, ids: z.array(z.uuid()).min(1).max(2_000) }),
+      description:
+        "Delete elements by id. Arrows attached to them go too. To redraw a screen, pass its frame's id with withContents: true. One undo step.",
+      inputSchema: z.object({
+        boardId,
+        ids: z.array(z.uuid()).min(1).max(2_000),
+        withContents: z
+          .boolean()
+          .optional()
+          .describe(
+            "Also delete everything inside each given frame (what get_board with that frameId reads).",
+          ),
+      }),
       annotations: { destructiveHint: true, openWorldHint: false },
     },
-    ({ boardId: id, ids }) =>
+    ({ boardId: id, ids, withContents }) =>
       run(async () => {
         const board = await boardFor(id, userId, "edit");
         const elements = await loadElements(board);
         const doomed = new Set(
           ids.filter((elementId) => elements.some((el) => el.id === elementId)),
         );
+        const notFound = ids.filter((elementId) => !doomed.has(elementId));
+        if (withContents) {
+          const frames = elements.filter((el) => el.type === "frame" && doomed.has(el.id));
+          for (const el of elements) {
+            if (frames.some((frame) => insideFrame(el, frame))) doomed.add(el.id);
+          }
+        }
         // A mind map node takes its branch with it.
         for (const elementId of mindDescendants(elements, doomed)) doomed.add(elementId);
         for (const el of elements) {
@@ -1771,7 +1795,9 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
             (el.endBinding && doomed.has(el.endBinding));
           if (bound) doomed.add(el.id);
         }
-        if (doomed.size === 0) return json({ deleted: 0 });
+        // The count, not the ids: an editor already has them, and a frame's contents can run to hundreds.
+        const missing = notFound.length > 0 ? { notFound } : {};
+        if (doomed.size === 0) return json({ deleted: 0, ...missing });
         const versions = new Map(elements.map((el) => [el.id, el.version]));
         const result = await save(
           userId,
@@ -1782,7 +1808,7 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
             version: (versions.get(elementId) ?? 0) + 1,
           })),
         );
-        return json({ deleted: result.applied.length, ids: [...doomed] });
+        return json({ deleted: result.applied.length, ...missing });
       }),
   );
 
@@ -1869,8 +1895,16 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
             );
           }
         }
-        // The thumbnail is only for the color check.
-        const shown = images.map(({ thumb: _, ...image }) => image);
+        // What picking a photo needs: its subject, shape and license. The credit line already names
+        // the author and source, and only CC BY asks for it; the thumbnail is for the color check.
+        const shown = images.map(({ url, width, height, title, license, credit }) => ({
+          url,
+          width,
+          height,
+          title,
+          license,
+          ...(/^CC BY/i.test(license) && { credit }),
+        }));
         const used =
           leftOut > 0
             ? `${leftOut} photo${leftOut === 1 ? "" : "s"} the user's other sites already use`
