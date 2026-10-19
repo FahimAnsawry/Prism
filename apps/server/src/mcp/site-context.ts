@@ -284,7 +284,7 @@ export function siteContext({ current, others }: { current: DesignSite; others: 
   const screens = screensOf(current);
   if (screens.length > 0) {
     const listed = screens.slice(0, MAX_SCREENS);
-    return `## 8. This site: ${current.name}
+    return `## This site: ${current.name}
 
 This board belongs to "${current.name}", a website that already has ${screens.length} screen${screens.length === 1 ? "" : "s"}. A website is one design: a new page keeps the language of the pages it has, and gets the structure its own content needs. This section comes before the general advice above.
 
@@ -310,7 +310,7 @@ Change per page: its structure and section order. A pricing, sign-in, blog or se
   const savedTheme = current.theme
     ? " This project already has a saved theme, so its colors and fonts are set: make it different through structure, hero treatment, imagery, density and voice."
     : "";
-  return `## 8. This site: ${current.name}
+  return `## This site: ${current.name}
 
 "${current.name}" has no screens yet, so this design sets the look of a new website. Its later pages will follow what you decide here, so decide it on purpose: type pairing, color strategy, radius, hero treatment, section rhythm, imagery and voice. This section comes before the general advice above.
 ${

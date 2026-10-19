@@ -175,7 +175,7 @@ export const DESIGN_PAGES: DocPage[] = [
         rows: [
           {
             term: "Decide before you draw",
-            text: "Two or three directions, a thesis, one signature move and the category default to avoid",
+            text: "For a landing page: two or three directions, a thesis, one signature move and the category default to avoid. For app and mobile screens: the person, their task, density and states",
           },
           {
             term: "Type",
@@ -192,6 +192,10 @@ export const DESIGN_PAGES: DocPage[] = [
           {
             term: "Landing pages",
             text: "Jobs instead of a fixed list of sections, and structures to choose from",
+          },
+          {
+            term: "Design for code",
+            text: "Each page at 1440 and 390, component states, focus and names for access, a dark frame, charts that answer one question",
           },
           {
             term: "Check it",
