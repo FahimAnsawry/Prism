@@ -5,7 +5,7 @@
 
 services:
   - type: web
-    name: prism-board-api
+    name: prism-ai-api
     runtime: node
     # Same place as the Neon database (AWS ap-southeast-1): keeps the database round trips short
     region: singapore
@@ -29,12 +29,12 @@ services:
         value: "24"
       - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
         value: "0"
-      # https://prism-board-api.onrender.com, or your API domain (e.g. https://api.example.com)
+      # https://prism-ai-api.onrender.com, or your API domain (e.g. https://api.example.com)
       - key: SERVER_URL
         sync: false
       - key: BETTER_AUTH_URL
         sync: false
-      # https://prism-board.onrender.com, or your app domain (e.g. https://example.com)
+      # https://prism-ai-app.onrender.com, or your app domain (e.g. https://example.com)
       - key: CLIENT_URL
         sync: false
       # true while client and server are on different sites (two *.onrender.com URLs);
@@ -84,7 +84,7 @@ services:
         value: Demo User
 
   - type: web
-    name: prism-board
+    name: prism-ai-app
     runtime: static
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @prism/client build
     staticPublishPath: apps/client/dist

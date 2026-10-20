@@ -149,17 +149,17 @@ The client is a static site (`apps/client/dist`). The server is a long-running N
 
 `render.yaml` at the repo root is a Render Blueprint for both:
 
-| Service           | Type        | Plan            | What it runs                                                                                             |
-| ----------------- | ----------- | --------------- | -------------------------------------------------------------------------------------------------------- |
-| `prism-board-api` | Web service | Starter ($7/mo) | Express, Socket.IO and `/mcp`, in Singapore next to the Neon database. Migrations run before each deploy |
-| `prism-board`     | Static site | Free            | The React app, with every path that isn't a file served `index.html`                                     |
+| Service        | Type        | Plan            | What it runs                                                                                             |
+| -------------- | ----------- | --------------- | -------------------------------------------------------------------------------------------------------- |
+| `prism-ai-api` | Web service | Starter ($7/mo) | Express, Socket.IO and `/mcp`, in Singapore next to the Neon database. Migrations run before each deploy |
+| `prism-ai-app` | Static site | Free            | The React app, with every path that isn't a file served `index.html`                                     |
 
 A free instance would sleep when idle, dropping open boards' sockets and AI editors' `/mcp` connections, so the server needs a paid plan (pre-deploy migrations need one too).
 
 1. Render dashboard → **New → Blueprint** → pick the repo. Render reads `render.yaml` and asks for every `sync: false` value. `BETTER_AUTH_SECRET` is generated.
 2. Fill in the server's values as in `apps/server/.env.example`, with the production URLs:
-   - `SERVER_URL` and `BETTER_AUTH_URL`: `https://prism-board-api.onrender.com`
-   - `CLIENT_URL`: `https://prism-board.onrender.com`
+   - `SERVER_URL` and `BETTER_AUTH_URL`: `https://prism-ai-api.onrender.com`
+   - `CLIENT_URL`: `https://prism-ai-app.onrender.com`
    - `CROSS_SITE_COOKIES`: `true` (see below)
    - `DATABASE_URL` (pooled) and `DIRECT_URL` (direct) from Neon
    - `S3_REGION` and `S3_FORCE_PATH_STYLE` for your storage provider
@@ -170,4 +170,4 @@ A free instance would sleep when idle, dropping open boards' sockets and AI edit
 
 AI editors connect with `claude mcp add --transport http prism <SERVER_URL>/mcp`.
 
-**Cookies across two `onrender.com` hosts.** `onrender.com` is a public suffix, so `prism-board.onrender.com` and `prism-board-api.onrender.com` are different sites, and the browser won't send the default `SameSite=Lax` session cookie from one to the other. `CROSS_SITE_COOKIES=true` makes the cookies `SameSite=None`, which works in Chrome and Firefox, but Safari blocks those third-party cookies and its users can't stay signed in. The fix is a domain of your own (the Hobby plan includes two custom domains): put the app on `example.com` (or `app.example.com`) and the server on `api.example.com`, update the URLs above, and set `CROSS_SITE_COOKIES` empty.
+**Cookies across two `onrender.com` hosts.** `onrender.com` is a public suffix, so `prism-ai-app.onrender.com` and `prism-ai-api.onrender.com` are different sites, and the browser won't send the default `SameSite=Lax` session cookie from one to the other. `CROSS_SITE_COOKIES=true` makes the cookies `SameSite=None`, which works in Chrome and Firefox, but Safari blocks those third-party cookies and its users can't stay signed in. The fix is a domain of your own (the Hobby plan includes two custom domains): put the app on `example.com` (or `app.example.com`) and the server on `api.example.com`, update the URLs above, and set `CROSS_SITE_COOKIES` empty.
