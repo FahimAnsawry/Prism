@@ -1,0 +1,138 @@
+# Render Blueprint: the API server (Express + Socket.IO + MCP) and the web app (static site).
+# New → Blueprint in the Render dashboard, pick this repo, then fill in the values marked
+# `sync: false` (Render asks for them once). The database (Neon) and file storage (S3) live
+# outside Render. Setup and the values each variable takes: docs/SETUP.md → Deployment.
+
+services:
+  - type: web
+    name: prism-server
+    runtime: node
+    # Same place as the Neon database (AWS ap-southeast-1): keeps the database round trips short
+    region: singapore
+    # Free instances sleep when idle, which drops Socket.IO and makes /mcp slow to answer
+    plan: starter
+    # The lockfile and packageManager need pnpm 12, which corepack provides
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter "@prism/server..." build
+    # Runs after each build, before the new version takes traffic (paid plans only)
+    preDeployCommand: cd apps/server && ./node_modules/.bin/prisma migrate deploy
+    # NODE_ENV only at runtime: set during the build, pnpm would skip devDependencies (tsc, prisma)
+    startCommand: NODE_ENV=production node apps/server/dist/index.js
+    healthCheckPath: /healthz
+    buildFilter:
+      paths:
+        - apps/server/**
+        - packages/shared/**
+        - pnpm-lock.yaml
+        - render.yaml
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
+        value: "0"
+      # https://prism-server.onrender.com, or your API domain (e.g. https://api.example.com)
+      - key: SERVER_URL
+        sync: false
+      - key: BETTER_AUTH_URL
+        sync: false
+      # https://prism-web.onrender.com, or your app domain (e.g. https://example.com)
+      - key: CLIENT_URL
+        sync: false
+      # true while client and server are on different sites (two *.onrender.com URLs);
+      # leave empty once both are on subdomains of one domain of your own
+      - key: CROSS_SITE_COOKIES
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: MAILJET_API_KEY
+        sync: false
+      - key: MAILJET_SECRET_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: Prism
+      - key: S3_ENDPOINT
+        sync: false
+      # Your storage provider's values (R2: auto / false; Neon Object Storage: us-east-2 / true)
+      - key: S3_REGION
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET
+        value: prism-uploads
+      - key: DEMO_EMAIL
+        sync: false
+      - key: DEMO_PASSWORD
+        sync: false
+      - key: DEMO_NAME
+        value: Demo User
+
+  - type: web
+    name: prism-web
+    runtime: static
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @prism/client build
+    staticPublishPath: apps/client/dist
+    buildFilter:
+      paths:
+        - apps/client/**
+        - packages/shared/**
+        - pnpm-lock.yaml
+        - render.yaml
+    # Client-side routes (TanStack Router): paths that aren't files get the app shell
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    # Same as apps/client/public/_headers, which Render doesn't read
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Content-Security-Policy
+        value: frame-ancestors 'none'
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=()
+      # Vite puts a content hash in every file name under /assets
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
+        value: "0"
+      # Baked into the build: the server's public URL (same as its SERVER_URL)
+      - key: VITE_SERVER_URL
+        sync: false
+      # Must match the server's DEMO_EMAIL / DEMO_PASSWORD; leave empty for no demo account
+      - key: VITE_DEMO_EMAIL
+        sync: false
+      - key: VITE_DEMO_PASSWORD
+        sync: false

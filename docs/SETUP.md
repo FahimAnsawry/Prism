@@ -143,4 +143,31 @@ Per-package scripts (`pnpm --filter <package> <script>`):
 
 ## Deployment
 
-Target-neutral for now. The client is a static site (`apps/client/dist`) and can go on any static host (e.g. Vercel). The server is a long-running Node process (`pnpm --filter @prism/server build && pnpm --filter @prism/server start`) for a Node host such as Render, Railway or Fly.io. Run `pnpm --filter @prism/server db:deploy` to apply migrations on deploy.
+The client is a static site (`apps/client/dist`). The server is a long-running Node process (`pnpm --filter @prism/server build`, then `node apps/server/dist/index.js`); migrations are applied with `pnpm --filter @prism/server db:deploy`.
+
+### Render
+
+`render.yaml` at the repo root is a Render Blueprint for both:
+
+| Service        | Type        | Plan            | What it runs                                                                                             |
+| -------------- | ----------- | --------------- | -------------------------------------------------------------------------------------------------------- |
+| `prism-server` | Web service | Starter ($7/mo) | Express, Socket.IO and `/mcp`, in Singapore next to the Neon database. Migrations run before each deploy |
+| `prism-web`    | Static site | Free            | The React app, with every path that isn't a file served `index.html`                                     |
+
+A free instance would sleep when idle, dropping open boards' sockets and AI editors' `/mcp` connections, so the server needs a paid plan (pre-deploy migrations need one too).
+
+1. Render dashboard → **New → Blueprint** → pick the repo. Render reads `render.yaml` and asks for every `sync: false` value. `BETTER_AUTH_SECRET` is generated.
+2. Fill in the server's values as in `apps/server/.env.example`, with the production URLs:
+   - `SERVER_URL` and `BETTER_AUTH_URL`: `https://prism-server.onrender.com`
+   - `CLIENT_URL`: `https://prism-web.onrender.com`
+   - `CROSS_SITE_COOKIES`: `true` (see below)
+   - `DATABASE_URL` (pooled) and `DIRECT_URL` (direct) from Neon
+   - `S3_REGION` and `S3_FORCE_PATH_STYLE` for your storage provider
+3. Fill in the static site's `VITE_SERVER_URL` with the server URL (and `VITE_DEMO_*` to match `DEMO_*`, or leave all of them empty).
+4. If Render had to add a suffix to a service name (the name was taken), its URL differs: fix the URLs above under each service's **Environment** and redeploy. A `VITE_` change needs a new build of the static site.
+5. Add the production URLs to the OAuth apps: Google's authorized JavaScript origin `CLIENT_URL` and redirect URI `<SERVER_URL>/api/auth/callback/google`; a separate GitHub OAuth app with callback `<SERVER_URL>/api/auth/callback/github`.
+6. Optional demo account: run `node apps/server/dist/scripts/seed-demo.js` once from the server's **Shell** tab.
+
+AI editors connect with `claude mcp add --transport http prism <SERVER_URL>/mcp`.
+
+**Cookies across two `onrender.com` hosts.** `onrender.com` is a public suffix, so `prism-web.onrender.com` and `prism-server.onrender.com` are different sites, and the browser won't send the default `SameSite=Lax` session cookie from one to the other. `CROSS_SITE_COOKIES=true` makes the cookies `SameSite=None`, which works in Chrome and Firefox, but Safari blocks those third-party cookies and its users can't stay signed in. The fix is a domain of your own (the Hobby plan includes two custom domains): put the app on `example.com` (or `app.example.com`) and the server on `api.example.com`, update the URLs above, and set `CROSS_SITE_COOKIES` empty.

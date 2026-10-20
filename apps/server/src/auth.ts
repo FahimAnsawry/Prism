@@ -26,6 +26,10 @@ function requireEnv(name: string): string {
 
 const baseURL = requireEnv("BETTER_AUTH_URL");
 const clientUrl = requireEnv("CLIENT_URL");
+// Client and server on different sites (e.g. two *.onrender.com hosts): the browser sends a
+// SameSite=Lax session cookie only to the same site, so it has to be SameSite=None. Browsers that
+// block third-party cookies (Safari) still won't send it; one domain of your own avoids that.
+const crossSiteCookies = process.env["CROSS_SITE_COOKIES"] === "true";
 
 /** The remote MCP endpoint (apps/server/src/mcp): the resource MCP access tokens are bound to. */
 export const MCP_RESOURCE = new URL("/mcp", baseURL).toString();
@@ -92,6 +96,9 @@ const createAuth = () =>
     session: {
       cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
+    ...(crossSiteCookies && {
+      advanced: { defaultCookieAttributes: { sameSite: "none", secure: true } },
+    }),
 
     // Emails go out through Mailjet (src/email); see apps/server/.env.example. Sends aren't awaited
     // (sendEmail returns at once) so a slow provider can't delay a request or leak, through

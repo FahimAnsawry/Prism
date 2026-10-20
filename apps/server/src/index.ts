@@ -48,6 +48,12 @@ app.use(
 // A board's elements reply says in a header which `editedAt` it was read at.
 app.use(cors({ origin: clientUrl, credentials: true, exposedHeaders: [EDITED_AT_HEADER] }));
 
+// The host's health check (render.yaml). Answers without the database, so a slow or sleeping
+// database doesn't get a healthy process restarted.
+app.get("/healthz", (_req, res) => {
+  res.sendStatus(204);
+});
+
 // Better Auth reads the raw request body, so it must be mounted before express.json().
 // `auth` is read per request: it's replaced if its startup failed (src/auth.ts).
 const authHandler: express.RequestHandler = (req, res) => toNodeHandler(auth)(req, res);
