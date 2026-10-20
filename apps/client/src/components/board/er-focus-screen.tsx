@@ -1,7 +1,6 @@
 import type { BoardElement } from "@prism/shared";
 import { ArrowLeft, ArrowRight, ChevronRight, Eye, LayoutGrid } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { isTyping } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { boundsOf } from "./geometry";
@@ -246,8 +245,6 @@ export function ErFocusScreen({
               <LayoutGrid aria-hidden="true" className="size-4" />
             </button>
           )}
-
-          <ThemeToggle className="size-8 border border-chrome bg-card" />
         </div>
       </header>
 

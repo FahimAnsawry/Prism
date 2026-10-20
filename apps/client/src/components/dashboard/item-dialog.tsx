@@ -115,7 +115,7 @@ export function ItemDialog({
         {open && (
           <Dialog.Portal keepMounted>
             <Dialog.Backdrop
-              className="fixed inset-0 z-50 bg-slate/40 dark:bg-black/60"
+              className="fixed inset-0 z-50 bg-slate/40"
               render={<motion.div {...backdropMotion} />}
             />
             <Dialog.Popup

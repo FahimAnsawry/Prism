@@ -31,21 +31,21 @@ function BackToHome() {
 
 /**
  * The login screen's "Faceted geometry" look from the board: a full-bleed crystal facet field
- * with the form on a lit card in the middle. Always light, like the field behind it.
+ * with the form on a lit card in the middle.
  */
 function CrystalLayout({
   children,
   footer,
-  wide,
+  size,
 }: {
   children: ReactNode;
   footer?: ReactNode;
-  wide?: boolean;
+  size: "narrow" | "medium" | "wide";
 }) {
   return (
     // Focused fields get the dashboard search box's look: green border and soft green halo (red when
     // invalid), no black outline.
-    <div className="light relative isolate flex min-h-dvh flex-col overflow-x-hidden bg-background text-foreground [&_input]:transition-[border-color,box-shadow] [&_input:focus-visible:not([aria-invalid])]:border-[#28e99f] [&_input:focus-visible:not([aria-invalid])]:shadow-[0_0_0_4px_rgba(40,233,159,0.3)] [&_input:focus-visible:not([aria-invalid])]:outline-none [&_input[aria-invalid]:focus-visible]:shadow-[inset_0_0_0_1px_var(--destructive),0_0_0_4px_color-mix(in_srgb,var(--destructive)_30%,transparent)] [&_input[aria-invalid]:focus-visible]:outline-none">
+    <div className="relative isolate flex min-h-dvh flex-col overflow-x-hidden bg-background text-foreground [&_input]:transition-[border-color,box-shadow] [&_input:focus-visible:not([aria-invalid])]:border-[#28e99f] [&_input:focus-visible:not([aria-invalid])]:shadow-[0_0_0_4px_rgba(40,233,159,0.3)] [&_input:focus-visible:not([aria-invalid])]:outline-none [&_input[aria-invalid]:focus-visible]:shadow-[inset_0_0_0_1px_var(--destructive),0_0_0_4px_color-mix(in_srgb,var(--destructive)_30%,transparent)] [&_input[aria-invalid]:focus-visible]:outline-none">
       <FacetField className="absolute inset-0 -z-10 size-full" />
       <header className="relative z-10 flex items-center justify-between gap-4 px-(--page-gutter) py-6 short:py-3 lg:absolute lg:inset-x-0 lg:top-0 lg:px-8">
         <PrismLogo />
@@ -57,7 +57,7 @@ function CrystalLayout({
         <div
           className={cn(
             "relative m-auto w-full border border-divider bg-card px-6 py-8 shadow-[0_32px_64px_-24px_rgb(61_59_79/0.4)] sm:px-12 sm:py-12 short:py-8 short:[&_h1]:text-4xl tiny:[zoom:0.88]",
-            wide ? "max-w-170" : "max-w-120",
+            { narrow: "max-w-120", medium: "max-w-130 sm:px-10 sm:py-10", wide: "max-w-170" }[size],
           )}
         >
           {children}
@@ -72,7 +72,9 @@ function CrystalLayout({
  * Split auth screen from the board: form column (640/1440, 448px form) beside the dark prism
  * panel. `panel={false}` drops the panel and centers the form (e.g. the AI editor consent page).
  * The panel layouts (login and signup) also get a "Back to home" link beside the logo.
- * `crystal` swaps the whole split for the crystal-facet card (`"wide"` for two-column forms). `panelButton` is the label in the panel's code card; `footer` is the fine print at the bottom.
+ * `crystal` swaps the whole split for the crystal-facet card (`"medium"` for the AI editor consent
+ * card, `"wide"` for two-column forms). `panelButton` is the label in the panel's code card;
+ * `footer` is the fine print at the bottom.
  */
 export function AuthLayout({
   children,
@@ -85,11 +87,11 @@ export function AuthLayout({
   panel?: boolean;
   panelButton?: string;
   footer?: ReactNode;
-  crystal?: boolean | "wide";
+  crystal?: boolean | "medium" | "wide";
 }) {
   if (crystal) {
     return (
-      <CrystalLayout footer={footer} wide={crystal === "wide"}>
+      <CrystalLayout footer={footer} size={crystal === true ? "narrow" : crystal}>
         {children}
       </CrystalLayout>
     );

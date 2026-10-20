@@ -1,26 +1,13 @@
-import { Check, Copy, Pencil } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
-import { DOCS_SOURCE_URL } from "./docs-config";
 import { pageToMarkdown } from "./docs-markdown";
 import { headings } from "./docs-pages";
 import type { DocPage } from "./docs-types";
 import { useCopy } from "./use-copy";
 
-/** The slug's content file, for "Edit on GitHub". */
-function sourceFile(page: DocPage): string {
-  const file = {
-    start: "start",
-    design: "design",
-    collaborate: "collaborate",
-    build: "build",
-    reference: page.slug.startsWith("tools/") ? "tools" : "reference",
-  }[page.group];
-  return `${DOCS_SOURCE_URL}/${file}.ts`;
-}
-
-/** "On this page": the headings, with the one being read marked, and page actions below. */
+/** "On this page": the headings, with the one being read marked, and the Copy action below. */
 export function DocsToc({ page }: { page: DocPage }) {
   const items = useMemo(() => headings(page), [page]);
   const [active, setActive] = useState(items[0]?.id);
@@ -100,10 +87,6 @@ export function DocsToc({ page }: { page: DocPage }) {
           )}
           <span aria-live="polite">{copied ? "Copied" : "Copy as Markdown"}</span>
         </button>
-        <a href={sourceFile(page)} className={action}>
-          <Pencil aria-hidden="true" className="size-4" />
-          Edit on GitHub
-        </a>
       </div>
     </aside>
   );

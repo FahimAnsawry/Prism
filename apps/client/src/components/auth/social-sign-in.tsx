@@ -93,7 +93,7 @@ export function SocialSignIn({ layout }: { layout: "stacked" | "split" }) {
                 disabled={pending !== null}
                 aria-busy={pending === provider}
                 onClick={() => void onClick(provider)}
-                className="h-11 w-full gap-2.5 rounded-none border-input bg-card text-sm font-semibold text-foreground hover:border-foreground hover:bg-card active:bg-hover dark:bg-card dark:hover:bg-card dark:active:bg-hover"
+                className="h-11 w-full gap-2.5 rounded-none border-input bg-card text-sm font-semibold text-foreground hover:border-foreground hover:bg-card active:bg-hover"
               >
                 <Icon />
                 {layout === "stacked" ? `Continue with ${name}` : name}

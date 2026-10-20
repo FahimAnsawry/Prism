@@ -58,9 +58,8 @@ import {
   saveCamera,
   savedCamera,
   screenToWorld,
-  stepZoom,
-  zoomAt,
 } from "@/components/board/camera";
+import { useSmoothZoom } from "@/components/board/smooth-zoom";
 import {
   cloneAt,
   cloneElements,
@@ -91,7 +90,6 @@ import { boardFontsReady, fitTextBox, loadBoardFontsToOpen } from "@/components/
 import { TOOLS_BY_SHORTCUT, type ToolId } from "@/components/board/tools";
 import { useElementSize } from "@/components/board/use-element-size";
 import { ShareDialog } from "@/components/share/share-dialog";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { ErrorScreen } from "@/components/feedback/error-page";
 import { NotFoundPage } from "@/components/feedback/not-found-page";
 import { PrismLoader } from "@/components/feedback/prism-loader";
@@ -135,9 +133,6 @@ export const Route = createFileRoute("/board/$boardId")({
   },
   component: BoardPage,
 });
-
-/** Top-bar buttons and keys zoom around the middle of the view; the wheel zooms toward the pointer. */
-const CENTER = { x: 0, y: 0 };
 
 /** What View mode lets the canvas do to the board: follow live changes and select, nothing else. */
 const VIEW_ALLOWED = new Set<BoardAction["type"]>(["remote", "select"]);
@@ -410,9 +405,11 @@ function BoardEditor({
     return () => clearTimeout(timer);
   }, [boardId, camera]);
 
-  const zoomIn = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
-  const zoomOut = () => setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
-  const zoomReset = () => setCamera((c) => zoomAt(c, 1, CENTER));
+  // Buttons and keys glide around the middle of the view; the wheel glides toward the pointer.
+  const { zoomTo, zoomBy, step: zoomStep } = useSmoothZoom(camera, setCamera);
+  const zoomIn = () => zoomStep(1);
+  const zoomOut = () => zoomStep(-1);
+  const zoomReset = () => zoomTo(1);
 
   // Reveals of an AI editor's big batches in progress, stopped when the board closes.
   const reveals = useRef(new Set<() => void>());
@@ -710,13 +707,13 @@ function BoardEditor({
       if (viewing) {
         if (mod && (key === "=" || key === "+")) {
           event.preventDefault();
-          setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
+          zoomStep(1);
         } else if (mod && key === "-") {
           event.preventDefault();
-          setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
+          zoomStep(-1);
         } else if (mod && key === "0") {
           event.preventDefault();
-          setCamera((c) => zoomAt(c, 1, CENTER));
+          zoomTo(1);
         } else if (event.shiftKey && !mod && !event.altKey && event.code === "Digit1") {
           event.preventDefault();
           setCamera(fitCamera(state.elements, size.width, size.height));
@@ -734,13 +731,13 @@ function BoardEditor({
       // Ctrl +/−/0 would zoom the whole page; here they zoom the board.
       if (mod && (key === "=" || key === "+")) {
         event.preventDefault();
-        setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
+        zoomStep(1);
       } else if (mod && key === "-") {
         event.preventDefault();
-        setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
+        zoomStep(-1);
       } else if (mod && key === "0") {
         event.preventDefault();
-        setCamera((c) => zoomAt(c, 1, CENTER));
+        zoomTo(1);
       } else if (event.shiftKey && !mod && !event.altKey && event.code === "Digit1") {
         // Shift+1 by key position, since the character it types depends on the layout.
         event.preventDefault();
@@ -804,7 +801,7 @@ function BoardEditor({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [chooseTool, startEditing]);
+  }, [chooseTool, startEditing, zoomStep, zoomTo]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
@@ -845,6 +842,7 @@ function BoardEditor({
           emoji={emoji}
           icon={icon}
           onCameraChange={setCamera}
+          onZoomBy={zoomBy}
           onBorrowHand={setBorrowingHand}
           onStartEditing={viewing ? ignoreEditing : startEditing}
           onFinishEditing={finishEditing}
@@ -879,7 +877,6 @@ function BoardEditor({
               trailing={
                 <div className="flex items-center gap-3">
                   <ModeMenu mode={mode} onChange={changeMode} />
-                  <ThemeToggle className="size-9 border border-chrome bg-card" />
                   <ExportMenu
                     elements={state.elements}
                     selectedIds={state.selectedIds}

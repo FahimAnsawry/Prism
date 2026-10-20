@@ -63,7 +63,7 @@ export function AiAccessDialog({
         {open && (
           <Dialog.Portal keepMounted>
             <Dialog.Backdrop
-              className="fixed inset-0 z-50 bg-slate/40 dark:bg-black/60"
+              className="fixed inset-0 z-50 bg-slate/40"
               render={<motion.div {...backdropMotion} />}
             />
             <Dialog.Popup
@@ -290,9 +290,7 @@ function ToolPage({
           <span
             className={cn(
               "ml-auto flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold",
-              editor
-                ? "bg-seafoam text-brand-ink dark:bg-seafoam/14"
-                : "bg-secondary text-secondary-foreground",
+              editor ? "bg-seafoam text-brand-ink" : "bg-secondary text-secondary-foreground",
             )}
           >
             {editor ? (
@@ -497,7 +495,7 @@ function CommandBlock({ text, label }: { text: string; label: string }) {
     });
   };
   return (
-    <div className="flex items-center gap-4 bg-slate py-4 pr-4 pl-5 dark:bg-black/40">
+    <div className="flex items-center gap-4 bg-slate py-4 pr-4 pl-5">
       <pre className="min-w-0 flex-1 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all text-fog">
         {text}
       </pre>

@@ -67,7 +67,7 @@ function ExportCard({
         <div
           className={cn(
             "grid size-10 shrink-0 place-items-center border border-chrome",
-            failed ? "bg-peach/60 dark:bg-coral/15" : "bg-seafoam dark:bg-seafoam/12",
+            failed ? "bg-peach/60" : "bg-seafoam",
           )}
         >
           <AnimatePresence mode="wait" initial={false}>
@@ -143,7 +143,7 @@ function ExportCard({
             transition={{ duration: 0.15, ease: EASE_STANDARD }}
             className={cn(
               "min-w-0 flex-1 text-xs",
-              failed ? "text-danger dark:text-coral" : "truncate text-muted-foreground",
+              failed ? "text-danger" : "truncate text-muted-foreground",
             )}
           >
             {step}

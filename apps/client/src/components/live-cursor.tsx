@@ -4,7 +4,7 @@ const tones = {
   pink: { fill: "fill-brand", tag: "bg-brand text-onyx" },
   brand: { fill: "fill-brand", tag: "bg-brand text-onyx" },
   // Claude inverts to neon at night (see svg-parts.tsx).
-  onyx: { fill: "fill-onyx dark:fill-neon", tag: "bg-onyx text-neon dark:bg-neon dark:text-onyx" },
+  onyx: { fill: "fill-onyx", tag: "bg-onyx text-neon" },
   sky: { fill: "fill-sky", tag: "bg-sky text-slate" },
 } as const;
 

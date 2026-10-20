@@ -1,56 +1,11 @@
-import { LogOut, Monitor, Moon, Sun, Trash2 } from "lucide-react";
+import { LogOut, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { authClient } from "@/lib/auth-client";
-import { type Theme, useTheme } from "@/lib/theme";
 import { useSignOut } from "@/lib/use-sign-out";
 import { cn } from "@/lib/utils";
 import { Panel } from "./profile-parts";
 import { panelButton } from "./profile-styles";
-
-const CHOICES: { id: Theme | "system"; label: string; Icon: typeof Sun }[] = [
-  { id: "light", label: "Light", Icon: Sun },
-  { id: "dark", label: "Dark", Icon: Moon },
-  { id: "system", label: "System", Icon: Monitor },
-];
-
-/** Light, dark, or the device's setting. Kept per browser, like the header's switch. */
-export function Appearance() {
-  const { choice, setChoice } = useTheme();
-  return (
-    <Panel
-      id="appearance"
-      title="Appearance"
-      description="Boards and the dashboard follow this. System uses your device setting."
-      action={
-        <div
-          role="radiogroup"
-          aria-label="Theme"
-          className="flex border border-divider bg-background p-[3px] max-sm:w-full"
-        >
-          {CHOICES.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={choice === id}
-              onClick={() => setChoice(id)}
-              className={cn(
-                "flex h-8 flex-1 items-center justify-center gap-2 px-3.5 text-[13px] transition-colors duration-150 ease-standard",
-                choice === id
-                  ? "bg-secondary font-bold text-secondary-foreground"
-                  : "text-foreground hover:bg-muted",
-              )}
-            >
-              <Icon aria-hidden="true" className="size-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
-      }
-    />
-  );
-}
 
 /** Signing out everywhere and deleting the account. */
 export function DangerZone() {

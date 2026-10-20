@@ -1650,10 +1650,7 @@ function Toggle({
         )}
       >
         <motion.span
-          className={cn(
-            "absolute top-px left-px size-4 bg-card",
-            !checked && "dark:bg-muted-foreground",
-          )}
+          className={cn("absolute top-px left-px size-4 bg-card", !checked && "")}
           initial={false}
           animate={{ x: checked ? 20 : 0 }}
           transition={{ duration: 0.15, ease: EASE_STANDARD }}

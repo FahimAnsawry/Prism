@@ -137,7 +137,7 @@ export function SidebarNav({
           {/* One highlight that slides to the current section instead of each link switching. */}
           <motion.li
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-seafoam dark:bg-seafoam/14"
+            className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-seafoam"
             initial={false}
             animate={{
               y: `${Math.max(activeIndex, 0) * 2.75}rem`,
@@ -158,9 +158,7 @@ export function SidebarNav({
                   title={collapsed ? label : undefined}
                   className={cn(
                     "relative flex h-10 items-center gap-3 overflow-hidden px-3.5 text-sm transition-colors duration-200 ease-standard",
-                    active
-                      ? "font-bold text-slate dark:text-ink"
-                      : "text-foreground hover:bg-hover",
+                    active ? "font-bold text-slate" : "text-foreground hover:bg-hover",
                   )}
                 >
                   <motion.span

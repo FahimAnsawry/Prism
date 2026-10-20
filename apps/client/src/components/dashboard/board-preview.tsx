@@ -249,9 +249,9 @@ export function BoardPreview({
       className={cn(
         "relative overflow-hidden",
         empty
-          ? "bg-muted/60 dark:bg-muted"
+          ? "bg-muted/60"
           : // The tint is strong on a light page and a hint on a dark one.
-            "bg-[color:color-mix(in_oklab,var(--tint)_55%,var(--muted))] dark:bg-[color:color-mix(in_oklab,var(--tint)_10%,var(--muted))]",
+            "bg-[color:color-mix(in_oklab,var(--tint)_55%,var(--muted))]",
         className,
       )}
     >

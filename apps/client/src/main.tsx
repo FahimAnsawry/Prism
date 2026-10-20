@@ -8,7 +8,6 @@ import { AppSplash } from "./components/feedback/app-splash";
 import { ErrorPage } from "./components/feedback/error-page";
 import { NotFoundPage } from "./components/feedback/not-found-page";
 import { PrismLoader } from "./components/feedback/prism-loader";
-import { ThemeProvider } from "./components/theme-provider";
 import { installGlobalErrorHandlers, reportError } from "./lib/errors";
 import { routeTree } from "./routeTree.gen";
 import "./index.css";
@@ -85,18 +84,16 @@ createRoot(rootElement, {
       {/* Reduced motion drops movement (transforms, layout) from every motion component but keeps
           fades and color changes, so state changes still show. */}
       <MotionConfig reducedMotion="user">
-        <ThemeProvider>
-          <QueryClientProvider client={queryClient}>
-            <Suspense fallback={<PrismLoader fullScreen />}>
-              <RouterProvider router={router} />
-            </Suspense>
-            {/* Only the landing page opens behind the loader. */}
-            <AppSplash
-              skip={!SPLASH_PATH.test(router.state.location.pathname)}
-              ready={firstPageReady}
-            />
-          </QueryClientProvider>
-        </ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <Suspense fallback={<PrismLoader fullScreen />}>
+            <RouterProvider router={router} />
+          </Suspense>
+          {/* Only the landing page opens behind the loader. */}
+          <AppSplash
+            skip={!SPLASH_PATH.test(router.state.location.pathname)}
+            ready={firstPageReady}
+          />
+        </QueryClientProvider>
       </MotionConfig>
     </AppErrorBoundary>
   </StrictMode>,

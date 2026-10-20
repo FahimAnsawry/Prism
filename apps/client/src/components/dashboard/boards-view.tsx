@@ -119,7 +119,7 @@ export function BoardsView({
 }
 
 const menuItem =
-  "grid h-9 cursor-default grid-cols-[1rem_1rem_1fr] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-checked:font-bold data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12";
+  "grid h-9 cursor-default grid-cols-[1rem_1rem_1fr] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-checked:font-bold data-highlighted:bg-seafoam";
 
 function ProjectMenu({
   value,

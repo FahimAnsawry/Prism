@@ -39,7 +39,7 @@ export function ItemActionsMenu({
   const kind = item.kind === "project" ? "project" : "whiteboard";
   const actions = menuActions(item, { canLeave });
   const itemClass =
-    "flex h-9 cursor-default items-center gap-2.5 px-2.5 text-[13px] outline-none select-none data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12 [&_svg]:size-3.5";
+    "flex h-9 cursor-default items-center gap-2.5 px-2.5 text-[13px] outline-none select-none data-highlighted:bg-seafoam [&_svg]:size-3.5";
   if (actions.length === 0) return null;
 
   return (

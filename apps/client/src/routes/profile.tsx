@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/dashboard/dashboard-parts";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { PrismLoader } from "@/components/feedback/prism-loader";
-import { Appearance, DangerZone } from "@/components/profile/account-settings";
+import { DangerZone } from "@/components/profile/account-settings";
 import { EditorsAndTokens } from "@/components/profile/editors-and-tokens";
 import { ProfileDetails } from "@/components/profile/profile-details";
 import { SignInMethods } from "@/components/profile/sign-in-methods";
@@ -27,7 +27,6 @@ const SECTIONS = [
   { id: "profile", label: "Profile" },
   { id: "sign-in", label: "Sign-in methods" },
   { id: "editors", label: "Editors and tokens" },
-  { id: "appearance", label: "Appearance" },
   { id: "danger", label: "Danger zone" },
 ] as const;
 
@@ -61,7 +60,6 @@ function ProfilePage() {
             <ProfileDetails user={user} />
             <SignInMethods />
             <EditorsAndTokens />
-            <Appearance />
             <DangerZone />
           </div>
         </div>
@@ -103,7 +101,7 @@ function SectionNav() {
               className={cn(
                 "flex h-9 items-center px-3 text-[13px] transition-colors duration-150 ease-standard",
                 current === id
-                  ? "bg-seafoam font-bold text-slate dark:bg-seafoam/14 dark:text-ink"
+                  ? "bg-seafoam font-bold text-slate"
                   : "text-foreground hover:bg-muted",
                 id === "danger" && current !== id && "text-destructive",
               )}

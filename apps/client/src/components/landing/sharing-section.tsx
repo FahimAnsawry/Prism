@@ -15,14 +15,14 @@ function ShareDialogMock() {
     <div
       role="img"
       aria-label="The Share dialog for a board named Harbor Gym: Fahim is the owner, Maya is an editor, Jun is a viewer, and anyone with the link can view."
-      className="w-full max-w-140 shrink-0 border border-divider bg-card p-5 text-foreground sm:p-7 shadow-[0_16px_40px_-12px_rgb(61_59_80/0.25)] dark:shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]"
+      className="w-full max-w-140 shrink-0 border border-divider bg-card p-5 text-foreground sm:p-7 shadow-[0_16px_40px_-12px_rgb(61_59_80/0.25)]"
     >
       <div className="flex items-start justify-between gap-4">
         <p className="text-xl font-semibold">Share “Harbor Gym”</p>
         <X className="size-[18px] text-muted-foreground" />
       </div>
       <div className="mt-6 flex gap-2">
-        <p className="flex h-11 min-w-0 flex-1 items-center border border-input bg-white px-3 text-base text-muted-foreground dark:bg-background">
+        <p className="flex h-11 min-w-0 flex-1 items-center border border-input bg-white px-3 text-base text-muted-foreground">
           Add people by email
         </p>
         <p className="flex h-11 items-center bg-secondary px-[18px] font-mono text-xs font-bold tracking-[0.08em] text-secondary-foreground">

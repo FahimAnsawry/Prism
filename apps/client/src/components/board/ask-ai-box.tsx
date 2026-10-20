@@ -198,7 +198,7 @@ function RequestStatus({
     <li
       className={cn(
         "flex items-start gap-2.5 border bg-card px-3 py-2.5 text-sm",
-        request.status === "failed" ? "border-danger dark:border-coral" : "border-chrome",
+        request.status === "failed" ? "border-danger" : "border-chrome",
       )}
     >
       {!finished && !paused ? (
@@ -211,7 +211,7 @@ function RequestStatus({
             finished
               ? request.status === "done"
                 ? "text-brand-ink"
-                : "text-danger dark:text-coral"
+                : "text-danger"
               : "text-muted-foreground",
           )}
         />

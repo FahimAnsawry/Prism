@@ -49,6 +49,5 @@ export const WINGS = [
  * the dot's own 3-unit stroke (about 1px on the logo); the wings' stroke is centered on their edge.
  */
 export const DOT_OUTLINE_WIDTH = 5.2;
-export const OUTLINE_CLASS = "fill-ink stroke-ink dark:fill-transparent dark:stroke-transparent";
-export const WING_HAIRLINE =
-  "stroke-ink dark:stroke-transparent [stroke-width:1.6] [stroke-linejoin:round]";
+export const OUTLINE_CLASS = "fill-ink stroke-ink";
+export const WING_HAIRLINE = "stroke-ink [stroke-width:1.6] [stroke-linejoin:round]";

@@ -11,9 +11,11 @@ export const ctaVariants = cva(
         primary: "border-transparent bg-brand text-slate hover:bg-brand/80 active:bg-brand/70",
         secondary:
           "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/85 active:bg-secondary/75",
+        // The quiet choice beside a primary button (e.g. Cancel on the consent card).
+        outline: "border-edge bg-card text-foreground hover:bg-muted active:bg-muted/80",
         // Destructive actions. Night red is light, so its text flips to black.
         danger:
-          "border-transparent bg-destructive text-white hover:bg-destructive/85 active:bg-destructive/75 dark:text-black",
+          "border-transparent bg-destructive text-white hover:bg-destructive/85 active:bg-destructive/75",
       },
       size: {
         sm: "h-[38px] px-3.5 text-[13px] tracking-[0.06em] [&_svg]:size-3.5",

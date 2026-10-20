@@ -10,9 +10,9 @@ const PALETTES = {
   theme: {
     ink: "fill-foreground",
     line: "stroke-foreground",
-    paper: "fill-white dark:fill-background",
+    paper: "fill-white",
     page: "fill-background",
-    field: "fill-white dark:fill-card",
+    field: "fill-white",
     edge: "stroke-input",
     muted: "fill-muted-foreground",
     code: "fill-inverse",

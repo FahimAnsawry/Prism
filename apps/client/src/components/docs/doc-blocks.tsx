@@ -232,7 +232,7 @@ function Matrix({ head, rows }: Of<"matrix">) {
                     <Check
                       aria-label="Yes"
                       role="img"
-                      className="mx-auto size-4 text-emerald-600 dark:text-brand"
+                      className="mx-auto size-4 text-emerald-600"
                     />
                   ) : (
                     <Minus
@@ -321,10 +321,7 @@ function Checks({ items }: Of<"checks">) {
     <ul className="my-5 space-y-3">
       {items.map((item) => (
         <li key={item} className="flex gap-3 text-base leading-relaxed">
-          <Check
-            aria-hidden="true"
-            className="mt-1 size-4 shrink-0 text-emerald-600 dark:text-brand"
-          />
+          <Check aria-hidden="true" className="mt-1 size-4 shrink-0 text-emerald-600" />
           <span>
             <Inline text={item} />
           </span>

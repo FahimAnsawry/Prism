@@ -11,18 +11,28 @@ export interface Camera {
   zoom: number;
 }
 
-export const MIN_ZOOM = 0.1;
-export const MAX_ZOOM = 4;
-/** The top-bar buttons and Ctrl +/− move in 10% steps. */
+export const MIN_ZOOM = 0.01;
+export const MAX_ZOOM = 5;
+/** The top-bar buttons and Ctrl +/− move in 10% steps (relative ones below 10%). */
 const ZOOM_STEP = 0.1;
+/** Below 10%, each step multiplies or divides by this, so 1% is a few presses away. */
+const FAR_STEP = 1.5;
 /** Space left around the content by "zoom to fit", in screen pixels. */
 const FIT_MARGIN = 64;
 
 export const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
-/** The next 10% step in or out, snapped so 100% stays reachable. */
-export const stepZoom = (zoom: number, direction: 1 | -1) =>
-  clampZoom(Math.round((zoom + direction * ZOOM_STEP) * 10) / 10);
+/**
+ * The next 10% step in or out, snapped so 100% stays reachable. Below 10% the steps are relative,
+ * and stepping back in stops at 10% before the 10% steps resume.
+ */
+export function stepZoom(zoom: number, direction: 1 | -1) {
+  const far = direction < 0 ? zoom <= ZOOM_STEP + 1e-9 : zoom < ZOOM_STEP - 1e-9;
+  if (far) {
+    return clampZoom(direction > 0 ? Math.min(ZOOM_STEP, zoom * FAR_STEP) : zoom / FAR_STEP);
+  }
+  return clampZoom(Math.round((zoom + direction * ZOOM_STEP) * 10) / 10);
+}
 
 /**
  * Zooms to `zoom` while the screen point `offset` (measured from the viewport's center) stays over

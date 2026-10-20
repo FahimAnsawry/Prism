@@ -54,7 +54,7 @@ function BoardFrame() {
       </p>
       {/* Centered in the frame; Claude's cursor hangs off the card's right edge */}
       <div className="relative mx-auto max-w-95">
-        <div className="rounded-[12px] bg-white p-6 text-[#1f1d2b] sm:p-8 shadow-[0_16px_32px_-12px_rgb(61_59_80/0.25)] dark:shadow-[0_16px_32px_-12px_rgb(0_0_0/0.6)]">
+        <div className="rounded-[12px] bg-white p-6 text-[#1f1d2b] sm:p-8 shadow-[0_16px_32px_-12px_rgb(61_59_80/0.25)]">
           <p className="text-2xl leading-[1.2] font-semibold">Create your account</p>
           <p className="mt-2 text-sm text-graphite">Book classes and pay at the door.</p>
           <div className="mt-6 space-y-5">

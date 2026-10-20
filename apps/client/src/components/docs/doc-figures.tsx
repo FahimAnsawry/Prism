@@ -168,7 +168,7 @@ function BoardMock() {
     <Figure description="A sign-up screen with an email field, a password field and a Create account button, drawn on the board by Claude.">
       <Panel className="min-h-72">
         <p className="font-mono text-xs text-muted-foreground">Sign up · mobile</p>
-        <div className="relative mx-auto mt-4 w-64 bg-card p-5 shadow-[0_12px_32px_-12px_rgb(61_59_80/0.3)] dark:shadow-[0_12px_32px_-12px_rgb(0_0_0/0.6)]">
+        <div className="relative mx-auto mt-4 w-64 bg-card p-5 shadow-[0_12px_32px_-12px_rgb(61_59_80/0.3)]">
           <p className="text-sm font-semibold">Create your account</p>
           <div className="mt-4 h-8 border border-input" />
           <div className="mt-2.5 h-8 border border-input" />
@@ -302,7 +302,7 @@ function ComponentVariants() {
             Cancel
           </span>
         </div>
-        <div className="w-full max-w-60 bg-card p-4 shadow-[0_12px_24px_-8px_rgb(61_59_80/0.2)] sm:w-60 dark:shadow-[0_12px_24px_-8px_rgb(0_0_0/0.5)]">
+        <div className="w-full max-w-60 bg-card p-4 shadow-[0_12px_24px_-8px_rgb(61_59_80/0.2)] sm:w-60">
           <p className="mb-3 font-mono text-xs">Card · with slot</p>
           <p className="text-sm font-semibold">{"{{title}}"}</p>
           <div className="mt-3 flex h-12 items-center justify-center border border-dashed border-foreground/50 font-mono text-xs text-muted-foreground">
@@ -356,7 +356,7 @@ function ShareDialog() {
   return (
     <Figure description="The Share dialog for Harbor Gym: Maya is an editor, Jun is a viewer, and anyone with the link can view.">
       <Panel className="flex justify-center">
-        <div className="w-full max-w-md border border-border bg-card p-5 shadow-[0_16px_32px_-12px_rgb(61_59_80/0.3)] dark:shadow-[0_16px_32px_-12px_rgb(0_0_0/0.6)]">
+        <div className="w-full max-w-md border border-border bg-card p-5 shadow-[0_16px_32px_-12px_rgb(61_59_80/0.3)]">
           <p className="text-base font-semibold">Share “Harbor Gym”</p>
           <div className="mt-4 flex gap-2">
             <div className="flex h-9 min-w-0 flex-1 items-center border border-input px-3 text-sm text-muted-foreground">
@@ -420,7 +420,7 @@ function AskAi() {
             </div>
           ))}
         </div>
-        <div className="w-full max-w-xs border border-border bg-card p-4 shadow-[0_12px_32px_-12px_rgb(61_59_80/0.3)] dark:shadow-[0_12px_32px_-12px_rgb(0_0_0/0.6)]">
+        <div className="w-full max-w-xs border border-border bg-card p-4 shadow-[0_12px_32px_-12px_rgb(61_59_80/0.3)]">
           <p className="text-xs font-semibold text-muted-foreground">Ask AI · 2 selected</p>
           <p className="mt-2 text-sm leading-snug">
             Make these cards the same height and add a price to each
@@ -439,14 +439,15 @@ function LightDark() {
   return (
     <Figure description="The same Book a class button drawn with the light and the dark theme.">
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="light border border-border bg-background p-5 text-foreground">
+        <div className="border border-border bg-background p-5 text-foreground">
           <p className={label}>Light</p>
           <span className="mt-4 inline-flex h-10 items-center bg-primary px-5 text-sm font-semibold text-primary-foreground">
             Book a class
           </span>
         </div>
-        <div className="dark border border-border bg-background p-5 text-foreground">
-          <p className={label}>Dark</p>
+        {/* A project theme's dark colors, written out: the site itself is light only. */}
+        <div className="border border-[#ecebf0]/16 bg-[#1d1c23] p-5 text-[#ecebf0]">
+          <p className={cn(label, "text-[#a6a4b2]")}>Dark</p>
           <span className="mt-4 inline-flex h-10 items-center bg-primary px-5 text-sm font-semibold text-primary-foreground">
             Book a class
           </span>

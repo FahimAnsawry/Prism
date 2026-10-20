@@ -109,6 +109,7 @@ export function BoardCanvas({
   emoji,
   icon,
   onCameraChange,
+  onZoomBy,
   onBorrowHand,
   onStartEditing,
   onFinishEditing,
@@ -131,6 +132,11 @@ export function BoardCanvas({
   /** The Lucide icon the Icon tool places. */
   icon: string | null;
   onCameraChange: (camera: Camera) => void;
+  /**
+   * The wheel's zoom: multiply the zoom by `factor` around `offset` (screen px from the viewport's
+   * center). The owner eases toward it (useSmoothZoom).
+   */
+  onZoomBy: (factor: number, offset: { x: number; y: number }) => void;
   /** True while a right/middle drag or held Space pans, so the toolbar can show the Hand tool. */
   onBorrowHand: (borrowing: boolean) => void;
   onStartEditing: (id: string, before: BoardElement[]) => void;
@@ -240,48 +246,31 @@ export function BoardCanvas({
 
   // The wheel handler is attached once, so it reads the latest camera from a ref. The ref also
   // takes each result right away, so several wheel events before the next render add up.
-  const latest = useRef({ camera, onCameraChange });
+  const latest = useRef({ camera, onCameraChange, onZoomBy });
   useEffect(() => {
-    latest.current = { camera, onCameraChange };
+    latest.current = { camera, onCameraChange, onZoomBy };
   });
 
   // Wheel (and Ctrl+wheel, a trackpad pinch) zooms toward the pointer. Not a React handler:
   // those are passive, and preventDefault must stop page scroll and the browser's own zoom.
-  // Trackpads send wheel events faster than the screen refreshes, so the camera goes out once
-  // per frame.
+  // Each event moves the zoom's target; the owner glides there, so notches don't jump.
   useEffect(() => {
     const el = svg.current;
     if (!el) return;
-    let frame = 0;
-    /** The camera waiting for the next frame; a render in between mustn't drop it. */
-    let pending: Camera | null = null;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const current = pending ?? latest.current.camera;
       const pixels =
         event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY * 16 : event.deltaY;
       // Pinches send small deltas, so they get a stronger factor than a mouse wheel's notches.
       const factor = Math.exp(-pixels * (event.ctrlKey ? 0.01 : 0.0015));
       const rect = el.getBoundingClientRect();
-      const next = zoomAt(current, current.zoom * factor, {
+      latest.current.onZoomBy(factor, {
         x: event.clientX - rect.left - rect.width / 2,
         y: event.clientY - rect.top - rect.height / 2,
       });
-      pending = next;
-      latest.current.camera = next;
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        const camera = pending;
-        pending = null;
-        if (camera) latest.current.onCameraChange(camera);
-      });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => {
-      el.removeEventListener("wheel", onWheel);
-      cancelAnimationFrame(frame);
-    };
+    return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
   const toWorld = (event: { clientX: number; clientY: number }): Point => {

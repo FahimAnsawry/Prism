@@ -44,7 +44,7 @@ export function SortMenu({
                       key={option.id}
                       value={option.id}
                       closeOnClick
-                      className="grid h-9 cursor-default grid-cols-[1rem_1fr] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-checked:font-bold data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
+                      className="grid h-9 cursor-default grid-cols-[1rem_1fr] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-checked:font-bold data-highlighted:bg-seafoam"
                     >
                       <Menu.RadioItemIndicator className="col-start-1">
                         <Check aria-hidden="true" className="size-3.5" strokeWidth={2.5} />

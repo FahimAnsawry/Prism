@@ -29,20 +29,8 @@ export function InviteWireframeArt(props: ArtProps) {
         className="fill-background stroke-foreground"
       />
       <rect x="26" y="20" width="62" height="8" className="fill-foreground" />
-      <rect
-        x="26"
-        y="38"
-        width="96"
-        height="16"
-        className="fill-white stroke-input dark:fill-card"
-      />
-      <rect
-        x="128"
-        y="38"
-        width="50"
-        height="16"
-        className="fill-white stroke-input dark:fill-card"
-      />
+      <rect x="26" y="38" width="96" height="16" className="fill-white stroke-input" />
+      <rect x="128" y="38" width="50" height="16" className="fill-white stroke-input" />
       <path d="M164 44 168 48 172 44" fill="none" strokeWidth="1.5" className="stroke-foreground" />
       <circle cx="34" cy="73" r="6" className="fill-lavender" />
       <rect x="46" y="70" width="56" height="5" className="fill-foreground" />
@@ -62,7 +50,7 @@ export function InviteFlowchartArt(props: ArtProps) {
     <Art {...props}>
       <g strokeWidth="1.5" className="stroke-foreground">
         <rect x="6" y="58" width="52" height="32" className="fill-ice" />
-        <path d="M98 44 124 74 98 104 72 74Z" className="fill-white dark:fill-background" />
+        <path d="M98 44 124 74 98 104 72 74Z" className="fill-white" />
         <rect x="146" y="14" width="52" height="32" className="fill-seafoam" />
         <rect x="146" y="102" width="52" height="32" className="fill-peach" />
         <path d="M58 74H72M124 74H134V30H142M134 74V118H142" fill="none" />
@@ -95,8 +83,8 @@ export function InviteDatabaseArt(props: ArtProps) {
   return (
     <Art {...props}>
       <g strokeWidth="1.5" className="stroke-foreground">
-        <rect x="6" y="22" width="86" height="100" className="fill-white dark:fill-background" />
-        <rect x="108" y="38" width="90" height="100" className="fill-white dark:fill-background" />
+        <rect x="6" y="22" width="86" height="100" className="fill-white" />
+        <rect x="108" y="38" width="90" height="100" className="fill-white" />
         <path d="M92 62H108M100 56 108 62 100 68" fill="none" />
       </g>
       <rect x="6" y="22" width="86" height="20" className="fill-violet" />

@@ -15,8 +15,6 @@
 @import "@fontsource/nanum-pen-script/latin-400.css";
 @import "@fontsource/caveat"; /* the board's handwriting font (Handwriting tool) */
 
-/* A `.light` subtree stays light on a dark page (dashboard preview pictures are drawn in both). */
-@custom-variant dark (&:is(.dark *):not(:where(.light *)));
 /* Short windows (laptops, phones in landscape): the login card tightens up so it never scrolls. */
 @custom-variant short (@media (max-height: 820px));
 @custom-variant tiny (@media (max-height: 700px));
@@ -396,16 +394,11 @@
    ========================================================================== */
 
 /* Semantic colors. Components use these (bg-background, text-foreground, border-divider…), never
-   the raw neutrals above, so one class works in both themes. The raw brand and pastel accents
-   stay fixed in both themes (sticky notes are yellow at night too), so text sitting on them keeps
-   its raw class (bg-brand text-slate). */
-:root,
-.light {
+   the raw neutrals above. Text sitting on a raw brand or pastel accent keeps its raw class
+   (bg-brand text-slate). */
+:root {
   color-scheme: light;
   --radius: 0rem; /* every corner is square */
-  /* PrismLoader's dimmest facet. Light canvas washes out faint slate and the brand green, so the
-     facets dim less by day to keep the mark readable mid-pulse. */
-  --facet-dim: 0.4;
 
   --background: var(--color-canvas);
   --foreground: var(--color-slate);
@@ -457,62 +450,6 @@
   --sidebar-accent-foreground: var(--color-slate);
   --sidebar-border: var(--color-rule);
   --sidebar-ring: var(--color-slate);
-}
-
-/* Dark mode: the night board. Neutrals are tinted toward slate's violet hue so surfaces read as
-   one family; the dark bands drop below the page instead of disappearing into it.
-   Contrast on card (#27262f): foreground 13.6:1, muted-foreground 6.1:1, input edge 3.5:1.
-   The page background is repeated in index.html (theme-color) and lib/theme.tsx. */
-.dark {
-  --facet-dim: 0.15;
-  color-scheme: dark;
-
-  --background: #1d1c23;
-  --foreground: #ecebf0;
-  --card: #27262f;
-  --card-foreground: #ecebf0;
-  --popover: #27262f;
-  --popover-foreground: #ecebf0;
-  --primary: var(--color-brand);
-  --primary-foreground: #000;
-  --secondary: #ecebf0; /* filled controls invert: light block, dark label */
-  --secondary-foreground: #1d1c23;
-  --muted: #27262f;
-  --muted-foreground: #a6a4b2;
-  --accent: color-mix(in oklab, var(--color-brand) 14%, transparent);
-  --accent-foreground: #ecebf0;
-  --destructive: var(--color-bloom); /* danger red is too dark to read on night surfaces */
-  --brand-ink: var(--color-brand);
-  --border: rgb(236 235 240 / 0.16);
-  --input: #7c7a89;
-  --ring: #ecebf0;
-
-  --hover: var(--background);
-  --divider: #3d3b48;
-  --ink: #f6f5f9;
-  --chrome: #72707f; /* 3.5:1 on background, 3.1:1 on card */
-  --frame-edge: #4a4856;
-  --grid-dot: #3a3845;
-  --inverse: #121117;
-  --inverse-foreground: var(--color-fog);
-  --inverse-muted: var(--color-silver);
-  --inverse-panel: #2a2933;
-  --inverse-bar: #3d3b4a;
-
-  --chart-1: var(--color-brand);
-  --chart-2: var(--color-sky);
-  --chart-3: var(--color-lavender);
-  --chart-4: var(--color-peach);
-  --chart-5: var(--color-lime);
-
-  --sidebar: #27262f;
-  --sidebar-foreground: #ecebf0;
-  --sidebar-primary: var(--color-brand);
-  --sidebar-primary-foreground: #000;
-  --sidebar-accent: color-mix(in oklab, var(--color-brand) 14%, transparent);
-  --sidebar-accent-foreground: #ecebf0;
-  --sidebar-border: rgb(236 235 240 / 0.16);
-  --sidebar-ring: #ecebf0;
 }
 
 @theme inline {
@@ -654,24 +591,6 @@
     outline: 2px solid var(--focus-ring, var(--foreground));
     outline-offset: 2px;
   }
-}
-
-/* ==========================================================================
-   Theme switch (lib/theme.tsx, components/theme-toggle.tsx)
-   ========================================================================== */
-
-/* While the theme flips, every color changes at once instead of each control easing on its own
-   duration. The toggle keeps its transitions: its icon morph is the one animated moment. */
-:root[data-theme-switching] *:not(.theme-toggle, .theme-toggle *) {
-  transition: none !important;
-}
-
-/* The new theme is revealed by a circle growing from the toggle (clip-path animated from JS).
-   Turn off the default cross-fade so the old snapshot stays put underneath. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
 }
 
 /* An AI editor's screen being built (remote-reveal.ts): each new element fades in. */

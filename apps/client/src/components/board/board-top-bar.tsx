@@ -20,7 +20,6 @@ import {
   Sparkles,
   Undo2,
 } from "lucide-react";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { BoardTitle } from "./board-title";
 import type { SaveStatus } from "./board-sync";
@@ -79,7 +78,7 @@ export function ModeMenu({
                       key={id}
                       value={id}
                       closeOnClick
-                      className="grid h-11 cursor-default grid-cols-[1rem_1fr_1rem] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-checked:font-bold data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
+                      className="grid h-11 cursor-default grid-cols-[1rem_1fr_1rem] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-checked:font-bold data-highlighted:bg-seafoam"
                     >
                       <Icon aria-hidden="true" className="size-3.5" />
                       <span className="min-w-0">
@@ -194,7 +193,7 @@ export function BoardTopBar({
               role="status"
               className={cn(
                 "ml-3 hidden font-mono text-2xs whitespace-nowrap uppercase lg:block",
-                saveStatus === "error" ? "text-danger dark:text-coral" : "text-muted-foreground",
+                saveStatus === "error" ? "text-danger" : "text-muted-foreground",
               )}
             >
               {SAVE_LABELS[saveStatus]}
@@ -295,8 +294,6 @@ export function BoardTopBar({
         >
           ?
         </button>
-
-        <ThemeToggle className="size-9 border border-chrome bg-card" />
 
         {/* AI is visual only until "Ask Claude" exists. */}
         {!viewing && (

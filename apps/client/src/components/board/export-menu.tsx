@@ -35,7 +35,7 @@ function savedScale(): ImageScale {
 }
 
 const itemClass =
-  "grid h-11 cursor-default grid-cols-[1rem_1fr] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-disabled:opacity-50 data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12";
+  "grid h-11 cursor-default grid-cols-[1rem_1fr] items-center gap-2 px-2.5 text-[13px] text-foreground outline-none select-none data-disabled:opacity-50 data-highlighted:bg-seafoam";
 
 /** The Export dropdown: the selection or the whole board as PNG, JPG or PDF. */
 export function ExportMenu({
@@ -218,7 +218,7 @@ export function ExportMenu({
                         <Menu.RadioItem
                           key={option}
                           value={option}
-                          className="h-7 w-9 cursor-default content-center text-center font-mono text-xs text-muted-foreground outline-none select-none not-first:border-l not-first:border-chrome data-checked:bg-seafoam data-checked:text-foreground data-disabled:opacity-50 data-highlighted:bg-hover dark:data-checked:bg-seafoam/12"
+                          className="h-7 w-9 cursor-default content-center text-center font-mono text-xs text-muted-foreground outline-none select-none not-first:border-l not-first:border-chrome data-checked:bg-seafoam data-checked:text-foreground data-disabled:opacity-50 data-highlighted:bg-hover"
                         >
                           {option}x
                         </Menu.RadioItem>

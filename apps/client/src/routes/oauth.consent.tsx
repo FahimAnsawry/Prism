@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, LayoutGrid, Mail, RefreshCw, TriangleAlert } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ArrowRight, BadgeCheck, CircleHelp, Globe, Monitor, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import { AuthLayout } from "@/components/auth/auth-layout";
+import { Chip, DetailRow, Handshake } from "@/components/auth/consent-parts";
 import { FormError } from "@/components/auth/form-field";
 import { ctaVariants } from "@/components/cta";
+import { UserAvatar } from "@/components/user-avatar";
 import { authClient, requireSession, runAuthAction } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 
 // Consent for an AI editor (an MCP client like Claude Code) that asked to use the user's Prism
 // account. Better Auth's OAuth provider sends the user here with a signed query (client_id,
@@ -14,6 +17,9 @@ import { authClient, requireSession, runAuthAction } from "@/lib/auth-client";
 // Anyone can register a client and give it any name, so the name alone proves nothing. The page
 // also shows where the access goes (the redirect's host, from the signed query): an editor on the
 // user's own computer (Claude Code, Codex) sends it to localhost; anywhere else gets a warning.
+//
+// The layout is the "/oauth/consent" frames on the Prism — Auth redesign board: the crystal card
+// with an editor ↔ Prism handshake, the signed-in account and where the editor is from.
 
 export const Route = createFileRoute("/oauth/consent")({
   head: () => ({ meta: [{ title: "Allow access - Prism" }] }),
@@ -42,23 +48,13 @@ function isFramed() {
   }
 }
 
-/** What each requested scope lets the client do, in plain words. */
-const SCOPE_TEXT: Record<string, { icon: ReactNode; text: string }> = {
-  openid: { icon: <LayoutGrid />, text: "Read and change your boards and projects" },
-  profile: { icon: <Check />, text: "See your name and profile photo" },
-  email: { icon: <Mail />, text: "See your email address" },
-  offline_access: { icon: <RefreshCw />, text: "Stay connected until you revoke it" },
-};
+const heading =
+  "font-display text-[1.75rem] leading-[1.1] font-bold tracking-display text-ink sm:text-4xl";
 
 function ConsentPage() {
   const search = Route.useSearch();
   const { user } = Route.useRouteContext();
   const clientId = typeof search["client_id"] === "string" ? search["client_id"] : "";
-  const scopes = (typeof search["scope"] === "string" ? search["scope"] : "openid")
-    .split(" ")
-    .filter(Boolean);
-  // Every client acts on the user's boards, so that line always shows first.
-  const lines = [...new Set(["openid", ...scopes])].flatMap((scope) => SCOPE_TEXT[scope] ?? []);
 
   const client = useQuery({
     queryKey: ["oauth-client", clientId],
@@ -69,7 +65,7 @@ function ConsentPage() {
     enabled: Boolean(clientId),
     retry: false,
   });
-  const name = client.data?.client_name || "An AI editor";
+  const name = client.data?.client_name || "this AI editor";
   const site = hostOf(client.data?.client_uri);
   // A Client ID Metadata Document client is identified by a URL its owner serves, so its host is
   // proven; a self-registered client's name and site are only what it said about itself.
@@ -100,11 +96,9 @@ function ConsentPage() {
 
   if (isFramed()) {
     return (
-      <AuthLayout panel={false}>
-        <h1 className="font-display text-[2.25rem] leading-[1.1] font-bold tracking-display text-foreground">
-          Open this page in its own tab
-        </h1>
-        <p className="mt-3 text-base text-muted-foreground">
+      <AuthLayout crystal="medium">
+        <h1 className={heading}>Open this page in its own tab</h1>
+        <p className="mt-3 text-[15px] leading-normal text-muted-foreground">
           For your safety, Prism doesn&apos;t let other sites show this page inside theirs.
         </p>
       </AuthLayout>
@@ -112,68 +106,86 @@ function ConsentPage() {
   }
 
   return (
-    <AuthLayout panel={false}>
-      <h1 className="font-display text-[2.25rem] leading-[1.1] font-bold tracking-display text-foreground sm:text-[2.875rem]">
-        Allow {name}?
-      </h1>
-      <p className="mt-3 text-base text-muted-foreground">
-        {name} wants to use your Prism account. Signed in as{" "}
-        <span className="text-foreground">{user.email}</span>.
+    <AuthLayout crystal="medium">
+      <Handshake local={local} />
+
+      <h1 className={`mt-6 sm:mt-7 ${heading}`}>Allow {name} to use your Prism account?</h1>
+      <p className="mt-3 text-[15px] leading-normal text-muted-foreground">
+        It will read and edit your boards as you. Only allow an editor you just connected yourself.
       </p>
 
-      <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-        <dt className="text-muted-foreground">Identified by</dt>
-        <dd className="text-foreground">
-          {verifiedHost ?? (
-            <>
-              {site ?? "no website"}{" "}
-              <span className="text-muted-foreground">(name and site not verified)</span>
-            </>
-          )}
-        </dd>
-        <dt className="text-muted-foreground">Access goes to</dt>
-        <dd className="text-foreground">
-          {destination ? (local ? "this computer (localhost)" : destination) : "unknown"}
-        </dd>
+      <div className="mt-5 flex items-center gap-3 border border-divider px-3.5 py-3 sm:mt-6 sm:px-4">
+        <UserAvatar user={user} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {user.name || user.email}
+          </p>
+          {user.name && <p className="truncate text-[13px] text-muted-foreground">{user.email}</p>}
+        </div>
+        <span className="hidden items-center gap-1.5 font-mono text-xs tracking-[0.08em] text-muted-foreground uppercase sm:flex">
+          <span aria-hidden="true" className="size-1.5 bg-brand" />
+          Signed in
+        </span>
+      </div>
+
+      <dl className="mt-5 flex flex-col gap-3 bg-fog/60 p-3.5 text-sm sm:mt-6 sm:gap-2.5 sm:p-4 sm:text-[13px]">
+        <DetailRow
+          label="Identified by"
+          value={verifiedHost ?? site ?? "No website"}
+          chip={
+            verifiedHost ? (
+              <Chip tone="ok" icon={<BadgeCheck />}>
+                Verified
+              </Chip>
+            ) : (
+              <Chip tone="warn" icon={<CircleHelp />}>
+                Not verified
+              </Chip>
+            )
+          }
+        />
+        <DetailRow
+          label="Access goes to"
+          value={local ? "This computer" : (destination ?? "An unknown address")}
+          chip={
+            local ? (
+              <Chip tone="ok" icon={<Monitor />}>
+                Local
+              </Chip>
+            ) : (
+              <Chip tone="danger" icon={<Globe />}>
+                Remote
+              </Chip>
+            )
+          }
+        />
       </dl>
 
       {!local && (
         <p
           role="alert"
-          className="mt-5 flex gap-3 border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-foreground"
+          className="mt-4 flex gap-3 border border-destructive bg-destructive/5 px-4 py-3 text-[13px] leading-normal text-foreground"
         >
           <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
           <span>
-            Editors that run on your computer, like Claude Code and Codex, receive access on
-            localhost. This one sends it to{" "}
-            <span className="font-bold">{destination ?? "an unknown address"}</span>. Allow it only
-            if you set it up there yourself.
+            Editors on your computer, like Claude Code and Codex, receive access on localhost. This
+            one sends it to{" "}
+            <span className="font-bold [overflow-wrap:anywhere]">
+              {destination ?? "an unknown address"}
+            </span>
+            . Allow it only if you set it up there yourself.
           </span>
         </p>
       )}
 
-      <ul className="mt-8 flex flex-col divide-y divide-divider border border-divider">
-        {lines.map(({ icon, text }) => (
-          <li key={text} className="flex items-center gap-3 px-4 py-3.5 text-sm text-foreground">
-            <span aria-hidden="true" className="text-muted-foreground [&_svg]:size-4">
-              {icon}
-            </span>
-            {text}
-          </li>
-        ))}
-      </ul>
-
-      <p className="mt-4 text-[13px] text-muted-foreground">
-        Only allow an editor you just connected yourself.
-      </p>
-
       <FormError message={error} className="mt-5" />
-      <div className="mt-7 flex gap-3">
+      {/* Allow sits on top on phones, to the right of Cancel from sm up. */}
+      <div className="mt-6 flex flex-col-reverse gap-3 sm:mt-7 sm:flex-row">
         <button
           type="button"
           disabled={pending !== null}
           onClick={() => void answer(false)}
-          className={ctaVariants({ variant: "secondary", size: "sm", className: "flex-1" })}
+          className={cn(ctaVariants({ variant: "outline" }), "h-12 sm:h-[45px] sm:flex-1")}
         >
           {pending === "deny" ? "Cancelling…" : "Cancel"}
         </button>
@@ -181,11 +193,16 @@ function ConsentPage() {
           type="button"
           disabled={pending !== null}
           onClick={() => void answer(true)}
-          className={ctaVariants({ size: "sm", className: "flex-1" })}
+          className={cn(ctaVariants(), "h-12 sm:h-[45px] sm:flex-1")}
         >
-          {pending === "allow" ? "Allowing…" : "Allow"}
+          {pending === "allow" ? "Allowing…" : "Allow access"}
+          {pending !== "allow" && <ArrowRight aria-hidden="true" />}
         </button>
       </div>
+
+      <p className="mt-4 text-xs text-muted-foreground">
+        Revoke access anytime in Profile → Editors and tokens.
+      </p>
     </AuthLayout>
   );
 }

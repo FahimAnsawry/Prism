@@ -11,30 +11,11 @@
     <!-- Share links (/s/…) and invite links (/invite/…) carry a secret in the path: never send
          it to other sites as the Referer. -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
-    <!-- Apply the saved or system theme before first paint (keep in step with src/lib/theme.ts). -->
-    <script>
-      (function () {
-        var theme = null;
-        try {
-          theme = localStorage.getItem("prism:theme");
-        } catch (e) {}
-        if (theme !== "light" && theme !== "dark") {
-          theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-        }
-        if (theme === "dark") {
-          document.documentElement.classList.add("dark");
-          document.querySelector('meta[name="theme-color"]').content = "#1d1c23";
-        }
-      })();
-    </script>
-    <!-- The theme's page background from the first frame, before the app's CSS has loaded
-         (keep in step with --color-canvas and the dark --background in src/index.css). -->
+    <!-- The page background from the first frame, before the app's CSS has loaded
+         (keep in step with --color-canvas in src/index.css). -->
     <style>
       html {
         background: #fcfcfd;
-      }
-      html.dark {
-        background: #1d1c23;
       }
       /* The loader until the app's first render replaces it: the same mark, size and fade as
          PrismLoader's full-screen one (src/components/feedback/prism-loader.tsx). */
@@ -53,9 +34,6 @@
         height: 57.6px;
         fill: #2a2a2a;
         animation: boot-fade 0.6s ease-in-out both;
-      }
-      html.dark .boot-loader svg {
-        fill: #f6f5f9;
       }
       .boot-loader .center {
         fill: #28e99f;

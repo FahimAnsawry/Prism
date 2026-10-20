@@ -16,7 +16,7 @@ export function Sticky({
   return (
     <motion.div
       className={cn(
-        "font-hand text-slate shadow-[0_12px_24px_-8px_rgb(61_59_80/0.2)] dark:shadow-[0_12px_24px_-8px_rgb(0_0_0/0.5)]",
+        "font-hand text-slate shadow-[0_12px_24px_-8px_rgb(61_59_80/0.2)]",
         tones[tone],
         className,
       )}

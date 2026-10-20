@@ -4,9 +4,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ctaVariants } from "@/components/cta";
 import { PrismLogo } from "@/components/prism-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { EASE_CSS, EASE_DECELERATE } from "@/lib/motion";
-import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { MenuLinks, NavLinks } from "./nav-links";
 import { pageContainer } from "./page-container";
@@ -53,7 +51,6 @@ function useNavScroll() {
 const SHADOW = {
   none: "0px 10px 24px -14px rgba(0, 0, 0, 0)",
   light: "0px 10px 24px -14px rgba(42, 42, 42, 0.35)",
-  dark: "0px 10px 24px -14px rgba(0, 0, 0, 0.8)",
 };
 
 /** Below this (Tailwind's lg) the page links fold into the burger menu. */
@@ -107,7 +104,6 @@ export function SiteHeader({ flight = false }: { flight?: boolean }) {
   const { hidden, scrolled } = useNavScroll();
   const { open, setOpen, headerRef, buttonRef } = useMenu();
   const close = () => setOpen(false);
-  const { theme } = useTheme();
   const [entered, setEntered] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
 
@@ -122,7 +118,7 @@ export function SiteHeader({ flight = false }: { flight?: boolean }) {
       animate={{
         opacity: 1,
         y: tucked ? "-100%" : 0,
-        boxShadow: scrolled ? SHADOW[theme] : SHADOW.none,
+        boxShadow: scrolled ? SHADOW.light : SHADOW.none,
       }}
       transition={
         entered ? { duration: 0.3, ease: EASE_DECELERATE } : { duration: 0.15, ease: EASE_CSS }
@@ -147,10 +143,6 @@ export function SiteHeader({ flight = false }: { flight?: boolean }) {
           <NavLinks className="max-lg:hidden" />
 
           <div className="flex items-center justify-self-end gap-3 sm:gap-2">
-            <ThemeToggle
-              className="size-[38px] border border-input"
-              hoverBackground="var(--muted)"
-            />
             <Link to="/login" className={cn(loginLink, "max-sm:hidden")}>
               Log in
             </Link>
@@ -171,7 +163,7 @@ export function SiteHeader({ flight = false }: { flight?: boolean }) {
               />
             </Link>
             {/* Below lg the page links fold into this menu (and below sm, Log in and Start a
-                board too); the theme toggle stays out in the bar. */}
+                board too). */}
             <button
               ref={buttonRef}
               type="button"
@@ -193,7 +185,7 @@ export function SiteHeader({ flight = false }: { flight?: boolean }) {
         {open && (
           <motion.div
             id="site-menu"
-            className="absolute inset-x-0 top-full border-b border-border bg-background shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] lg:hidden dark:shadow-[0_10px_24px_-14px_rgb(0_0_0/0.8)]"
+            className="absolute inset-x-0 top-full border-b border-border bg-background shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] lg:hidden"
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: EASE_CSS }}

@@ -4,14 +4,9 @@ import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 // The four facets dim one after another (top, left, right, then the green center), like light
-// passing through the prism. Reduced-motion users get the still mark. How far they dim
-// (`--facet-dim`) depends on the theme: light canvas washes out faint slate and the brand green.
-function facetDim() {
-  const value = Number.parseFloat(
-    getComputedStyle(document.documentElement).getPropertyValue("--facet-dim"),
-  );
-  return Number.isFinite(value) ? value : 0.4;
-}
+// passing through the prism. Reduced-motion users get the still mark. They dim to 40%: the light
+// canvas washes out faint slate and the brand green, so dimming further would lose the mark.
+const FACET_DIM = 0.4;
 
 function pulseFacets(dim: number): FacetRenderer {
   return ({ d, index, className }) => (
@@ -60,7 +55,7 @@ export function PrismLoader({
       <PrismMark
         className={fullScreen ? "size-[57.6px]" : "size-6"}
         fadeIn={fadeIn}
-        renderFacet={pulseFacets(facetDim())}
+        renderFacet={pulseFacets(FACET_DIM)}
       />
       {label ? (
         <span className="type-label-xs text-muted-foreground uppercase">{label}</span>

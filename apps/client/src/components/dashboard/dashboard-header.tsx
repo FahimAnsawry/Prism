@@ -1,15 +1,13 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { LogOut, Menu as MenuIcon, Moon, PlugZap, Search, Sun, X } from "lucide-react";
+import { LogOut, Menu as MenuIcon, PlugZap, Search, X } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { backdropMotion, usePopupExit } from "@/components/popup-motion";
 import { PrismLogo } from "@/components/prism-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { UserAvatar } from "@/components/user-avatar";
 import { authClient } from "@/lib/auth-client";
 import { EASE_DECELERATE, EASE_STANDARD } from "@/lib/motion";
-import { useTheme } from "@/lib/theme";
 import { useSignOut } from "@/lib/use-sign-out";
 import { SidebarNav, type SidebarProps } from "./dashboard-sidebar";
 
@@ -119,7 +117,6 @@ export function DashboardHeader({
             <PlugZap aria-hidden="true" className="size-4" />
             Connect AI tools
           </button>
-          <ThemeToggle className="size-9 border border-divider" />
           {/* Avatar only, opening the profile; name and email stay available to hover. */}
           {user && (
             <Link
@@ -162,8 +159,6 @@ function MobileDrawer({
   onLogOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const { theme, toggleTheme } = useTheme();
-  const dark = theme === "dark";
   const close = () => setOpen(false);
 
   const { actionsRef, onExitComplete } = usePopupExit(open);
@@ -177,7 +172,7 @@ function MobileDrawer({
         {open && (
           <Dialog.Portal keepMounted>
             <Dialog.Backdrop
-              className="fixed inset-0 z-50 bg-slate/50 lg:hidden dark:bg-black/60"
+              className="fixed inset-0 z-50 bg-slate/50 lg:hidden"
               render={
                 <motion.div
                   {...backdropMotion}
@@ -236,17 +231,6 @@ function MobileDrawer({
                 >
                   <PlugZap aria-hidden="true" />
                   Connect AI tools
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    const box = event.currentTarget.getBoundingClientRect();
-                    toggleTheme({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-                  }}
-                  className={drawerItem}
-                >
-                  {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
-                  {dark ? "Light mode" : "Dark mode"}
                 </button>
                 <button type="button" onClick={onLogOut} className={drawerItem}>
                   <LogOut aria-hidden="true" />

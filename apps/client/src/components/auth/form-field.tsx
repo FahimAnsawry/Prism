@@ -6,14 +6,14 @@ import { cn } from "@/lib/utils";
 
 /** The board's input: 48px tall, card fill, edge border, the global focus outline. */
 export const fieldInputClass =
-  "h-12 rounded-none border-input bg-card px-4 text-[15px] text-foreground placeholder:text-muted-foreground md:text-[15px] dark:bg-card aria-invalid:border-destructive aria-invalid:ring-0 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)] dark:aria-invalid:border-destructive";
+  "h-12 rounded-none border-input bg-card px-4 text-[15px] text-foreground placeholder:text-muted-foreground md:text-[15px] aria-invalid:border-destructive aria-invalid:ring-0 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)]";
 
 export const fieldLabelClass =
   "font-mono text-xs leading-4 font-normal tracking-[0.08em] text-foreground uppercase";
 
 /** The login and signup fields: 44px input, 16px text, sentence-case label. */
 const plainInputClass =
-  "h-11 rounded-none border-input bg-card px-3.5 text-base text-foreground placeholder:text-muted-foreground md:text-base dark:bg-card aria-invalid:border-destructive aria-invalid:ring-0 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)] dark:aria-invalid:border-destructive";
+  "h-11 rounded-none border-input bg-card px-3.5 text-base text-foreground placeholder:text-muted-foreground md:text-base aria-invalid:border-destructive aria-invalid:ring-0 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)]";
 
 const plainLabelClass = "text-sm leading-[18px] font-semibold text-foreground";
 

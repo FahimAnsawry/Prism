@@ -14,10 +14,10 @@ import { allBoards, allProjects, useUpdateBoard, workspaceQuery } from "@/lib/wo
 
 const titleText = "text-[15px] leading-[21px]";
 const itemClass =
-  "flex h-9 cursor-default items-center gap-2.5 px-2.5 text-[13px] text-foreground outline-none select-none data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12 [&_svg]:size-3.5 [&_svg]:shrink-0";
+  "flex h-9 cursor-default items-center gap-2.5 px-2.5 text-[13px] text-foreground outline-none select-none data-highlighted:bg-seafoam [&_svg]:size-3.5 [&_svg]:shrink-0";
 /** The edit and delete icons at the right of each board in the menu. */
 const rowActionClass =
-  "flex size-9 shrink-0 cursor-default items-center justify-center text-muted-foreground outline-none transition-colors duration-150 ease-standard select-none data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12 [&_svg]:size-3.5";
+  "flex size-9 shrink-0 cursor-default items-center justify-center text-muted-foreground outline-none transition-colors duration-150 ease-standard select-none data-highlighted:bg-seafoam [&_svg]:size-3.5";
 
 /** "Project ▾ / Board": the board's project (with a menu of its boards), then its editable name. */
 export function BoardTitle({ board }: { board: BoardSummary | undefined }) {

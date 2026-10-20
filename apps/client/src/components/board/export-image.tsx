@@ -13,7 +13,6 @@ import {
 } from "@prism/shared";
 import { type ReactNode, startTransition, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
-import type { Theme } from "@/lib/theme";
 import { byZ } from "./board-model";
 import { ElementShape } from "./element-shape";
 import { blobToDataUrl, embeddedFontCss } from "./embed-fonts";
@@ -252,8 +251,8 @@ async function inlineImages(svg: SVGSVGElement, scale: number) {
 
 /**
  * The region drawn as standalone SVG markup, `width` × `height` px: on the page background, or
- * transparent (dashboard previews sit on their own dotted canvas). Colors follow the page's
- * theme, or `theme` when given. Images keep only the pixels `width` shows.
+ * transparent (dashboard previews sit on their own dotted canvas). Images keep only the pixels
+ * `width` shows.
  *
  * The work is done in slices so the page stays responsive, and stops (throwing the abort
  * reason) once `signal` aborts.
@@ -263,11 +262,7 @@ export async function renderSvg(
   box: Box,
   width: number,
   height: number,
-  {
-    background = true,
-    theme,
-    signal,
-  }: { background?: boolean; theme?: Theme; signal?: AbortSignal } = {},
+  { background = true, signal }: { background?: boolean; signal?: AbortSignal } = {},
 ) {
   const pace = pacer(signal);
   // Text is measured with the board's fonts, and icons must draw on the first render.
@@ -280,8 +275,6 @@ export async function renderSvg(
   const host = document.createElement("div");
   host.setAttribute("aria-hidden", "true");
   host.style.cssText = "position:fixed;left:-100000px;top:0;pointer-events:none;";
-  // index.css scopes both themes' variables to these classes.
-  if (theme) host.classList.add(theme);
   document.body.append(host);
   const root = createRoot(host);
   try {

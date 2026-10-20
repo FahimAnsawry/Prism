@@ -103,7 +103,7 @@ export function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => void }) 
                         key={option.kind}
                         onClick={() => create(option.kind)}
                         aria-keyshortcuts={option.shortcut}
-                        className="flex h-18 cursor-default items-center gap-3.5 pr-2.5 pl-3 outline-none select-none data-highlighted:bg-seafoam dark:data-highlighted:bg-seafoam/12"
+                        className="flex h-18 cursor-default items-center gap-3.5 pr-2.5 pl-3 outline-none select-none data-highlighted:bg-seafoam"
                       >
                         {option.kind === "project" ? <ProjectIcon /> : <WhiteboardIcon />}
                         <span className="min-w-0 flex-1">

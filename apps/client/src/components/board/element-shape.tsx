@@ -560,13 +560,7 @@ function Shape({
       const top = y + height / 2 - (layout.lines.length * layout.lineHeight) / 2;
       return (
         <>
-          <rect
-            x={x + 2}
-            y={y + 4}
-            width={width}
-            height={height}
-            className="fill-slate/10 dark:fill-black/30"
-          />
+          <rect x={x + 2} y={y + 4} width={width} height={height} className="fill-slate/10" />
           <rect x={x} y={y} width={width} height={height} fill={el.fill ?? STICKY_DEFAULT} />
           <TextLines
             el={el}

@@ -2,7 +2,6 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { pageContainer } from "@/components/landing/page-container";
 import { PrismLogo } from "@/components/prism-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { DocsNav } from "./docs-nav";
 import { DocsSearch } from "./docs-search";
@@ -55,7 +54,6 @@ export function DocsHeader({ current }: { current: DocPage }) {
           <div className="md:hidden">
             <DocsSearch compact />
           </div>
-          <ThemeToggle className="size-[38px] border border-input" hoverBackground="var(--muted)" />
           <button
             ref={buttonRef}
             type="button"
@@ -77,7 +75,7 @@ export function DocsHeader({ current }: { current: DocPage }) {
       {open && (
         <div
           id="docs-menu"
-          className="absolute inset-x-0 top-full max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-border bg-background shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] lg:hidden dark:shadow-[0_10px_24px_-14px_rgb(0_0_0/0.8)]"
+          className="absolute inset-x-0 top-full max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-border bg-background shadow-[0_10px_24px_-14px_rgb(42_42_42/0.35)] lg:hidden"
         >
           <div className={cn(pageContainer, "py-6")}>
             <DocsNav current={current} onNavigate={() => setOpen(false)} />

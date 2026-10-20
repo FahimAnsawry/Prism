@@ -8,7 +8,6 @@ import { ErrorScreen } from "@/components/feedback/error-page";
 import { PrismLoader } from "@/components/feedback/prism-loader";
 import { PrismMark } from "@/components/prism-logo";
 import { LinkGoneScreen, PublicBoard } from "@/components/share/public-board";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { ApiError } from "@/lib/api";
 import { publicShareQuery } from "@/lib/sharing";
 import { BOARD_PRELOAD_DELAY } from "@/lib/workspace";
@@ -66,7 +65,6 @@ function SharedProject({
               <Eye aria-hidden="true" className="size-3.5" />
               View only
             </span>
-            <ThemeToggle className="size-9 border border-divider" />
           </div>
         </div>
       </header>

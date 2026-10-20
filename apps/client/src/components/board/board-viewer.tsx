@@ -9,24 +9,21 @@ import {
   useRef,
   useState,
 } from "react";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { isTyping } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { BoardCanvas } from "./board-canvas";
 import { type BoardAction, boardReducer, initialBoardState } from "./board-model";
 import { type CatchUpSource, reportCursor, useBoardRealtime, useBoardSaver } from "./board-sync";
-import { type Camera, fitCamera, inView, stepZoom, zoomAt } from "./camera";
+import { type Camera, fitCamera, inView } from "./camera";
 import { ErFocusDialog } from "./er-focus-dialog";
 import { ExportMenu } from "./export-menu";
 import { TableSwitcher } from "./er-table-switcher";
 import { loadFont } from "./fonts";
 import { revealOps } from "./remote-reveal";
+import { useSmoothZoom } from "./smooth-zoom";
 import { TableDetails } from "./table-details";
 import type { ToolId } from "./tools";
 import { useElementSize } from "./use-element-size";
-
-/** Zoom buttons and keys zoom around the middle of the view. */
-const CENTER = { x: 0, y: 0 };
 
 /** What a read-only tab may do to its own copy: follow live changes and fold mind map branches. */
 const ALLOWED = new Set<BoardAction["type"]>(["remote", "mindToggle", "select"]);
@@ -76,6 +73,8 @@ export function BoardViewer({
   const [focusTable, setFocusTable] = useState<string | null>(null);
   const switcher = useRef<HTMLButtonElement>(null);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
+  // Zoom buttons and keys glide around the middle of the view; the wheel toward the pointer.
+  const { zoomTo, zoomBy, step: zoomStep } = useSmoothZoom(camera, setCamera);
   const [grid, setGrid] = useState(true);
   const viewport = useRef<HTMLElement>(null);
   const size = useElementSize(viewport);
@@ -190,13 +189,13 @@ export function BoardViewer({
         setTool("hand");
       } else if (mod && (key === "=" || key === "+")) {
         event.preventDefault();
-        setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER));
+        zoomStep(1);
       } else if (mod && key === "-") {
         event.preventDefault();
-        setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER));
+        zoomStep(-1);
       } else if (mod && key === "0") {
         event.preventDefault();
-        setCamera((c) => zoomAt(c, 1, CENTER));
+        zoomTo(1);
       } else if (event.shiftKey && !mod && event.code === "Digit1") {
         event.preventDefault();
         fit();
@@ -204,7 +203,7 @@ export function BoardViewer({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [fit, state.selectedIds, state.elements, hasTables, dispatch]);
+  }, [fit, state.selectedIds, state.elements, hasTables, dispatch, zoomStep, zoomTo]);
 
   const chrome = "border border-chrome bg-card text-foreground";
   return (
@@ -294,7 +293,7 @@ export function BoardViewer({
             <button
               type="button"
               aria-label="Zoom out"
-              onClick={() => setCamera((c) => zoomAt(c, stepZoom(c.zoom, -1), CENTER))}
+              onClick={() => zoomStep(-1)}
               className="flex w-9 items-center justify-center hover:bg-hover"
             >
               <Minus aria-hidden="true" className="size-[18px]" />
@@ -303,7 +302,7 @@ export function BoardViewer({
               type="button"
               aria-label="Reset zoom to 100%"
               title="Reset to 100%"
-              onClick={() => setCamera((c) => zoomAt(c, 1, CENTER))}
+              onClick={() => zoomTo(1)}
               className="hidden w-16 font-mono text-xs tabular-nums hover:bg-hover sm:block"
             >
               {Math.round(camera.zoom * 100)}%
@@ -311,7 +310,7 @@ export function BoardViewer({
             <button
               type="button"
               aria-label="Zoom in"
-              onClick={() => setCamera((c) => zoomAt(c, stepZoom(c.zoom, 1), CENTER))}
+              onClick={() => zoomStep(1)}
               className="flex w-9 items-center justify-center hover:bg-hover"
             >
               <Plus aria-hidden="true" className="size-[18px]" />
@@ -329,7 +328,6 @@ export function BoardViewer({
           >
             <Maximize aria-hidden="true" className="size-4" />
           </button>
-          <ThemeToggle className="size-9 border border-chrome bg-card" />
           <ExportMenu
             elements={state.elements}
             selectedIds={state.selectedIds}
@@ -350,6 +348,7 @@ export function BoardViewer({
           emoji={null}
           icon={null}
           onCameraChange={setCamera}
+          onZoomBy={zoomBy}
           onBorrowHand={noop}
           onStartEditing={noop}
           onFinishEditing={noop}
