@@ -17,6 +17,8 @@ import { LIMITS, spend } from "./rate-limit.js";
 
 const MAX_REDIRECTS = 3;
 const TIMEOUT_MS = 15_000;
+/** Who is asking, for hosts that refuse requests without one (Wikimedia answers 403). */
+export const USER_AGENT = "Prism/0.1 (design whiteboard; https://github.com/FahimAnsawry/Prism)";
 
 const blocked = new BlockList();
 for (const [net, prefix] of [
@@ -124,7 +126,10 @@ function get(url: URL, signal: AbortSignal) {
         method: "GET",
         lookup: safeLookup,
         signal,
-        headers: { Accept: "image/png,image/jpeg,image/webp,image/gif;q=0.9,*/*;q=0.1" },
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "image/png,image/jpeg,image/webp,image/gif;q=0.9,*/*;q=0.1",
+        },
       },
       resolve,
     );

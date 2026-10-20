@@ -212,7 +212,7 @@ export const DESIGN_PAGES: DocPage[] = [
       { type: "h2", title: "Call it" },
       {
         type: "p",
-        text: "Editors call it on their own before the first `create_screen` of a conversation. `surface` is `landing`, `app` or `mobile`; the guide's sizes follow it.",
+        text: "Editors call it on their own before the first `create_screen` of a conversation. `surface` is `landing`, `app` or `mobile`; the guide's sizes follow it. Moving to another board in the same conversation, they pass `siteOnly: true` and get just that board's site.",
       },
       {
         type: "code",
