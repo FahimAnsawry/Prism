@@ -203,7 +203,6 @@ export function SiteFooter() {
 
         <div className="mt-12 flex flex-col gap-2 border-t border-fog/15 pt-6 pb-8 text-xs text-ash sm:flex-row sm:justify-between md:mt-16">
           <p>© 2026 Prism</p>
-          <p>Plain SVG and React. No drawing libraries.</p>
         </div>
       </div>
     </footer>
