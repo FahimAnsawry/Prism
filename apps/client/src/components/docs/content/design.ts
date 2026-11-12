@@ -42,6 +42,9 @@ export const DESIGN_PAGES: DocPage[] = [
           { icon: "alert", text: "Tiny text, too many sizes" },
           { icon: "alert", text: "Too many accent colors" },
           { icon: "alert", text: "Gray boxes where a picture belongs" },
+          { icon: "alert", text: "Banned marketing words, overused fonts" },
+          { icon: "alert", text: "A page that is mostly mock UI" },
+          { icon: "alert", text: "A new site that opens like your other sites" },
         ],
       },
       {
@@ -175,15 +178,15 @@ export const DESIGN_PAGES: DocPage[] = [
         rows: [
           {
             term: "Decide before you draw",
-            text: "For a landing page: two or three directions, a thesis, one signature move and the category default to avoid. For app and mobile screens: the person, their task, density and states",
+            text: "For a landing page: two or three directions, a thesis, one signature move, the category default to avoid, and the four choices that give a page its shape (type scale, ground, first viewport, structure). For app and mobile screens: the person, their task, density and states",
           },
           {
             term: "Type",
-            text: "Sizes, weights and line heights per role, and fonts with a point of view",
+            text: "For landing pages, four type scales to choose from (Poster, Standard, Quiet, Compact); sizes, weights and line heights per role; fonts with a point of view",
           },
           {
             term: "Color",
-            text: "Restrained, committed, full palette or drenched, picked from the scene",
+            text: "The ground first (light, tinted, a color field or dark), then restrained, committed, full palette or drenched, picked from the scene",
           },
           {
             term: "Space and hierarchy",
@@ -191,7 +194,7 @@ export const DESIGN_PAGES: DocPage[] = [
           },
           {
             term: "Landing pages",
-            text: "Jobs instead of a fixed list of sections, and structures to choose from",
+            text: "Jobs instead of a fixed list of sections, with hero forms and structures to choose from, a different few on every read",
           },
           {
             term: "Design for code",
@@ -206,7 +209,7 @@ export const DESIGN_PAGES: DocPage[] = [
       { type: "h2", title: "One site, one design" },
       {
         type: "p",
-        text: "Pass the `boardId` and the guide ends with that board's site. When the site already has screens, it lists them, and every new page keeps their language. When the site is new, it describes your other sites, so this one doesn't come out as the same page again.",
+        text: "Pass the `boardId` and the guide ends with that board's site. When the site already has screens, it lists them, and every new page keeps their language. When the site is new, it describes how your other sites open (headline size, ground, what the first viewport holds, how their headlines begin) and leaves the choices they share out of what it offers, so this one doesn't come out as the same page in new colors. Boards without an interface, like storyboards and logo sheets, aren't counted as sites.",
       },
       { type: "figure", name: "sameSite" },
       { type: "h2", title: "Call it" },

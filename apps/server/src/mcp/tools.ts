@@ -117,10 +117,11 @@ import {
   loadWorkspace,
   saveProjectComponents,
   saveProjectTheme,
+  siteProps,
 } from "../routes/workspace.js";
 import { DESIGN_SURFACES, designGuide } from "./design-guide.js";
-import { photosOf, siteContext } from "./site-context.js";
-import { lintScreen, type ScreenWarning } from "./screen-lint.js";
+import { photosOf, sameAsOtherSites, siteContext, takenBy } from "./site-context.js";
+import { isLongPage, lintScreen, type ScreenWarning } from "./screen-lint.js";
 import {
   boundsOf,
   buildElements,
@@ -498,7 +499,8 @@ async function createHtmlScreen(
   const warnings: ScreenWarning[] = [
     ...reply.notes.map((message) => ({ kind: "html", ids: [], message })),
     ...images.warnings,
-    ...lintScreen(elements, layers, { lastLines }),
+    ...lintScreen(elements, layers, { lastLines, defaultTheme: theme === DEFAULT_THEME }),
+    ...(await samenessWarnings(userId, board.id, elements)),
   ];
   return json({
     frameId: frameElement ? elements[0]?.id : null,
@@ -512,6 +514,36 @@ async function createHtmlScreen(
         ? `Fix the ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (in the HTML and draw it again, or with update_elements), then check it with export_image (frameId).`
         : "Check it with export_image (frameId), then fix anything off with update_elements or by drawing the HTML again.",
   });
+}
+
+/**
+ * Warnings that a new site's first long page opens like another of the user's sites. Only a long
+ * desktop page is read for it, so other screens cost nothing; a failed reading warns of nothing.
+ */
+async function samenessWarnings(
+  userId: string,
+  boardId: string,
+  elements: BoardElement[],
+): Promise<ScreenWarning[]> {
+  const frame = elements.find((el) => el.type === "frame");
+  if (!frame || !isLongPage(frame)) return [];
+  const site = (el: BoardElement) => ({
+    id: el.id,
+    type: el.type,
+    x: el.x,
+    y: el.y,
+    width: el.width,
+    height: el.height,
+    fill: el.fill ?? null,
+    groupId: el.groupId ?? null,
+    role: el.role ?? null,
+    ...siteProps(el.type, el),
+  });
+  try {
+    return sameAsOtherSites(site(frame), elements.map(site), await designSites(userId, boardId));
+  } catch {
+    return [];
+  }
 }
 
 /** For an item shared with the user: what they may do there and whose it is. */
@@ -1269,12 +1301,14 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
     },
     ({ surface, boardId: id, siteOnly }) =>
       run(async () => {
-        const site = id ? siteContext(await designSites(userId, id)) : undefined;
-        return {
-          content: [
-            { type: "text" as const, text: designGuide(surface ?? "landing", site, siteOnly) },
-          ],
-        };
+        const sites = id ? await designSites(userId, id) : undefined;
+        const text = designGuide(
+          surface ?? "landing",
+          sites && siteContext(sites),
+          siteOnly,
+          sites && takenBy(sites),
+        );
+        return { content: [{ type: "text" as const, text }] };
       }),
   );
 
@@ -1290,9 +1324,9 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
         'Leaves: text, icon (Lucide), box (a rect or ellipse holding a photo with image: { url } from search_images, an avatar with avatar: "Full Name", or an SVG logo or illustration with svg; never a gray placeholder), spacer (fixed, or flexible to push things apart), divider.',
         "A button is a row with padding, fill, radius, justify/align center and a text child; a card is a stack with padding, fill, radius and shadow. Give components a name (one groupId) and a role.",
         'Use the project\'s components (list_components) wherever they fit: { type: "use", component: "Button", variant: "ghost", props: { label: "Cancel" } }, with children for a component\'s slot (a Card\'s content) and width/height to resize it. Same component, same look on every screen.',
-        "Colors, radius and text come from the project theme (get_theme): textStyle $h1/$h2/$body/$caption/… for every text (size, weight and font together), fill $primary with color $primary-foreground, $card, $muted-foreground, stroke $border, radius $radius-md/$radius-lg, so every screen matches and the code uses the same classes. Text defaults to $body and $foreground, icons to $foreground, dividers to $border, the frame to $background. A strict theme refuses plain colors, radius, fonts and text sizes.",
+        "Colors, radius and text come from the project theme (get_theme): textStyle $h1/$h2/$body/$caption/… for every text (size, weight and font together), fill $primary with color $primary-foreground, $card, $muted-foreground, stroke $border, radius $radius-md/$radius-lg, so every screen matches and the code uses the same classes. Text defaults to $body and $foreground, icons to $foreground, dividers to $border, the frame to $background. A strict theme refuses plain colors, radius, fonts and text sizes. The default theme (get_theme says saved: false) is a neutral placeholder, and every site drawn with its tokens looks the same: on a new site, save the direction you chose as the project's theme first (set_theme), or on a board outside a project use plain values that follow it.",
         "With frame, a frame of that size is drawn behind it (a fixed frame height lets a flexible spacer pin a bottom bar). Without x/y it goes to the right of the board's content.",
-        "The whole screen is one undo step. The result lists warnings (text wrapping more than written, content spilling out of its container, low contrast, tiny text, too many sizes or accent colors, uneven side-by-side cards, blocks just off the main column, outline-only rating icons, gray placeholder boxes, images that couldn't be downloaded): fix them, then check the screen with export_image (frameId), and with compare_reference when it follows a reference image.",
+        "The whole screen is one undo step. The result lists warnings (text wrapping more than written, content spilling out of its container, low contrast, tiny text, too many sizes or accent colors, uneven side-by-side cards, blocks just off the main column, outline-only rating icons, gray placeholder boxes, images that couldn't be downloaded; on a long marketing page also banned marketing words, overused fonts, headings written to one formula, a page that is mostly mock UI, and a new site's page that opens like another of the user's sites): fix them, then check the screen with export_image (frameId), and with compare_reference when it follows a reference image.",
       ].join(" "),
       inputSchema: z.object({
         boardId,
@@ -1426,7 +1460,12 @@ export function registerTools(server: McpServer, userId: string, editor: Editor)
         });
         const warnings = [
           ...images.warnings,
-          ...lintScreen(elements, layers, { lastLines, rowFill: rowFillTraps(root) }),
+          ...lintScreen(elements, layers, {
+            lastLines,
+            rowFill: rowFillTraps(root),
+            defaultTheme: theme === DEFAULT_THEME,
+          }),
+          ...(await samenessWarnings(userId, board.id, elements)),
         ];
         return json({
           frameId: frame ? elements[0]?.id : null,
@@ -2131,11 +2170,11 @@ export function registerPrompts(server: McpServer) {
               project
                 ? `1. Find the project "${project}" with list_boards (create_project if it doesn't exist), then open_board with the name "${board ?? idea}" and its projectId. Give me the board's URL unless it opened in my browser.`
                 : `1. open_board with the name "${board ?? idea}". Give me its URL unless it opened in my browser.`,
-              "2. Theme: get_theme (boardId). If saved is false and this folder is the app's repo with a global CSS file (app/globals.css, src/index.css) defining shadcn/ui variables, import it with set_theme (css) so the design matches the app. Otherwise keep the theme, or ask me for brand colors and set them with set_theme.",
-              "3. Components: list_components. If the project has none, define its shared parts first with define_component, using the theme's tokens: Button (variants primary, secondary, outline, ghost, destructive), Input (label, placeholder), Card (a slot for content), PageHeader (title, description, a slot for actions) and the app's navigation (Sidebar or TopBar with its items). Add a component whenever a part repeats across screens.",
-              "4. If a Mobbin MCP is available, search it for 3 strong references. Add each with add_image (its image_url) in a row at the top, with a sticky note beside each saying what to take from it.",
-              "5. Read get_design_guide (surface landing, app or mobile, and the boardId) and write down the design's thesis, signature move, palette and type before drawing. Where the guide's sizes and the theme's text styles differ, the theme wins.",
-              '6. Below the references, build the new design with create_screen (a layout tree, inside a frame at a real device size: 390x844 mobile or 1440x900 desktop), using create_elements only for extras that don\'t fit a layout. Put a small text above each frame naming its route and state, e.g. "/reset-password · desktop · link sent". Use theme tokens for every color, radius and text: textStyle $h1–$h4 for headings, $body / $body-sm for copy, $label for buttons and form labels, $caption for hints; fill $primary with $primary-foreground text, $card, $muted-foreground, stroke $border, $radius-md on buttons and inputs, $radius-lg on cards. Never hex or px sizes. Place the project components with use nodes wherever they fit instead of drawing buttons, inputs, cards and navigation again. Keep spacing on the scale from get_design_guide. Clean look (sketch: false), real copy, consistent spacing, a shadow on raised surfaces (md cards, lg modals), Lucide icons (type icon) for nav, actions and inputs, one groupId and a role per component.',
+              "2. Theme: get_theme (boardId). If saved is false and this folder is the app's repo with a global CSS file (app/globals.css, src/index.css) defining shadcn/ui variables, import it with set_theme (css) so the design matches the app. If saved is true, keep it. Otherwise the default neutral theme is only a placeholder: step 4 replaces it.",
+              "3. If a Mobbin MCP is available, search it for 3 strong references. Add each with add_image (its image_url) in a row at the top, with a sticky note beside each saying what to take from it.",
+              "4. Read get_design_guide (surface landing, app or mobile, and the boardId) and write down the design's thesis, signature move, type scale, ground, palette and fonts before drawing. If the board is in a project that had no saved theme (step 2), save this direction as its theme now with set_theme, before any component or screen: the colors for light (and dark when the app has one), the radius, the fonts, and text styles sized to the scale you chose ($display and $h1 to $h4). A site drawn on the default theme looks like every other site drawn on it. A board outside a project has no theme to save: draw it with plain colors, fonts and sizes that follow the direction instead of the default tokens. Where the guide's sizes and a saved theme's text styles differ, the theme wins.",
+              "5. Components: list_components. If the project has none, define its shared parts first with define_component, using the theme's tokens: Button (variants primary, secondary, outline, ghost, destructive), Input (label, placeholder), Card (a slot for content), PageHeader (title, description, a slot for actions) and the app's navigation (Sidebar or TopBar with its items). Add a component whenever a part repeats across screens.",
+              '6. Below the references, build the new design with create_screen (a layout tree, inside a frame at a real device size: 390x844 mobile or 1440x900 desktop), using create_elements only for extras that don\'t fit a layout. Put a small text above each frame naming its route and state, e.g. "/reset-password · desktop · link sent". Use theme tokens for every color, radius and text style (get_theme lists them: text styles such as $display, $h1–$h4, $body and $label, colors such as $primary and $muted-foreground, $radius-*), never hex or px sizes, so the code uses the same names. Which token goes where, and how surfaces are told apart (shadow, border or a step in color), follows the direction you wrote down, not a fixed recipe. Place the project components with use nodes wherever they fit instead of drawing buttons, inputs, cards and navigation again. Keep spacing on the scale from get_design_guide. Clean look (sketch: false), real copy, consistent spacing, Lucide icons (type icon) for nav, actions and inputs, one groupId and a role per component.',
               "7. Fix the warnings create_screen returns. Then look at it with export_image (the frame's id), critique it against the thesis and references, fix anything that overlaps, is misaligned or wraps badly, check again, then summarize what you made.",
               "8. Finish by watching for my Ask AI requests (wait_for_edits, handle each, complete_edit, repeat).",
             ].join("\n"),

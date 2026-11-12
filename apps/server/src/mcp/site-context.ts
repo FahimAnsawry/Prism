@@ -4,14 +4,61 @@
 
 import { DEFAULT_THEME, fontFamilyName, type FontFamily } from "@prism/shared";
 import type { DesignSite, SiteElement } from "../routes/workspace.js";
+import {
+  GROUND_NAMES,
+  HERO_NAMES,
+  SCALE_NAMES,
+  scaleOf,
+  type GroundKey,
+  type HeroKey,
+  type ScaleKey,
+  type Taken,
+} from "./design-guide.js";
+import { isLongPage, type ScreenWarning } from "./screen-lint.js";
 
 /** Frames narrower than this are notes or icons, not screens. */
 const MIN_SCREEN_WIDTH = 320;
 /** Screens of this site listed, and other sites compared against. */
 const MAX_SCREENS = 12;
-const MAX_OTHER_SITES = 4;
+const MAX_OTHER_SITES = 8;
+/** Sections named per screen. */
+const MAX_SECTIONS = 8;
+/** A group covering this share of its frame is the page itself (an HTML page's body), not a section. */
+const PAGE_SHARE = 0.85;
+/** Roles only an interface has: what tells a page from a storyboard, a logo sheet or a diagram. */
+const UI_ROLE = /button|input|nav|form|link|tab|field|menu/i;
+/** This many texts of mock size (MOCK_TEXT_PX or smaller) in the first viewport are a drawn product. */
+const HERO_MOCK_TEXTS = 14;
+const MOCK_TEXT_PX = 14;
+/** Other sites sharing this many of a page's four traits make it the same page. */
+const SAME_TRAITS = 3;
+/** A headline's first word used by this many other sites is a habit. */
+const SAME_OPENERS = 2;
 
-type Screen = { board: string; frame: SiteElement; sections: string[]; patterns: string[] };
+/** What gives a long desktop page its shape, read from its first viewport. */
+type Traits = {
+  heroPx: number;
+  heroWeight: number;
+  scale: ScaleKey;
+  align: "left" | "center";
+  ground: GroundKey;
+  hero: HeroKey;
+  /** The headline's first word, in lower case. */
+  opener: string | null;
+  /** The size most of its text is set in. */
+  bodyPx: number | null;
+};
+
+type Screen = {
+  board: string;
+  frame: SiteElement;
+  sections: string[];
+  patterns: string[];
+  /** It holds buttons, inputs or navigation: an interface, not a storyboard or a logo sheet. */
+  ui: boolean;
+  /** Null unless it is a long desktop page. */
+  traits: Traits | null;
+};
 type Box = {
   name: string;
   /** Its place in the source (create_screen numbers groups in document order), if known. */
@@ -96,7 +143,10 @@ function sectionsOf(frame: SiteElement, elements: SiteElement[]) {
       });
     }
   }
-  const all = [...boxes.values()];
+  const whole = [...boxes.values()];
+  const frameArea = frame.width * frame.height;
+  const parts = whole.filter((box) => area(box) < frameArea * PAGE_SHARE);
+  const all = parts.length > 0 ? parts : whole;
   return readingOrder(all.filter((box) => !all.some((outer) => nested(box, outer, frame))))
     .map((box) => box.name)
     .filter((name, i, names) => name !== names[i - 1]);
@@ -104,6 +154,8 @@ function sectionsOf(frame: SiteElement, elements: SiteElement[]) {
 
 /** How far down a screen its first viewport (the hero) reaches. */
 const HERO_DEPTH = 900;
+const PRODUCT_WINDOW = "a product window in the hero";
+const PHOTO_HERO = "a photo hero";
 
 const isPhoto = (el: SiteElement) => el.image !== undefined && !el.image.endsWith(".svg");
 
@@ -117,10 +169,7 @@ const colorField = (fill: string | null) => {
  * The parts of the landing-page kit a screen uses, in words: how it opens, proves and ends. Names
  * and themes differ from site to site; these shapes are what make AI-made pages look alike.
  */
-function patternsOf(frame: SiteElement, elements: SiteElement[]) {
-  const inside = elements.filter(
-    (el) => el !== frame && el.type !== "frame" && centerInside(el, frame),
-  );
+function patternsOf(frame: SiteElement, inside: SiteElement[]) {
   const heroBottom = frame.y + Math.min(HERO_DEPTH, frame.height / 2);
   const bleeds = (el: SiteElement) =>
     el.x <= frame.x + BLEED && el.x + el.width >= frame.x + frame.width - BLEED;
@@ -139,9 +188,9 @@ function patternsOf(frame: SiteElement, elements: SiteElement[]) {
       (!hsl || hsl.light >= 0.9)
     );
   });
-  if (productWindow) patterns.push("a product window in the hero");
+  if (productWindow) patterns.push(PRODUCT_WINDOW);
   else if (inside.some((el) => isPhoto(el) && el.y < heroBottom && el.width >= 600)) {
-    patterns.push("a photo hero");
+    patterns.push(PHOTO_HERO);
   }
 
   if (inside.some((el) => isPhoto(el) && el.width >= 160 && el.height >= el.width * 1.15)) {
@@ -176,23 +225,107 @@ function patternsOf(frame: SiteElement, elements: SiteElement[]) {
   return patterns;
 }
 
+/** The ground a fill reads as; null for anything but a hex color. */
+function groundOf(fill: string | null): GroundKey | null {
+  const hsl = fill ? saturation(fill.slice(0, 7)) : null;
+  if (!hsl) return null;
+  const chroma = hsl.sat * (1 - Math.abs(2 * hsl.light - 1));
+  if (hsl.light <= 0.25) return "dark";
+  if (chroma >= 0.25) return "colored";
+  return hsl.light >= 0.9 && chroma <= 0.06 ? "light" : "tinted";
+}
+
+/** A long desktop page's traits: its headline, ground and what its first viewport holds. */
+function traitsOf(frame: SiteElement, inside: SiteElement[], patterns: string[]): Traits | null {
+  if (!isLongPage(frame)) return null;
+  const heroBottom = frame.y + Math.min(HERO_DEPTH, frame.height / 2);
+  const texts = inside.filter((el) => el.type === "text" && el.size !== undefined);
+  const first = inside.filter((el) => el.y < heroBottom);
+  const heroTexts = texts.filter((el) => el.y < heroBottom).sort((a, b) => b.size! - a.size!);
+  const headline = heroTexts[0];
+  if (!headline) return null;
+
+  const middle = headline.x + headline.width / 2;
+  const centered =
+    headline.align === "center" ||
+    (Math.abs(middle - (frame.x + frame.width / 2)) <= frame.width * 0.04 &&
+      headline.x - frame.x >= frame.width * 0.15);
+
+  // The color under the first viewport: a full-width field drawn there, else the frame's own.
+  const field = first
+    .filter(
+      (el) =>
+        el.type === "rect" &&
+        !el.image &&
+        el.fill &&
+        el.height >= 300 &&
+        el.x <= frame.x + BLEED &&
+        el.x + el.width >= frame.x + frame.width - BLEED,
+    )
+    .sort((a, b) => b.height - a.height)[0];
+
+  const mock = heroTexts.filter((el) => el.size! <= MOCK_TEXT_PX).length;
+  const hero: HeroKey =
+    patterns.includes(PRODUCT_WINDOW) || mock >= HERO_MOCK_TEXTS
+      ? "product"
+      : patterns.includes(PHOTO_HERO)
+        ? "photo"
+        : first.some((el) => el.role && /input|form|search|field/i.test(el.role))
+          ? "form"
+          : "type";
+
+  return {
+    heroPx: Math.round(headline.size!),
+    heroWeight: headline.weight ?? 400,
+    scale: scaleOf(headline.size!, headline.weight ?? 400),
+    align: centered ? "center" : "left",
+    ground: groundOf(field?.fill ?? null) ?? groundOf(frame.fill) ?? "light",
+    hero,
+    opener: heroTexts.find((el) => el.opener)?.opener ?? null,
+    bodyPx:
+      Number(
+        mostCommon(
+          texts.map((el) => String(Math.round(el.size!))),
+          1,
+        )[0],
+      ) || null,
+  };
+}
+
 function screensOf(site: DesignSite): Screen[] {
   return site.boards.flatMap((board) =>
     board.elements
       .filter((el) => el.type === "frame" && el.width >= MIN_SCREEN_WIDTH)
       .sort((a, b) => a.x - b.x || a.y - b.y)
-      .map((frame) => ({
-        board: board.name,
-        frame,
-        sections: sectionsOf(frame, board.elements),
-        patterns: patternsOf(frame, board.elements),
-      })),
+      .map((frame) => {
+        const inside = board.elements.filter(
+          (el) => el !== frame && el.type !== "frame" && centerInside(el, frame),
+        );
+        const patterns = patternsOf(frame, inside);
+        return {
+          board: board.name,
+          frame,
+          sections: sectionsOf(frame, board.elements),
+          patterns,
+          ui: inside.some((el) => el.role && UI_ROLE.test(el.role)),
+          traits: traitsOf(frame, inside, patterns),
+        };
+      }),
   );
 }
 
 const size = (frame: SiteElement) => `${Math.round(frame.width)}×${Math.round(frame.height)}`;
 const outline = (screen: Screen) =>
-  screen.sections.length > 0 ? screen.sections.join(" → ") : "no named sections";
+  screen.sections.length > 0
+    ? `${screen.sections.slice(0, MAX_SECTIONS).join(" → ")}${screen.sections.length > MAX_SECTIONS ? " → …" : ""}`
+    : "no named sections";
+
+const alignName = (align: Traits["align"]) => (align === "center" ? "centered" : "left-aligned");
+const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+
+/** A page's traits in a sentence: how it opens. */
+const opening = (t: Traits) =>
+  `opens with a ${t.heroPx}px weight-${t.heroWeight} ${alignName(t.align)} headline${t.opener ? ` ("${capital(t.opener)} …")` : ""} (${SCALE_NAMES[t.scale]} scale) on ${GROUND_NAMES[t.ground]}, with ${HERO_NAMES[t.hero]} in the first viewport${t.bodyPx ? `; most of its text is ${t.bodyPx}px` : ""}`;
 
 const fontName = (font: string) => fontFamilyName(font as FontFamily) ?? font;
 
@@ -279,47 +412,187 @@ export function photosOf(sites: DesignSite[]) {
   );
 }
 
+type Sites = { current: DesignSite; others: DesignSite[] };
+type Compared = { site: DesignSite; screens: Screen[]; main: Screen };
+
+/**
+ * The user's other sites a new one is compared with: only those with an interface (a storyboard
+ * or a logo sheet is not a site), each by its tallest screen. Sites with a whole page come first,
+ * since a page says how a site looks and a single component study doesn't; within each, the most
+ * recently edited first.
+ */
+function comparedSites(others: DesignSite[]): Compared[] {
+  const sites = others
+    .map((site) => ({ site, screens: screensOf(site).filter((screen) => screen.ui) }))
+    .filter(({ screens }) => screens.length > 0)
+    .map(({ site, screens }) => ({
+      site,
+      screens,
+      main: screens.reduce((a, b) => (b.frame.height > a.frame.height ? b : a)),
+    }));
+  return [
+    ...sites.filter(({ main }) => main.traits),
+    ...sites.filter(({ main }) => !main.traits),
+  ].slice(0, MAX_OTHER_SITES);
+}
+
+/** Values by how many sites use them, most used first. */
+function tally<T extends string>(values: (T | null | undefined)[]) {
+  const counts = new Map<T, number>();
+  for (const value of values) if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]);
+}
+
+/**
+ * What the user's other sites already use, for a site with no screens yet: the design guide leaves
+ * those choices out of what it offers. Undefined for a site that has screens, which keeps its own.
+ */
+export function takenBy({ current, others }: Sites): Taken | undefined {
+  if (screensOf(current).length > 0) return undefined;
+  const traits = comparedSites(others).flatMap(({ main }) => main.traits ?? []);
+  if (traits.length === 0) return undefined;
+  // A habit, not a one-off: two sites use it, or half of them do.
+  const habits = <T extends string>(values: T[]) =>
+    tally(values)
+      .filter(([, count]) => count >= 2 || count * 2 >= traits.length)
+      .map(([key]) => key);
+  return {
+    scales: habits(traits.map((t) => t.scale)),
+    grounds: habits(traits.map((t) => t.ground)),
+    // "type" is also what a first viewport reads as when nothing else is found in it, so it is
+    // never left out: a page of type alone is one of the ways out of the product-window habit.
+    heroes: habits(traits.map((t) => t.hero)).filter((key) => key !== "type"),
+  };
+}
+
+/** What several sites share, in words: the sameness a new site has to break. */
+function sharedBy(traits: Traits[]) {
+  if (traits.length < 2) return [];
+  const most = <T extends string>(values: T[], name: (value: T) => string) => {
+    const [value, count] = tally(values)[0] ?? [];
+    return value && count && count >= 2 ? [`${name(value)} (${count} of ${traits.length})`] : [];
+  };
+  return [
+    ...most(
+      traits.map((t) => t.scale),
+      (key) => `the ${SCALE_NAMES[key]} type scale`,
+    ),
+    ...most(
+      traits.map((t) => t.ground),
+      (key) => GROUND_NAMES[key],
+    ),
+    ...most(
+      traits.map((t) => t.hero),
+      (key) => `${HERO_NAMES[key]} in the first viewport`,
+    ),
+    ...most(
+      traits.map((t) => t.align),
+      (key) => `a ${alignName(key)} headline`,
+    ),
+    ...tally(traits.map((t) => t.opener))
+      .filter(([, count]) => count >= 2)
+      .map(([opener, count]) => `headlines opening with "${capital(opener)}" (${count})`),
+  ];
+}
+
+/**
+ * Warnings for a new site's first long page that opens like another of the user's sites: the same
+ * type scale, ground, hero and alignment under different colors. `elements` are the new screen's.
+ */
+export function sameAsOtherSites(
+  frame: SiteElement,
+  elements: SiteElement[],
+  { current, others }: Sites,
+): ScreenWarning[] {
+  if (!isLongPage(frame)) return [];
+  // A site that already has screens keeps its own look: only its first page is compared.
+  if (screensOf(current).some((screen) => screen.frame.id !== frame.id)) return [];
+  const inside = elements.filter((el) => el.id !== frame.id && el.type !== "frame");
+  const mine = traitsOf(frame, inside, patternsOf(frame, inside));
+  if (!mine) return [];
+
+  const names: Record<"scale" | "ground" | "hero" | "align", string> = {
+    scale: `the ${SCALE_NAMES[mine.scale]} type scale (a ${mine.heroPx}px headline)`,
+    ground: GROUND_NAMES[mine.ground],
+    hero: `${HERO_NAMES[mine.hero]} in the first viewport`,
+    align: `a ${alignName(mine.align)} headline`,
+  };
+  const keys = Object.keys(names) as (keyof typeof names)[];
+  const alike = comparedSites(others)
+    .flatMap(({ site, main }) =>
+      main.traits
+        ? [{ site, traits: main.traits, same: keys.filter((k) => main.traits![k] === mine[k]) }]
+        : [],
+    )
+    .sort((a, b) => b.same.length - a.same.length);
+
+  const warnings: ScreenWarning[] = [];
+  const closest = alike[0];
+  const others3 = alike.filter(({ same }) => same.length >= SAME_TRAITS);
+  if (closest && closest.same.length >= SAME_TRAITS) {
+    warnings.push({
+      kind: "same-as-site",
+      ids: [frame.id],
+      message: `This page opens like "${closest.site.name}"${others3.length > 1 ? ` and ${others3.length - 1} more of the user's sites` : ""}: ${closest.same.map((k) => names[k]).join(", ")}. The same page in other colors is still the same page. Change at least ${closest.same.length === keys.length ? "two of these" : "one more of these"} by redrawing the first viewport (the design guide's sections 3, 4 and 7 list the other scales, grounds and hero forms), unless the user asked for a family resemblance.`,
+    });
+  }
+  const opened = alike.filter(({ traits }) => mine.opener && traits.opener === mine.opener);
+  if (mine.opener && opened.length >= SAME_OPENERS) {
+    warnings.push({
+      kind: "headline-opener",
+      ids: [frame.id],
+      message: `The headline opens with "${capital(mine.opener)}", like the headlines of ${opened.length} of the user's other sites. Write it in another shape (the design guide's section 6: a number, a question, an instruction, a plain label).`,
+    });
+  }
+  return warnings;
+}
+
 /** The guide's "This site" section for a board's site. */
-export function siteContext({ current, others }: { current: DesignSite; others: DesignSite[] }) {
+export function siteContext({ current, others }: Sites) {
   const screens = screensOf(current);
   if (screens.length > 0) {
     const listed = screens.slice(0, MAX_SCREENS);
+    const look = screens
+      .filter((screen) => screen.traits)
+      .sort((a, b) => b.frame.height - a.frame.height)[0];
     return `## This site: ${current.name}
 
 This board belongs to "${current.name}", a website that already has ${screens.length} screen${screens.length === 1 ? "" : "s"}. A website is one design: a new page keeps the language of the pages it has, and gets the structure its own content needs. This section comes before the general advice above.
 
 Screens so far (read the first one with get_screen_code before drawing, and look at it with export_image):
 ${listed.map((s) => `- ${s.board} · frame ${s.frame.id} · ${size(s.frame)}: ${outline(s)}`).join("\n")}${screens.length > listed.length ? `\n- and ${screens.length - listed.length} more` : ""}
-
-Keep across the site: the theme and components; the nav and footer, drawn the same way on every page that has them; the hero treatment; section spacing, dividers and backgrounds; card, button, input and label styles; image, illustration and icon treatment; the copy voice and the names in the product's data.
+${look?.traits ? `\nIts look, which every new page keeps: its ${size(look.frame)} page ${opening(look.traits)}.\n` : ""}
+Keep across the site: the theme and components; the type scale and ground; the nav and footer, drawn the same way on every page that has them; the hero treatment; section spacing, dividers and backgrounds; card, button, input and label styles; image, illustration and icon treatment; the copy voice and the names in the product's data.
 Change per page: its structure and section order. A pricing, sign-in, blog or settings page is laid out for its own content and does not repeat the landing page's sections. Where this page needs a part the site hasn't drawn yet, design it in the site's language.`;
   }
 
-  const compared = others
-    .map((site) => ({ site, screens: screensOf(site) }))
-    .filter(({ screens: list }) => list.length > 0)
-    .slice(0, MAX_OTHER_SITES);
-  const lines = compared.map(({ site, screens: list }) => {
-    const main = list.reduce((a, b) => (b.frame.height > a.frame.height ? b : a));
+  const compared = comparedSites(others);
+  const lines = compared.map(({ site, screens: list, main }) => {
     const patterns = main.patterns.length > 0 ? `; it uses ${main.patterns.join(", ")}` : "";
-    return `- ${site.name}: ${lookOf(site, list)}; its ${size(main.frame)} page: ${outline(main)}${patterns}`;
+    const opens = main.traits ? ` ${opening(main.traits)}; sections` : "";
+    return `- ${site.name}: ${lookOf(site, list)}; its ${size(main.frame)} page${opens}: ${outline(main)}${patterns}`;
   });
   const used = [
     ...new Set(compared.flatMap(({ screens: list }) => list.flatMap((s) => s.patterns))),
   ];
+  const shared = sharedBy(compared.flatMap(({ main }) => main.traits ?? []));
   const savedTheme = current.theme
-    ? " This project already has a saved theme, so its colors and fonts are set: make it different through structure, hero treatment, imagery, density and voice."
+    ? " This project already has a saved theme, so its colors and fonts are set: make it different through type scale, structure, hero treatment, imagery, density and voice."
     : "";
   return `## This site: ${current.name}
 
-"${current.name}" has no screens yet, so this design sets the look of a new website. Its later pages will follow what you decide here, so decide it on purpose: type pairing, color strategy, radius, hero treatment, section rhythm, imagery and voice. This section comes before the general advice above.
+"${current.name}" has no screens yet, so this design sets the look of a new website. Its later pages will follow what you decide here, so decide it on purpose: type scale and pairing, ground and color strategy, radius, hero treatment, section rhythm, imagery and voice. This section comes before the general advice above.
 ${
   lines.length > 0
     ? `
 The user's other sites, which this one must not resemble:
 ${lines.join("\n")}
-
-Choose a type pairing, color strategy and page structure that differ from each of them, unless the user asks for a family resemblance.${
+${
+  shared.length > 0
+    ? `\nWhat they have in common, and what makes pages look alike whatever their colors and fonts: ${shared.join("; ")}. This site changes most of these: the guide above has left the most used ones out of the scales, grounds, hero forms and structures it offers.\n`
+    : ""
+}
+Choose a type scale, type pairing, ground, hero form and page structure that differ from each of them, unless the user asks for a family resemblance.${
         used.length > 0
           ? ` They already use ${used.join(", ")}: open, prove and end this one another way unless the user asks for one of them.`
           : ""

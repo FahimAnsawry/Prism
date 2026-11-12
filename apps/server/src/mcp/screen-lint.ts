@@ -5,8 +5,10 @@ import { cornerRadii, type BoardElement } from "@prism/shared";
 // container, unreadable contrast, tiny text, too many sizes, too many accent colors, gray boxes
 // standing in for images, and the design guide's hierarchy rules (pure black or white ink, thin
 // or badly leaded text, repeated radii, competing primary buttons, ungrouped labels, gray shadows
-// on colored grounds). It reads only the laid-out elements, so it works the same for
-// browser-measured and estimated layouts.
+// on colored grounds). A long marketing page is also checked for the guide's Refuse list where it
+// can be read off the page: banned marketing words, overused fonts, headings written to one
+// formula and a page that is mostly mock UI. It reads only the laid-out elements, so it works the
+// same for browser-measured and estimated layouts.
 
 export type ScreenWarning = { kind: string; ids: string[]; message: string };
 
@@ -16,7 +18,62 @@ const TOLERANCE = 1;
 const PRESET_PX = { S: 16, M: 22, L: 30, XL: 40 } as const;
 const MIN_TEXT_PX = 12;
 export const TEXT_SIZES_MAX = 8;
-const ACCENT_FAMILIES_MAX = 3;
+/** A full palette's four colors pass; a fifth family is too many. */
+const ACCENT_FAMILIES_MAX = 4;
+
+/** Marketing words the design guide bans, as the guide lists them and as they are found. */
+export const BANNED_COPY: [string, RegExp][] = [
+  ["seamless", /\bseamless(ly)?\b/i],
+  ["effortless", /\beffortless(ly)?\b/i],
+  ["unlock", /\bunlock(s|ing)?\b/i],
+  ["supercharge", /\bsupercharg(e|es|ed|ing)\b/i],
+  ["elevate", /\belevates?\b/i],
+  ["empower", /\bempower(s|ed|ing)?\b/i],
+  ["revolutionize", /\brevolutioni[sz](e|es|ed|ing)\b/i],
+  ["streamline", /\bstreamlin(e|es|ed|ing)\b/i],
+  ["all-in-one", /\ball[- ]in[- ]one\b/i],
+  ["next-generation", /\bnext[- ]gen(eration)?\b/i],
+  ["cutting-edge", /\bcutting[- ]edge\b/i],
+  ['"X, reimagined"', /,\s*reimagined\b/i],
+  ['"X made simple"', /\bmade simple\b/i],
+  ['"Say goodbye to …"', /\bsay goodbye to\b/i],
+];
+/** Copy shorter than this is a control's label ("Unlock door"), not marketing. */
+const BANNED_COPY_WORDS_MIN = 3;
+
+/** Faces every AI-made page uses: the guide's list, matched at the start of a font's name. */
+export const AVOID_FONTS = [
+  "Plus Jakarta Sans",
+  "Outfit",
+  "Space Grotesk",
+  "Syne",
+  "IBM Plex",
+  "Instrument Sans",
+  "Fraunces",
+  "Playfair Display",
+  "Cormorant",
+  "Lora",
+  "Newsreader",
+];
+/** Workhorse faces that are overused only as display type (DISPLAY_PX and up). */
+const AVOID_DISPLAY_FONTS = ["Inter", "DM Sans"];
+const DISPLAY_PX = 40;
+/** Board fonts by the face they draw. */
+const BOARD_FONT_FACES: Record<string, string> = {
+  inter: "Inter",
+  sans: "DM Sans",
+  playfair: "Playfair Display",
+};
+
+/** A frame this big is a marketing page, which the checks on copy, fonts and mock UI are for. */
+const PAGE_WIDTH_MIN = 1200;
+const PAGE_HEIGHT_MIN = 2000;
+/** Headings (HEADING_PX and up) opening with one word this many times read as a formula. */
+const OPENER_REPEATS = 3;
+/** A page with this many texts, this share of them MOCK_TEXT_PX or smaller, is mostly mock UI. */
+const MOCK_TEXTS_MIN = 60;
+const MOCK_TEXT_PX = 14;
+const MOCK_SHARE_MAX = 0.6;
 /** Status chips and badges: short shapes whose colors (and their text's) mean state, not brand. */
 const STATUS_HEIGHT_MAX = 32;
 const STATUS_WIDTH_MAX = 200;
@@ -505,12 +562,98 @@ function grayShadow(elements: BoardElement[], frame: BoardElement | undefined): 
   }));
 }
 
+/** Whether a frame is a long desktop page: a marketing page rather than an app or phone screen. */
+export const isLongPage = (frame: { width: number; height: number }) =>
+  Math.abs(frame.width) >= PAGE_WIDTH_MIN && Math.abs(frame.height) >= PAGE_HEIGHT_MIN;
+
+/** A heading's first word in lower case, when it is a word ("every"), not a figure. */
+export function openerOf(text: string | undefined) {
+  return /^[\s"'“‘(]*(\p{L}[\p{L}'’]{0,19})/u.exec(text ?? "")?.[1]?.toLowerCase() ?? null;
+}
+
+/** The face a font draws: "gf:Space Grotesk" → "Space Grotesk", "sans" → "DM Sans". */
+const faceOf = (font: string) =>
+  font.startsWith("gf:") ? font.slice(3) : (BOARD_FONT_FACES[font] ?? null);
+
+/**
+ * The guide's Refuse list, where it can be read off the page: banned marketing words, the faces
+ * every AI-made page uses, section titles written to one formula, and a page that is mostly mock UI.
+ */
+function pageChecks(texts: BoardElement[], frame: BoardElement, defaultTheme: boolean) {
+  const warnings: ScreenWarning[] = [];
+
+  const banned = new Map<string, string[]>();
+  for (const el of texts) {
+    if ((el.text ?? "").trim().split(/\s+/).length < BANNED_COPY_WORDS_MIN) continue;
+    for (const [word, pattern] of BANNED_COPY) {
+      if (pattern.test(el.text ?? "")) banned.set(word, [...(banned.get(word) ?? []), el.id]);
+    }
+  }
+  if (banned.size > 0) {
+    warnings.push({
+      kind: "banned-copy",
+      ids: [...new Set([...banned.values()].flat())],
+      message: `The copy uses ${[...banned.keys()].join(", ")}: words every landing page uses, so they say nothing about this product. Replace each with the concrete detail it was hiding (a number, a name, what actually happens).`,
+    });
+  }
+
+  // A font the theme set is the project's own choice, unless the theme is the default one.
+  const faces = new Map<string, string[]>();
+  for (const el of texts) {
+    if (!el.font || (el.tokens?.font && !defaultTheme)) continue;
+    const face = faceOf(el.font);
+    if (!face) continue;
+    const overused =
+      AVOID_FONTS.some((name) => face.startsWith(name)) ||
+      (pxOf(el) >= DISPLAY_PX && AVOID_DISPLAY_FONTS.includes(face));
+    if (overused) faces.set(face, [...(faces.get(face) ?? []), el.id]);
+  }
+  if (faces.size > 0) {
+    warnings.push({
+      kind: "generic-font",
+      ids: [...faces.values()].flat(),
+      message: `${[...faces.keys()].join(" and ")} ${faces.size === 1 ? "is a face" : "are faces"} most AI-made pages use${[...faces.keys()].some((face) => AVOID_DISPLAY_FONTS.includes(face)) ? " (Inter and DM Sans are fine for text, not for the headline)" : ""}. Pick one with a point of view from the direction's world (the design guide's section 3 lists families), unless the user asked for this one.`,
+    });
+  }
+
+  const openers = new Map<string, BoardElement[]>();
+  for (const el of texts) {
+    const opener = pxOf(el) >= HEADING_PX ? openerOf(el.text) : null;
+    if (opener) openers.set(opener, [...(openers.get(opener) ?? []), el]);
+  }
+  for (const [opener, headings] of openers) {
+    if (headings.length < OPENER_REPEATS) continue;
+    warnings.push({
+      kind: "repeated-opener",
+      ids: headings.map((el) => el.id),
+      message: `${headings.length} headings open with "${opener}" (${headings
+        .slice(0, 3)
+        .map((el) => quote(el.text))
+        .join(
+          ", ",
+        )}): the titles read as one formula. Give each its own shape: a number, a question, an instruction, a plain label.`,
+    });
+  }
+
+  const small = texts.filter((el) => pxOf(el) <= MOCK_TEXT_PX);
+  if (texts.length >= MOCK_TEXTS_MIN && small.length / texts.length >= MOCK_SHARE_MAX) {
+    warnings.push({
+      kind: "mock-heavy",
+      ids: [frame.id],
+      message: `${small.length} of the page's ${texts.length} texts are ${MOCK_TEXT_PX}px or smaller: it is mostly drawn product UI. Keep one product view at full scale (and one detail at most) and make the other sections' points at reading size: a sentence, a figure, a photograph, a diagram. Ignore this on a product screen that is not a marketing page.`,
+    });
+  }
+  return warnings;
+}
+
 /** What the layout knew besides the elements (none of it stored). */
 export interface LintExtras {
   /** Wrapped text's last line, by element id. */
   lastLines?: ReadonlyMap<string, string>;
   /** Rows a child without a width grows across (rowFillTraps), as messages. */
   rowFill?: string[];
+  /** The board draws with the default theme, so its fonts are the editor's choice, not the user's. */
+  defaultTheme?: boolean;
 }
 
 export function lintScreen(
@@ -711,8 +854,13 @@ export function lintScreen(
     warnings.push({
       kind: "palette",
       ids: frame ? [frame.id] : [],
-      message: `The screen uses ${families.size} accent color families (${[...families].join(", ")}). Keep one accent; use the others only for status chips and charts.`,
+      message: `The screen uses ${families.size} accent color families (${[...families].join(", ")}). Keep one accent, or a full palette of 3-4 colors that each own their regions; use others only for status chips and charts.`,
     });
+  }
+
+  if (frame && isLongPage(frame)) {
+    const texts = elements.filter((el) => isText(el) && el.text);
+    warnings.push(...pageChecks(texts, frame, extras.defaultTheme ?? false));
   }
 
   warnings.push(

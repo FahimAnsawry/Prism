@@ -21,6 +21,7 @@ import { Router } from "express";
 import type { Prisma } from "../db/generated/client.js";
 import { prisma } from "../db/client.js";
 import { HttpError, notFound, orNotFound, parseBody } from "../errors.js";
+import { openerOf } from "../mcp/screen-lint.js";
 import { requireUser } from "../session.js";
 import {
   accessibleBoardsWhere,
@@ -376,13 +377,47 @@ export type SiteElement = {
   height: number;
   fill: string | null;
   groupId: string | null;
+  role?: string | null;
   font?: string;
   /** The stored file it shows (an image element's, or a shape's image fill), e.g. "3f…a1.jpg". */
   image?: string;
+  /** Text: its size in px, weight and alignment. */
+  size?: number;
+  weight?: number;
+  align?: string;
+  /** A heading's first word, in lower case ("every"); never the rest of its text. */
+  opener?: string;
 };
 
 /** Element types whose props are small and say something the design guide reads (font, image). */
 const SITE_PROP_TYPES = ["text", "image", "rect", "ellipse", "frame"] as const;
+
+const PRESET_TEXT_PX: Record<string, number> = { S: 16, M: 22, L: 30, XL: 40 };
+/** Text this big is a heading, whose first word the guide reports. */
+const SITE_HEADING_PX = 32;
+
+/**
+ * What the design guide reads from an element's props (stored props, or a whole element): its font
+ * and image, and for text its size, weight, alignment and a heading's first word.
+ */
+export function siteProps(type: string, props: unknown): Partial<SiteElement> {
+  const { font, assetKey, fillImage, fontSizePx, fontSize, fontWeight, textAlign, text } = (props ??
+    {}) as Record<string, unknown> & { fillImage?: { assetKey?: unknown } | null };
+  const key = assetKey ?? fillImage?.assetKey;
+  const image = typeof key === "string" ? key.split("/").pop() : undefined;
+  const out: Partial<SiteElement> = {
+    ...(typeof font === "string" && { font }),
+    ...(image && { image }),
+  };
+  if (type !== "text") return out;
+  out.size =
+    typeof fontSizePx === "number" ? fontSizePx : (PRESET_TEXT_PX[String(fontSize ?? "M")] ?? 22);
+  out.weight = fontWeight === "bold" ? 700 : typeof fontWeight === "number" ? fontWeight : 400;
+  if (typeof textAlign === "string") out.align = textAlign;
+  const opener = out.size >= SITE_HEADING_PX && typeof text === "string" ? openerOf(text) : null;
+  if (opener) out.opener = opener;
+  return out;
+}
 
 /** A website: a project and its boards, or a board outside any project. */
 export type DesignSite = {
@@ -393,7 +428,7 @@ export type DesignSite = {
 };
 
 /** How many recently edited boards to look through for the user's other sites. */
-const RECENT_BOARDS = 40;
+const RECENT_BOARDS = 60;
 
 /** How long designSites answers from its last reading of the same user's board. */
 const SITES_FRESH_MS = 30_000;
@@ -489,25 +524,18 @@ async function readDesignSites(userId: string, boardIdParam: string) {
         height: true,
         fill: true,
         groupId: true,
+        role: true,
       },
     }),
     prisma.element.findMany({
       where: { boardId: { in: boardIds }, deletedAt: null, type: { in: [...SITE_PROP_TYPES] } },
-      select: { id: true, props: true },
+      select: { id: true, type: true, props: true },
     }),
   ]);
-  const extras = new Map<string, Pick<SiteElement, "font" | "image">>();
-  for (const { id, props } of propRows) {
-    const { font, assetKey, fillImage } = (props ?? {}) as {
-      font?: unknown;
-      assetKey?: unknown;
-      fillImage?: { assetKey?: unknown } | null;
-    };
-    const key = assetKey ?? fillImage?.assetKey;
-    const image = typeof key === "string" ? key.split("/").pop() : undefined;
-    if (typeof font === "string" || image) {
-      extras.set(id, { ...(typeof font === "string" && { font }), ...(image && { image }) });
-    }
+  const extras = new Map<string, Partial<SiteElement>>();
+  for (const { id, type, props } of propRows) {
+    const read = siteProps(type, props);
+    if (Object.keys(read).length > 0) extras.set(id, read);
   }
   const byBoard = new Map<string, SiteElement[]>();
   for (const { boardId: owner, ...row } of rows) {

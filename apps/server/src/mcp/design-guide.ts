@@ -2,10 +2,231 @@
 // descriptions say how to call Prism; this says what good looks like, so an AI editor doesn't
 // fall back on small, dense, many-colored defaults.
 
-import { TEXT_SIZES_MAX } from "./screen-lint.js";
+import { AVOID_FONTS, BANNED_COPY, TEXT_SIZES_MAX } from "./screen-lint.js";
 
 export const DESIGN_SURFACES = ["landing", "app", "mobile"] as const;
 export type DesignSurface = (typeof DESIGN_SURFACES)[number];
+
+// The choices that give a page its shape. Left alone, an editor makes the same ones every time
+// (a 72px bold headline over a product window on white), so each is a short list the guide deals
+// from, leaving out what the user's other sites already use (site-context.ts works that out).
+export type ScaleKey = "poster" | "standard" | "quiet" | "compact";
+export type GroundKey = "light" | "tinted" | "colored" | "dark";
+export type HeroKey = "product" | "type" | "photo" | "form";
+/** What the user's other sites use, most used first. */
+export type Taken = { scales: ScaleKey[]; grounds: GroundKey[]; heroes: HeroKey[] };
+
+/** Hero forms and structures shown per call. */
+const HERO_FORMS_SHOWN = 4;
+const STRUCTURES_SHOWN = 4;
+
+// [key, name, hero size, hero weight, hero line height, section title, suits]
+const SCALES: [ScaleKey, string, string, string, string, string, string][] = [
+  [
+    "poster",
+    "Poster",
+    "120-200",
+    "800-900",
+    "0.9-1.0",
+    "56-72",
+    "the headline is the picture: 2-5 words, type-led and print directions",
+  ],
+  [
+    "standard",
+    "Standard",
+    "64-80",
+    "700-800",
+    "1.05",
+    "40-48",
+    "a headline that shares the viewport with a product view or a photo",
+  ],
+  [
+    "quiet",
+    "Quiet",
+    "40-56",
+    "400-500",
+    "1.15-1.2",
+    "28-36",
+    "calm, editorial and premium pages: air and a text face carry it",
+  ],
+  [
+    "compact",
+    "Compact",
+    "36-48",
+    "600-700",
+    "1.15",
+    "24-30",
+    "offer-first and tool-like pages with a lot above the fold",
+  ],
+];
+
+/** The scale a desktop page's largest first-viewport text belongs to. */
+export function scaleOf(px: number, weight: number): ScaleKey {
+  if (px >= 100) return "poster";
+  if (px >= 57) return "standard";
+  return weight <= 500 ? "quiet" : "compact";
+}
+
+// [key, name, what it is]
+const GROUNDS: [GroundKey, string, string][] = [
+  [
+    "light",
+    "Light neutral",
+    "white or off-white with ink text. Every category ships on it, so take it only when the content needs a blank page.",
+  ],
+  [
+    "tinted",
+    "Tinted or mid-tone",
+    "paper with visible color, kraft, steel gray, a pale blue or green; cards step lighter or darker than it.",
+  ],
+  [
+    "colored",
+    "Color field",
+    "a saturated or deep color owns the first viewport or the whole page (Committed or Drenched below).",
+  ],
+  [
+    "dark",
+    "Dark",
+    "for a scene that is dark (a night shift, a cinema, a terminal), never because the category is a developer tool.",
+  ],
+];
+
+// [key ("" when a site can't be read for it), what the first viewport holds]
+const HERO_FORMS: [HeroKey | "", string][] = [
+  [
+    "product",
+    "The product at full scale: one real view, cropped or full-bleed, the headline set against it.",
+  ],
+  [
+    "type",
+    "Type alone: the sentence is the picture, at Poster scale, on a field of color or bare paper.",
+  ],
+  [
+    "photo",
+    "A photograph from the customer's world, full-bleed or as a tall panel, the headline in its calm area.",
+  ],
+  [
+    "form",
+    "The offer itself: the sign-up form, a search, a price calculator or a booking widget is the first thing on the page.",
+  ],
+  ["", "A diagram of how the thing works: a map, a route or a timeline the page hangs from."],
+  ["", "One fact at poster size: a number, a date or a price, with the sentence that explains it."],
+  [
+    "",
+    "An object from the product's world (a ticket, a label, a receipt, an index card) drawn large as the container for the offer.",
+  ],
+  ["", "An illustration or pattern in the theme's colors, with the headline inside it."],
+];
+
+/** Each hero form a site can be read for, in a few words. */
+export const HERO_NAMES: Record<HeroKey, string> = {
+  product: "the product drawn at full scale",
+  type: "type alone",
+  photo: "a photograph",
+  form: "the offer or form itself",
+};
+export const SCALE_NAMES: Record<ScaleKey, string> = {
+  poster: "Poster",
+  standard: "Standard",
+  quiet: "Quiet",
+  compact: "Compact",
+};
+export const GROUND_NAMES: Record<GroundKey, string> = {
+  light: "a light neutral ground",
+  tinted: "a tinted or mid-tone ground",
+  colored: "a color field",
+  dark: "a dark ground",
+};
+
+// [the hero form it opens with ("" for any), name, how the page runs]
+const STRUCTURES: [HeroKey | "", string, string][] = [
+  [
+    "product",
+    "Artifact first",
+    "the product's real artifact (an invoice moving through approval, a schedule filling up) at full scale in the first viewport, features as callouts on it.",
+  ],
+  [
+    "",
+    "One story",
+    "a single customer followed from the problem to the result, the product appearing where it changes the outcome.",
+  ],
+  ["", "Before and after", "the old way and the new way, the whole page built on the contrast."],
+  [
+    "",
+    "Walkthrough",
+    "one workflow drawn down the page as a continuous path, each step a stop on it.",
+  ],
+  [
+    "",
+    "Editorial",
+    "a long read that opens with an argument, the product shown in figures between passages.",
+  ],
+  [
+    "form",
+    "Offer first",
+    "pricing or the sign-up form near the top, for a product people already understand; the rest answers objections.",
+  ],
+  [
+    "product",
+    "Live demo",
+    "the first viewport is the product in use with something to try; the page below it is short.",
+  ],
+  [
+    "type",
+    "Poster",
+    "one statement at poster scale and a short page under it: three facts, the offer, the footer.",
+  ],
+  [
+    "",
+    "Catalogue",
+    "the page is an index people scan (plans, templates, listings, use cases as rows or a grid), each item opening its own detail.",
+  ],
+  [
+    "",
+    "Questions",
+    "built from the buyer's real questions in the order they ask them, each answered by a figure, a number or one sentence.",
+  ],
+  [
+    "",
+    "Comparison",
+    "this product beside what it replaces (a spreadsheet, a clipboard, a rival), point by point in one table that runs the page.",
+  ],
+];
+
+function shuffled<T>(rows: readonly T[]) {
+  const out = [...rows];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+/**
+ * A few of `options` (rows keyed by their first cell) in a new order each call, without the ones
+ * `taken` names. The most used go first, and at least two options always stay.
+ */
+function deal<T extends readonly [string, ...string[]]>(
+  options: readonly T[],
+  taken: readonly string[] = [],
+  count = options.length,
+) {
+  let kept = [...options];
+  const left: T[] = [];
+  for (const key of taken) {
+    const next = kept.filter((row) => row[0] !== key);
+    if (next.length === kept.length || next.length < 2) continue;
+    left.push(...kept.filter((row) => row[0] === key));
+    kept = next;
+  }
+  return { shown: shuffled(kept).slice(0, count), left };
+}
+
+/** The line under a dealt list naming what was left out of it. */
+const leftOut = (names: string[]) =>
+  names.length > 0
+    ? `\nLeft out, because the user's other sites already use ${names.length === 1 ? "it" : "them"}: ${names.join("; ")}. Take ${names.length === 1 ? "it" : "one"} only if the user asks.`
+    : "";
 
 /** Directions shown per call: a few at random, so no row becomes the new default. */
 const DIRECTIONS_SHOWN = 4;
@@ -99,12 +320,7 @@ const DIRECTIONS: [string, string, string, string, string][] = [
 ];
 
 function directionRows() {
-  const rows = [...DIRECTIONS];
-  for (let i = rows.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [rows[i], rows[j]] = [rows[j]!, rows[i]!];
-  }
-  return rows
+  return shuffled(DIRECTIONS)
     .slice(0, DIRECTIONS_SHOWN)
     .map((row) => `| ${row.join(" | ")} |`)
     .join("\n");
@@ -122,11 +338,11 @@ Answer these in two or three lines each, then design from the answers:
 - Category default: one line naming the page this category always ships (for a B2B SaaS landing page: an eyebrow pill over a two-line headline, Inter everywhere, then the landing-page kit in section 2). That is the design to avoid, not the starting point. If someone could guess your design from the category alone, rework it.
 - Directions: on a new site, two or three genuinely different directions: the obvious fit and at least one less obvious but defensible one. Compare them on audience, content and composition, then choose one on purpose. Not at random, and not the first just because it came first.
 - Thesis: one sentence on what this screen must make the viewer feel and do, and the category-default arrangement it refuses.
-- Signature move: the one visual idea only this product could own, drawn from what it actually does (its real artifact, workflow or data at full scale), not from a pattern library.
-- Scene: one sentence on who uses it, where and in what light. It decides light or dark; the category never does.
+- Signature move: the one visual idea only this product could own, drawn from what it actually does, not from a pattern library. It is not always the product on a screen: a sentence at poster size, a photograph from the customer's world, a diagram of how the thing works, one number, an object its users handle (a ticket, a label, a receipt) drawn as the page's container, or the form itself.
+- Scene: one sentence on who uses it, where and in what light. It decides the ground; the category never does.
 - From each reference: the structure, hierarchy and density you are taking, never its brand, logo or copy. Mixing two references in one design is good.
-- Color strategy (section 4), then the palette.
-- Type: one family (or one display face plus one text face) and the sizes in section 3.
+- The page's shape, four choices made on purpose and unlike the user's other sites ("This site" says what those use): the type scale (section 3), the ground and color strategy (section 4), what the first viewport holds and the page structure (both section 7). Two pages with different colors and the same four choices are the same page.
+- Type: one family (or one display face plus one text face) at the scale you chose.
 
 Three looks AI-made screens fall into whatever the subject: (a) warm cream ground, high-contrast serif display, a terracotta or red accent; (b) near-black with one neon accent and glowing edges; (c) editorial hairlines, italic display serif, small tracked mono labels. Use one only when the brief asks for it.
 
@@ -136,7 +352,7 @@ Find a direction in the product's own world first: its materials, its place, its
 ${directionRows()}
 Two sites in similar colors must still differ in composition: how the page opens, where the product sits, its density, and how it ends.
 
-Before the first create_screen of a new site, post a short brief in chat: the directions you weighed and the one you chose (with a sentence tying it to this product and audience), the palette with roles (background, surface, text, muted text, accent, border), the type, the page structure and the signature move. It commits you to a direction; it is not a question, so carry on without waiting for a reply. Skip it on a site that already has screens: those set the direction.`;
+Before the first create_screen of a new site, post a short brief in chat: the directions you weighed and the one you chose (with a sentence tying it to this product and audience), the type scale by name, the ground and the palette with roles (background, surface, text, muted text, accent, border), the fonts, what the first viewport holds, the page structure and the signature move. It commits you to a direction; it is not a question, so carry on without waiting for a reply. Skip it on a site that already has screens: those set the direction.`;
 
 const DECIDE_PRODUCT = () => `## 1. Decide before you draw
 
@@ -167,16 +383,29 @@ These are the category's defaults. The user's request can ask for any of them, a
 const TYPE_HEAD = `| Role | Size | Weight | Line height | Letter spacing |
 | --- | --- | --- | --- | --- |`;
 
-const TYPE_SCALES: Record<DesignSurface, string> = {
-  landing: `Desktop marketing (1440 frames; section 8 says how it shrinks at 390):
+/** A scale's row, and how it is named once left out. */
+const scaleRow = ([, name, hero, weight, lineHeight, title, suits]: (typeof SCALES)[number]) =>
+  `| ${name} | ${hero} | ${weight} | ${lineHeight} | ${title} | ${suits} |`;
+const scaleNote = ([, name, hero, , , title]: (typeof SCALES)[number]) =>
+  `${name} (hero ${hero}, section titles ${title})`;
+
+/** The landing type scales: one is chosen per site, the way a palette is. */
+function landingScales(taken?: Taken) {
+  const { shown, left } = deal(SCALES, taken?.scales);
+  return `Desktop marketing (1440 frames; section 8 says how it shrinks at 390). Choose one scale for the site. It is as much the design as the palette is, and the same scale on every site makes every site the same page:
+| Scale | Hero headline | Hero weight | Hero line height | Section title | Suits |
+| --- | --- | --- | --- | --- | --- |
+${shown.map(scaleRow).join("\n")}${leftOut(left.map(scaleNote))}
+Section titles take the hero's weight or one step lighter. Letter spacing -0.02 to -0.04 on the hero and section titles (0 to -0.01 on Quiet). Under any scale, the rest of the page:
 ${TYPE_HEAD}
-| Hero headline | 64-80 | 700-800 | 1.05 | -0.03 |
-| Section title | 40-48 | 700 | 1.1 | -0.02 |
 | Card / item title | 20-24 | 600 | 1.3 | -0.01 |
 | Lead paragraph | 18-22 | 400 | 1.55 | 0 |
 | Body | 16-17 | 400 | 1.5 | 0 |
 | Small, labels | 14 | 500 | 1.4 | 0 |
-| Caption, table header | 12-13 | 500-600 | 1.3 | 0.06 uppercase |`,
+| Caption, table header | 12-13 | 500-600 | 1.3 | 0.06 uppercase |`;
+}
+
+const TYPE_SCALES: Record<Exclude<DesignSurface, "landing">, string> = {
   app: `Desktop app (1440 frames). Denser than marketing: people read it all day.
 ${TYPE_HEAD}
 | Page title | 24-30 | 600-700 | 1.2 | -0.02 |
@@ -195,8 +424,7 @@ ${TYPE_HEAD}
 | Caption, tab label | 12 | 500 | 1.3 | 0 |`,
 };
 
-const FONTS_AVOID =
-  "These are what every AI-made page uses, so pick one only for a reason no other face meets: Inter or DM Sans as display, Plus Jakarta Sans, Outfit, Space Grotesk, Syne, IBM Plex, Instrument Sans, Fraunces, Playfair Display, Cormorant, Lora, Newsreader. A serif display over a sans body is not a signature on its own.";
+const FONTS_AVOID = `These are what every AI-made page uses, so pick one only for a reason no other face meets: Inter or DM Sans as display, ${AVOID_FONTS.join(", ")}. A serif display over a sans body is not a signature on its own.`;
 
 const FONTS: Record<DesignSurface, string> = {
   landing: `- Fonts: any Google Font as gf:<Name>, or the board fonts (inter, sans = DM Sans, poppins, montserrat, lato, playfair, merriweather). A landing page wants a face with a point of view, chosen like an object from the product's world: start from the direction's face (section 1) or its family (a condensed grotesk: Barlow Condensed, Antonio; a slab: Zilla Slab, Arvo; a geometric: Jost, Red Hat Display; a sturdy grotesk: Archivo, Public Sans, Schibsted Grotesk; a book serif: Source Serif 4, Libre Caslon Text). ${FONTS_AVOID}`,
@@ -223,23 +451,32 @@ const CONTROLS: Record<DesignSurface, string> = {
 - Cards: padding 16-20, radius 12-16.`,
 };
 
-const system = (surface: DesignSurface) => `## 3. Type
+/** The grounds a landing page picks from, before its color strategy. */
+function grounds(taken?: Taken) {
+  const { shown, left } = deal(GROUNDS, taken?.grounds);
+  return `Decide the ground first. It sets a page's character more than the accent does, and the brief names it:
+${shown.map(([, name, text]) => `- ${name}: ${text}`).join("\n")}${leftOut(left.map(([, name]) => name))}
 
-${TYPE_SCALES[surface]}
+Then pick a strategy before picking colors:`;
+}
+
+const system = (surface: DesignSurface, taken?: Taken) => `## 3. Type
+
+${surface === "landing" ? landingScales(taken) : TYPE_SCALES[surface]}
 
 - 12px is the floor for any text. A product mock inside a page may set its body text at 13-14px.
 - At most 3 sizes per section and ${TEXT_SIZES_MAX} on the whole screen (a product mock's sizes count), and the same role always gets the same size. Pick the screen's scale before drawing: one size for each table row you use, one or two for a mock.
-- Headlines: 2 lines at most, about 8 words, broken by hand with \\n where the phrase breaks. Paragraphs: 520-640px wide (60-75 characters per line).
+- Headlines: 2 lines at most, about 8 words${surface === "landing" ? " (Poster: 2-5 words, up to 3 lines)" : ""}, broken by hand with \\n where the phrase breaks. Paragraphs: 520-640px wide (60-75 characters per line).
 - With a strict theme, use its text styles ($display, $h1-$h4, $body-lg, $body, $body-sm, $caption, $label) instead of sizes.
 - Letter spacing never below -0.04. Line height falls as size rises (the table); body never above 1.75, headings never above 1.3.
-- Weight: headings 600-700 over 400 body. Nothing under 400 below 20px; light weights only at display sizes. Bold inside a paragraph marks one or two things, not every term.
+- Weight: ${surface === "landing" ? "the scale sets the headline's weight; card and item titles 600 over 400 body" : "headings 600-700 over 400 body"}. Nothing under 400 below 20px; light weights only at display sizes. Bold inside a paragraph marks one or two things, not every term.
 - Long text: break anything over four or five lines into short paragraphs, or a list under small subheadings. Left-align it; center only a headline, one or two lines under it and a button.
 - All caps only for short labels (captions, table headers), never on buttons, badges or a sentence.
 ${FONTS[surface]}
 
 ## 4. Color
 
-Pick a strategy before picking colors:
+${surface === "landing" ? grounds(taken) : "Pick a strategy before picking colors:"}
 - Restrained: neutrals carry the page, one accent for actions, selection and state. The default for app and mobile screens.
 - Committed: one saturated color owns 30-60% of the surface, as whole regions (a hero field, a full-bleed band), not scattered accents.
 - Full palette: 3-4 named color roles, each owning its regions.
@@ -248,8 +485,8 @@ A landing page may take any of them; choose from the thesis and scene, not out o
 
 Then:
 - Neutrals: near-black ink for headings (never pure #000000 on white), body text a step lighter, one or two surfaces, hairline borders. On dark grounds, headings off-white and body a step dimmer, never pure #ffffff for both. Tint them toward the main hue when that hue owns the page; on a colored field, derive secondary text from that hue rather than a generic gray.
-- Never two loud accents on one page.
-- The accent marks what can be clicked or is selected: the primary action, links, the active item. Spread over headings, icons and backgrounds, it stops meaning anything.
+- One loud color under Restrained and Committed. A Full palette gives each of its 3-4 colors its own regions and never puts two of them in one component.
+- One action color marks what can be clicked or is selected: the primary action, links, the active item. Under Restrained it is the accent, and spread over headings, icons and backgrounds it stops meaning anything. Under Committed or Drenched it is whatever stands out against the field (ink or white on a yellow field), never the field's own color.
 - Status colors (green success, red error, amber warning, blue info) keep their meaning, tuned to the palette but never swapped: a Delete button is red, never green or the brand color. Use them for status chips, charts, validation and destructive actions (chips as a faint fill with the same family's dark text), never as decoration or as the brand accent.
 - Never color alone: an error is red plus an icon plus words that say how to fix it ("Enter an amount over $1").
 - Dark screens: surfaces get lighter as they rise (page, card, popover) and shadows barely show; lift the accent a step so it still passes contrast.
@@ -264,7 +501,7 @@ ${PAGE_SPACE[surface]} Heading to its paragraph 16-24, text block to its visual 
 ${CONTROLS[surface]} One radius family (buttons and inputs smallest, cards next, big panels largest; the theme's radius when it has one). Pills are for small controls and chips.
 - Space says what belongs together: the gap inside a group is always smaller than the gap to the next group. A label 8 above its field, helper text 4 below it, 24 to the next field; 12 between a card's title and its text, 24-32 between cards. Equal gaps everywhere means nothing is grouped.
 - Nested corners: an inner radius is the outer radius minus the padding between them (a 16-radius card with 8 padding holds 8-radius items), never the same radius inside and out.
-- Separate with space or a surface step first (white cards on a faintly tinted page), a single hairline second. A card takes a hairline border or a soft shadow (a y offset and a soft blur), never both, and no box goes around every row.
+- Separate with space or a surface step first (a card one step lighter or darker than its ground), a single hairline second. A card takes a hairline border or a soft shadow (a y offset and a soft blur), never both, and no box goes around every row.
 - Cards in a row: same height, the action pinned to the bottom with a flexible spacer, images in one shape and crop, titles of about the same length.
 - A shadow on a colored ground takes that ground's hue (a purple-gray shadow on a lilac field), never neutral gray. Shadow depth follows height: cards low, menus and popovers higher, modals highest.
 - Focused tasks don't fill the frame: a sign-up, login or checkout sits in a 400-560 column or card with air around it, its inputs as wide as that column.
@@ -272,12 +509,13 @@ ${CONTROLS[surface]} One radius family (buttons and inputs smallest, cards next,
 ## 6. Hierarchy, actions, copy and forms
 
 - Before drawing, rank what's on the screen by how much it matters to the person using it, and give the top item the most size, weight and contrast. A value beats its label (a KPI's number is the biggest, darkest text; "Revenue" is small and muted); a product's name and price beat its quantity.
-- One primary action per view or card: a filled accent button, also the largest. Secondary actions are neutral (outline, ghost or a muted fill), tertiary are text links. Two filled buttons side by side read as two equal choices.
+- One primary action per view or card: a filled button in the action color, also the largest. Secondary actions are neutral (outline, ghost or a muted fill), tertiary are text links. Two filled buttons side by side read as two equal choices.
 - Buttons with the same job look the same on every card and screen; don't recolor them to match each card's image.
 - Labels say what happens, in sentence case: "Create account", "Pay $65", "Save changes". Never "Submit" or "OK".
 - Copy: write the real thing, with the product's own nouns, names and numbers.
-  - A headline says what it does and for whom ("Payroll for restaurants with tipped staff"), not how it feels ("Work, reimagined"). One specific claim beats three adjectives.
-  - Never: seamless, effortless, unlock, supercharge, elevate, empower, revolutionize, streamline, all-in-one, next-generation, cutting-edge, "X, reimagined", "X made simple", "Say goodbye to …". Replace each with the concrete detail it was hiding.
+  - A headline says what it does and for whom, not how it feels ("Work, reimagined"). One specific claim beats three adjectives, and the claim can take many shapes: a plain label ("Payroll for restaurants with tipped staff"), a number ("4 minutes from clock-out to payslip"), the question the buyer already asks ("Who is closing on Friday?"), an instruction ("Run payroll from the pass"), a customer's own words in quotes.
+  - Don't open a headline with "Every", "All your", "Your" or "The … for" out of habit ("This site" lists how the user's other headlines open), and don't give every section title one sentence shape (a noun, a comma, then what was done to it).
+  - Never: ${BANNED_COPY.map(([word]) => word).join(", ")}. Replace each with the concrete detail it was hiding.
   - Sentence case for headings, buttons, labels and menu items. No exclamation marks in UI text.
   - Figures for numbers ("3 projects", "$1,240"), and one date and currency format per screen.
   - Empty, error and confirmation messages say what happened and what to do next, in the product's voice, never "Oops!" or "Something went wrong".
@@ -291,14 +529,23 @@ ${CONTROLS[surface]} One radius family (buttons and inputs smallest, cards next,
   - An input is a light fill or a hairline box; it never takes the accent fill, so it can't be mistaken for a button.
 - Icons: one style per screen (outline, with filled only for the active tab or a selected state), one size per context (16-20 beside 14-16px text, 24 in navigation), the color of the text beside them and 8 from it. Hit area at least 32 on desktop and 44-48 on mobile. Keep universal meanings (magnifier searches, trash deletes); an icon that isn't obvious gets a text label.`;
 
-const LANDING = `## 7. Landing page recipe
+/** The landing recipe: its hero forms and structures are dealt, a different few each call. */
+function landing(taken?: Taken) {
+  const heroes = deal(HERO_FORMS, taken?.heroes, HERO_FORMS_SHOWN);
+  const structures = deal(STRUCTURES, taken?.heroes, STRUCTURES_SHOWN);
+  return `## 7. Landing page recipe
 
-A landing page is a whole page, usually 2400-4000px tall in one 1440 frame. What it must do is fixed; its order and form are not. Pick a structure from the product and the story it tells, name it before you draw, and don't reuse the structure of the user's other sites ("This site" lists them).
+A landing page is a whole page, usually 2400-4000px tall in one 1440 frame (a Poster or Offer-first page can be far shorter). What it must do is fixed; its order and form are not. Pick a structure from the product and the story it tells, name it before you draw, and don't reuse the structure of the user's other sites ("This site" lists them).
 
 A landing page has jobs, not a fixed list of sections. Each job takes the form this product's content asks for; the forms named here are examples, not a checklist. The Refuse list (section 2) names each job's category default:
-- Navigation (64-80px): logo, a few links, the primary action. It may sit inside the hero's color field rather than on white with a hairline.
-- A first viewport that is a thesis, not a header: the offer clear, the primary action visible, a trust line. Its form varies: the product at full scale, a typographic statement, a photo from the customer's world, something to try, the sign-up form itself. Ask: if someone left after this viewport, what would they describe an hour later? If the answer is a mood, it is not decided yet.
-- The product, believable: plausible names and numbers, never a small window beside the copy (960+ wide, or full-bleed and cropped). Annotate it, zoom into one detail, or show two states of it. It may lead the page or arrive once the problem is set up.
+- Navigation, in the form the page needs. A bar with the logo, a few links and the primary action is one form and the one every page ships. Others: a centered wordmark with the links split either side, a wordmark and one action only, a rail down the side of a long read, the links kept for the footer on a one-offer page. It may sit inside the hero's color field rather than on white with a hairline.
+- A first viewport that is a thesis, not a header: the offer clear, the primary action visible, a trust line. What it holds is a choice (a different few each time you read this; they are not a menu, so invent one where the product suggests it):
+${heroes.shown.map(([, text]) => `  - ${text}`).join("\n")}${leftOut(
+    heroes.left.flatMap(([key]) => (key ? HERO_NAMES[key] : [])),
+  ).replace("\n", "\n  ")}
+  Ask: if someone left after this viewport, what would they describe an hour later? If the answer is a mood, it is not decided yet.
+- The product, believable, where the page shows it: plausible names and numbers, never a small window beside the copy (960+ wide, or full-bleed and cropped). Annotate it, zoom into one detail, or show two states of it. It may lead the page, arrive once the problem is set up, or wait until the end.
+- Draw the product once at full scale and at most once more as a detail. Every other section makes its point another way: a sentence at reading size, a figure, a photograph, a diagram, a table. A page that is mock UI in every section is a screenshot gallery, and most of its text ends up at 13-14px.
 - Evidence, only when there is something specific to show: a customer's before and after, a real-looking document or export, an integration list, a changelog, a named quote. Keep endorsements clearly fictional demo content. The customer's work (their shop floor, their document) or a drawn avatar says more than a stock portrait.
 - The key features, in the form their content asks for: a workflow reads as one continuous sequence drawn across the page; capabilities of one screen read as callouts on a large product view; unlike features read as text and visuals at different sizes. Three same-size cards only when the items really are equivalent and nothing better fits; then make each card show its feature (a fragment of UI) instead of an icon chip.
 - An ending that hands the reader their next step: the sign-up form or pricing itself, the product's finished state, a short FAQ that answers the last objection, or the action set into the footer.
@@ -306,14 +553,11 @@ A landing page has jobs, not a fixed list of sections. Each job takes the form t
 - Text over a photo sits in the photo's calm area, or on a scrim of the photo's own dark tone, and still passes contrast over its lightest part.
 - A sign-up or login page: the form in its own column or card; an image beside it may set the mood but carries no text or button of its own.
 
-Structures (pick one, mix two, or invent one; the landing-page kit in section 2 is the one to avoid):
-- Artifact first: the product's real artifact (an invoice moving through approval, a schedule filling up) at full scale in the first viewport, the headline set against it, features as callouts on it.
-- One story: a single customer followed from the problem to the result, the product appearing where it changes the outcome.
-- Before and after: the old way and the new way, the whole page built on the contrast.
-- Walkthrough: one workflow drawn down the page as a continuous path, each step a stop on it.
-- Editorial: a long read that opens with an argument, the product shown in figures between passages.
-- Offer first: pricing or the sign-up form near the top, for a product people already understand; the rest answers objections.
-- Live demo: the first viewport is the product in use with something to try; the page below it is short.`;
+Structures (pick one, mix two, or invent one; a different few each time you read this, and the landing-page kit in section 2 is the one to avoid):
+${structures.shown.map(([, name, text]) => `- ${name}: ${text}`).join("\n")}${leftOut(
+    structures.left.map(([, name]) => name),
+  )}`;
+}
 
 const STATES = (frame: string) =>
   `Each meaningful state (empty, loading, error, filled) is its own ${frame} frame next to the main one.
@@ -348,7 +592,7 @@ const widths = (surface: DesignSurface) =>
     : `- Widths: a web page or web app is coded for every width, so draw its main page at 1440 and at 390 side by side with the same content, and at 768 too when the layout changes there (a sidebar becoming a rail). Name each frame by its route and width, plus its state when it has one ("/pricing · 1440", "/pricing · 390", "/projects · empty · 1440"): build_pages reads the name as the route, and the widths as its breakpoints. Going narrow:
   - Grids of three or four go to one column (two at 768); a text and a visual side by side stack, text first.
   - ${surface === "landing" ? "Nav links fold into a menu button; the primary action stays visible." : "The sidebar becomes a drawer behind a menu button, or a bottom tab bar for 4-5 top destinations; the primary action stays visible. Tables become cards showing the two or three fields that matter."}
-  - ${surface === "landing" ? "Hero 64-80 goes to 36-44 and section titles 40-48 to 28-32; body stays 16. Section padding 96-128 goes to 64" : "Page titles 24-30 go to 22-26; body goes from 14 to 15-16, and input text to 16 so phones don't zoom into it. Buttons and inputs grow to 44 tall. The page header's actions fold into one primary button and a menu"}, side padding to 20-24.
+  - ${surface === "landing" ? "The hero goes to 36-44 (Poster 56-72, Quiet and Compact 30-36) and section titles to 24-32; body stays 16. Section padding 96-128 goes to 64" : "Page titles 24-30 go to 22-26; body goes from 14 to 15-16, and input text to 16 so phones don't zoom into it. Buttons and inputs grow to 44 tall. The page header's actions fold into one primary button and a menu"}, side padding to 20-24.
   - Nothing scrolls sideways except a deliberate carousel or a wide table in its own scroller.`;
 
 const forCode = (surface: DesignSurface) => `## 8. Design for code
@@ -404,7 +648,7 @@ const BUILD = `## 9. Building it in Prism
    3. Actions: count the filled accent buttons in each view. More than one is a hierarchy bug unless it's the same action repeated down a list.
    4. Refuse: go through section 2 and remove what the brief didn't ask for.
    5. Name swap: put an unrelated product's name on it. If the page still fits, its composition, copy or signature move is too generic, and so is a design someone could guess from the category alone.
-   6. Other sites: it must not pass for another of the user's sites (or, on a site with screens, for a page from a different site). Compare how it opens, proves and ends with the patterns "This site" lists.
+   6. Other sites: it must not pass for another of the user's sites (or, on a site with screens, for a page from a different site). Compare its type scale, ground, first viewport and structure with what "This site" lists. create_screen warns when a new site's page opens like another of the user's sites: answer that warning by redrawing the first viewport, not by changing a color.
    7. Handoff (section 8): the other widths, states and long content are drawn, icon-only buttons and photos have names, the copy has none of the banned words, and nothing reusable is drawn twice instead of used as a component.
    Fix everything in one batch and look once more; two rounds is the ceiling.
 3. When the screen follows a reference image on the board, run compare_reference (frameId, referenceId) and fix the differences that matter: layout and tone usually, not the reference's brand colors. Compare again after fixing.
@@ -415,20 +659,30 @@ const DECIDE: Record<DesignSurface, () => string> = {
   app: DECIDE_PRODUCT,
   mobile: DECIDE_PRODUCT,
 };
-const RECIPES: Record<DesignSurface, string> = { landing: LANDING, app: APP, mobile: MOBILE };
+const RECIPES: Record<DesignSurface, (taken?: Taken) => string> = {
+  landing,
+  app: () => APP,
+  mobile: () => MOBILE,
+};
 
 /**
  * The guide for a surface, ending with the board's "This site" section (site-context.ts) if given.
  * siteOnly returns just that section, for an editor that already read the guide and moved boards.
+ * `taken` is what the user's other sites use, for a new site: the guide leaves those choices out.
  */
-export function designGuide(surface: DesignSurface, site?: string, siteOnly = false) {
+export function designGuide(
+  surface: DesignSurface,
+  site?: string,
+  siteOnly = false,
+  taken?: Taken,
+) {
   if (siteOnly && site) return site;
   return [
     HEADER,
     DECIDE[surface](),
     REFUSE,
-    system(surface),
-    RECIPES[surface],
+    system(surface, taken),
+    RECIPES[surface](taken),
     forCode(surface),
     BUILD,
     site,
